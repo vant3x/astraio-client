@@ -173,6 +173,7 @@ pub fn handle_device_auth_received(
                     config.verification_uri = device_auth.verification_uri;
                     config.device_code_expires_in = Some(device_auth.expires_in);
                     config.device_code_interval = device_auth.interval;
+                    config.auto_polling = true;
 
                     let verification_url = config.verification_uri.clone();
                     let user_code = config.user_code.clone();
@@ -207,6 +208,7 @@ pub fn handle_device_token_poll(
                         config.device_code.clear();
                         config.user_code.clear();
                         config.verification_uri.clear();
+                        config.auto_polling = false;
                         log::info!("Device token received successfully");
                     } else if let Some(error) = device_token.error {
                         if error == "authorization_pending" {
@@ -218,12 +220,32 @@ pub fn handle_device_token_poll(
                             config.device_code.clear();
                             config.user_code.clear();
                             config.verification_uri.clear();
+                            config.auto_polling = false;
                         }
                     }
                 }
                 Err(e) => {
                     log::error!("Device token poll failed: {}", e);
+                    config.auto_polling = false;
                 }
+            }
+        }
+    }
+    Task::none()
+}
+
+pub fn handle_auto_poll_toggle(
+    app: &mut AstraNovaApp,
+    index: usize,
+    enabled: bool,
+) -> Task<Message> {
+    if let Some(view) = app.request_tabs.get_mut(index) {
+        if let Auth::OAuth2(config) = &mut view.auth {
+            config.auto_polling = enabled;
+            if enabled {
+                log::info!("Device code auto-polling enabled for tab {}", index);
+            } else {
+                log::info!("Device code auto-polling disabled for tab {}", index);
             }
         }
     }

@@ -377,6 +377,58 @@ pub fn trim_request_history(conn: &Connection, max_entries: usize) -> Result<()>
     Ok(())
 }
 
+fn map_history_row(row: &rusqlite::Row) -> rusqlite::Result<RequestHistoryEntry> {
+    Ok(RequestHistoryEntry {
+        id: row.get(0)?,
+        method: row.get(1)?,
+        url: row.get(2)?,
+        status: row.get::<_, Option<i64>>(3)?.map(|s| s as u16),
+        duration_ms: row.get::<_, Option<i64>>(4)?.map(|d| d as u64),
+        timestamp: row.get(5)?,
+        request_data: row.get(6)?,
+        response_data: row.get(7)?,
+    })
+}
+
+pub fn search_request_history(
+    conn: &Connection,
+    query: &str,
+    method_filter: &str,
+    limit: usize,
+) -> Result<Vec<RequestHistoryEntry>> {
+    let has_query = !query.is_empty();
+    let has_method = !method_filter.is_empty();
+
+    let sql = match (has_query, has_method) {
+        (true, true) => "SELECT id, method, url, status, duration_ms, timestamp, request_data, response_data FROM request_history WHERE (url LIKE ?1 OR method LIKE ?1 OR request_data LIKE ?1) AND method LIKE ?2 ORDER BY id DESC LIMIT ?3",
+        (true, false) => "SELECT id, method, url, status, duration_ms, timestamp, request_data, response_data FROM request_history WHERE (url LIKE ?1 OR method LIKE ?1 OR request_data LIKE ?1) ORDER BY id DESC LIMIT ?2",
+        (false, true) => "SELECT id, method, url, status, duration_ms, timestamp, request_data, response_data FROM request_history WHERE method LIKE ?1 ORDER BY id DESC LIMIT ?2",
+        (false, false) => "SELECT id, method, url, status, duration_ms, timestamp, request_data, response_data FROM request_history ORDER BY id DESC LIMIT ?1",
+    };
+
+    let pattern = format!("%{}%", query);
+    let method_pattern = format!("%{}%", method_filter);
+    let limit_val = limit as i64;
+
+    let params: Vec<Box<dyn rusqlite::types::ToSql>> = match (has_query, has_method) {
+        (true, true) => vec![
+            Box::new(pattern),
+            Box::new(method_pattern),
+            Box::new(limit_val),
+        ],
+        (true, false) => vec![Box::new(pattern), Box::new(limit_val)],
+        (false, true) => vec![Box::new(method_pattern), Box::new(limit_val)],
+        (false, false) => vec![Box::new(limit_val)],
+    };
+
+    let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+    let mut stmt = conn.prepare(sql)?;
+    let entries: Vec<RequestHistoryEntry> = stmt
+        .query_and_then(param_refs.as_slice(), map_history_row)?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(entries)
+}
+
 pub fn get_request_history_entry_by_id(
     conn: &Connection,
     id: i32,

@@ -147,6 +147,7 @@ pub enum Message {
     OAuth2CopyUserCode(String),
     OAuth2CopyAccessToken(String),
     OAuth2CopyRefreshToken(String),
+    OAuth2AutoPollToggle(bool),
     CurlImported,
 }
 
@@ -559,6 +560,9 @@ impl HttpRequestView {
                 if let Ok(mut clipboard) = arboard::Clipboard::new() {
                     let _ = clipboard.set_text(token);
                 }
+            }
+            Message::OAuth2AutoPollToggle(_) => {
+                // Handled in app.rs
             }
             Message::CurlImported => {
                 // Handled in app.rs to show toast

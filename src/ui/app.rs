@@ -56,6 +56,60 @@ impl Recipe for WsRecipe {
     }
 }
 
+struct DevicePollRecipe {
+    tab_index: usize,
+    device_code: String,
+    client_id: String,
+    client_secret: String,
+    token_url: String,
+    interval_secs: u64,
+}
+
+impl Recipe for DevicePollRecipe {
+    type Output = Message;
+
+    fn hash(&self, state: &mut iced_futures::subscription::Hasher) {
+        use std::hash::Hash;
+        std::any::TypeId::of::<DevicePollRecipe>().hash(state);
+        self.tab_index.hash(state);
+        self.device_code.hash(state);
+    }
+
+    fn stream(self: Box<Self>, _input: EventStream) -> BoxStream<'static, Message> {
+        let tab_index = self.tab_index;
+        let device_code = self.device_code;
+        let client_id = self.client_id;
+        let client_secret = self.client_secret;
+        let token_url = self.token_url;
+        let interval = std::time::Duration::from_secs(self.interval_secs.max(5));
+
+        futures::stream::unfold(
+            (),
+            move |()| {
+                let device_code = device_code.clone();
+                let client_id = client_id.clone();
+                let client_secret = client_secret.clone();
+                let token_url = token_url.clone();
+                async move {
+                    tokio::time::sleep(interval).await;
+                    let result = crate::data::oauth2::poll_device_token(
+                        &token_url,
+                        &device_code,
+                        &client_id,
+                        &client_secret,
+                    )
+                    .await;
+                    Some((
+                        Message::OAuth2DeviceTokenPoll(tab_index, result),
+                        (),
+                    ))
+                }
+            },
+        )
+        .boxed()
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Protocol {
     Http,
@@ -136,6 +190,7 @@ pub enum Message {
     SelectEnvironment(i32),
     SwitchView(View),
     HistoryMsg(history_view::Message),
+    HistoryExportComplete(Option<String>),
     ToggleHistory,
     CollectionMsg(collection_view::Message),
     ToggleCollections,
@@ -168,6 +223,7 @@ pub enum Message {
         usize,
         Result<crate::data::oauth2::DeviceTokenResponse, crate::error::AppError>,
     ),
+    OAuth2AutoPollToggle(usize, bool),
 }
 
 impl Clone for Message {
@@ -187,6 +243,7 @@ impl Clone for Message {
             Self::SelectEnvironment(i) => Self::SelectEnvironment(*i),
             Self::SwitchView(v) => Self::SwitchView(*v),
             Self::HistoryMsg(m) => Self::HistoryMsg(m.clone()),
+            Self::HistoryExportComplete(v) => Self::HistoryExportComplete(v.clone()),
             Self::ToggleHistory => Self::ToggleHistory,
             Self::CollectionMsg(m) => Self::CollectionMsg(m.clone()),
             Self::ToggleCollections => Self::ToggleCollections,
@@ -210,6 +267,7 @@ impl Clone for Message {
             Self::OAuth2StartDeviceAuth(i) => Self::OAuth2StartDeviceAuth(*i),
             Self::OAuth2DeviceAuthReceived(i, r) => Self::OAuth2DeviceAuthReceived(*i, r.clone()),
             Self::OAuth2DeviceTokenPoll(i, r) => Self::OAuth2DeviceTokenPoll(*i, r.clone()),
+            Self::OAuth2AutoPollToggle(i, b) => Self::OAuth2AutoPollToggle(*i, *b),
         }
     }
 }
@@ -241,7 +299,7 @@ impl AstraNovaApp {
             }
         };
 
-        let history = crate::services::history_service::get_all(&db_conn, 50);
+        let history = crate::services::history_service::get_all(&db_conn, 200);
         let collections = crate::services::collection_service::get_all(&db_conn);
 
         let mut cv = CollectionView::new();
@@ -380,6 +438,16 @@ impl AstraNovaApp {
             }
             Message::CollectionMsg(msg) => super::handlers::collection::handle_message(self, msg),
             Message::HistoryMsg(msg) => super::handlers::history::handle_message(self, msg),
+            Message::HistoryExportComplete(result) => {
+                if let Some(msg) = result {
+                    if msg.contains("failed") || msg.contains("cancelled") {
+                        self.toast_manager.warning(msg);
+                    } else {
+                        self.toast_manager.success(msg);
+                    }
+                }
+                Task::none()
+            }
             Message::SelectProtocol(protocol) => {
                 self.active_protocol = protocol;
                 Task::none()
@@ -417,6 +485,9 @@ impl AstraNovaApp {
             }
             Message::OAuth2DeviceTokenPoll(index, result) => {
                 super::handlers::oauth2::handle_device_token_poll(self, index, result)
+            }
+            Message::OAuth2AutoPollToggle(index, enabled) => {
+                super::handlers::oauth2::handle_auto_poll_toggle(self, index, enabled)
             }
         }
     }
@@ -477,7 +548,35 @@ impl AstraNovaApp {
             _ => Message::NoOp,
         });
 
-        Subscription::batch(vec![ws_subscription, keyboard_subscription])
+        let device_poll_subscription = self.device_poll_subscription();
+
+        Subscription::batch(vec![
+            ws_subscription,
+            keyboard_subscription,
+            device_poll_subscription,
+        ])
+    }
+
+    fn device_poll_subscription(&self) -> Subscription<Message> {
+        for (index, tab) in self.request_tabs.iter().enumerate() {
+            if let crate::data::auth::Auth::OAuth2(config) = &tab.auth {
+                if config.auto_polling
+                    && !config.device_code.is_empty()
+                    && !config.token_url.is_empty()
+                {
+                    let interval = config.device_code_interval.unwrap_or(5);
+                    return from_recipe(DevicePollRecipe {
+                        tab_index: index,
+                        device_code: config.device_code.clone(),
+                        client_id: config.client_id.clone(),
+                        client_secret: config.client_secret.clone(),
+                        token_url: config.token_url.clone(),
+                        interval_secs: interval,
+                    });
+                }
+            }
+        }
+        Subscription::none()
     }
 
     fn theme(&self) -> iced::Theme {

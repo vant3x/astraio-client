@@ -80,7 +80,7 @@ pub fn handle_http_request_msg(
                         crate::persistence::database::DEFAULT_HISTORY_LIMIT,
                     );
                     app.history_view.entries =
-                        crate::services::history_service::get_all(&app.db_conn, 50);
+                        crate::services::history_service::get_all(&app.db_conn, 200);
 
                     if response.status >= 400 {
                         app.toast_manager
@@ -125,6 +125,9 @@ pub fn handle_http_request_msg(
         }
         http_request_view::Message::OAuth2StartDeviceAuth => {
             Task::perform(async {}, move |_| Message::OAuth2StartDeviceAuth(index))
+        }
+        http_request_view::Message::OAuth2AutoPollToggle(enabled) => {
+            Task::perform(async {}, move |_| Message::OAuth2AutoPollToggle(index, enabled))
         }
         other => {
             if let Some(view) = app.request_tabs.get_mut(index) {

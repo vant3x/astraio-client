@@ -143,10 +143,11 @@ impl HttpRequestView {
             _ => {}
         }
 
-        let body = if self.body_input.text().is_empty() {
+        let body_text = self.body_input.text();
+        let body = if body_text.trim().is_empty() {
             None
         } else {
-            Some(self.body_input.text())
+            Some(body_text)
         };
 
         // Only set Content-Type for text body (multipart sets it automatically)

@@ -525,6 +525,7 @@ mod tests {
                 device_code_expires_in: Some(300),
                 device_code_interval: Some(5),
                 status: crate::data::auth::OAuth2Status::default(),
+                auto_polling: false,
             }));
 
         let json = serde_json::to_string(&original_auth).unwrap();

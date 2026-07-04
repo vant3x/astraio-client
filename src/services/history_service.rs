@@ -53,6 +53,15 @@ pub fn get_by_id(conn: &Connection, id: i32) -> Option<RequestHistoryEntry> {
         .flatten()
 }
 
+pub fn search(
+    conn: &Connection,
+    query: &str,
+    method_filter: &str,
+    limit: usize,
+) -> Vec<RequestHistoryEntry> {
+    database::search_request_history(conn, query, method_filter, limit).unwrap_or_default()
+}
+
 pub fn clear(conn: &Connection) {
     let _ = database::delete_request_history(conn);
 }

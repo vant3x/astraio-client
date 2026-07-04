@@ -440,6 +440,16 @@ impl HttpRequestView {
                                 .on_press(Message::OAuth2StartDeviceAuth),
                             )
                         } else {
+                            let poll_button_text = if config.auto_polling {
+                                "Stop Auto-Polling"
+                            } else {
+                                "Start Auto-Polling"
+                            };
+                            let poll_button_icon = if config.auto_polling {
+                                lucide::square().size(12)
+                            } else {
+                                lucide::refresh_cw().size(12)
+                            };
                             Element::from(
                                 column![
                                     container(
@@ -460,13 +470,21 @@ impl HttpRequestView {
                                         Message::OAuth2CopyUserCode(code)
                                     }),
                                     button(
-                                        row![
-                                            lucide::refresh_cw().size(12),
-                                            text(" Poll for Token")
-                                        ]
-                                        .spacing(4)
+                                        row![poll_button_icon, text(poll_button_text)]
+                                            .spacing(4)
                                     )
-                                    .on_press(Message::OAuth2RefreshToken),
+                                    .on_press(Message::OAuth2AutoPollToggle(
+                                        !config.auto_polling
+                                    )),
+                                    if config.auto_polling {
+                                        Element::from(
+                                            text("Polling...").size(11).color(
+                                                Color::from_rgb(0.2, 0.7, 0.3),
+                                            ),
+                                        )
+                                    } else {
+                                        Element::from(column![])
+                                    },
                                 ]
                                 .spacing(8),
                             )

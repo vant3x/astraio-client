@@ -13,6 +13,7 @@ pub enum Message {
     SearchChanged(String),
     FilterMethod(String),
     ExportHistory,
+    HistoryExportComplete(Option<String>),
 }
 
 #[derive(Debug, Default)]
@@ -87,6 +88,7 @@ impl HistoryView {
                 None
             }
             Message::ExportHistory => None,
+            Message::HistoryExportComplete(_) => None,
         }
     }
 

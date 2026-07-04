@@ -23,7 +23,7 @@ mod tests {
         let req = view.build_request();
         assert_eq!(req.method, crate::http_client::request::HttpMethod::Get);
         assert_eq!(req.url, "https://example.com/api");
-        assert!(req.body.as_ref().is_none_or(|b| b.trim().is_empty()));
+        assert!(req.body.is_none());
     }
 
     #[test]

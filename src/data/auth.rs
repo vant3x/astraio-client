@@ -98,6 +98,8 @@ pub struct OAuth2Config {
     pub device_code_expires_in: Option<u64>,
     pub device_code_interval: Option<u64>,
     pub status: OAuth2Status,
+    #[serde(default)]
+    pub auto_polling: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
