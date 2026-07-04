@@ -1,4 +1,5 @@
 use crate::data::auth::Auth;
+use crate::error::AppError;
 use crate::ui::app::{AstraNovaApp, Message};
 use iced::Task;
 
@@ -28,7 +29,7 @@ pub fn handle_start_auth(app: &mut AstraNovaApp, index: usize) -> Task<Message> 
                 async move {
                     let _ = open::that(&auth_url);
                 },
-                move |_| Message::OAuth2AuthComplete(index, Ok(String::new()), verifier),
+                move |_| Message::OAuth2AuthComplete(index, Ok::<String, crate::error::AppError>(String::new()), verifier),
             );
         }
     }
@@ -38,7 +39,7 @@ pub fn handle_start_auth(app: &mut AstraNovaApp, index: usize) -> Task<Message> 
 pub fn handle_auth_complete(
     app: &mut AstraNovaApp,
     index: usize,
-    _result: Result<String, String>,
+    _result: Result<String, AppError>,
     pkce_verifier: Option<String>,
 ) -> Task<Message> {
     if let Some(view) = app.request_tabs.get_mut(index) {
@@ -59,7 +60,7 @@ pub fn handle_auth_complete(
 pub fn handle_token_received(
     app: &mut AstraNovaApp,
     index: usize,
-    result: Result<crate::data::oauth2::OAuth2TokenResponse, String>,
+    result: Result<crate::data::oauth2::OAuth2TokenResponse, AppError>,
 ) -> Task<Message> {
     if let Some(view) = app.request_tabs.get_mut(index) {
         if let Auth::OAuth2(config) = &mut view.auth {
@@ -161,7 +162,7 @@ pub fn handle_start_device_auth(app: &AstraNovaApp, index: usize) -> Task<Messag
 pub fn handle_device_auth_received(
     app: &mut AstraNovaApp,
     index: usize,
-    result: Result<crate::data::oauth2::DeviceAuthorizationResponse, String>,
+    result: Result<crate::data::oauth2::DeviceAuthorizationResponse, AppError>,
 ) -> Task<Message> {
     if let Some(view) = app.request_tabs.get_mut(index) {
         if let Auth::OAuth2(config) = &mut view.auth {
@@ -192,7 +193,7 @@ pub fn handle_device_auth_received(
 pub fn handle_device_token_poll(
     app: &mut AstraNovaApp,
     index: usize,
-    result: Result<crate::data::oauth2::DeviceTokenResponse, String>,
+    result: Result<crate::data::oauth2::DeviceTokenResponse, AppError>,
 ) -> Task<Message> {
     if let Some(view) = app.request_tabs.get_mut(index) {
         if let Auth::OAuth2(config) = &mut view.auth {

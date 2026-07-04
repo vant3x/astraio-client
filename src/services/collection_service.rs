@@ -1,33 +1,36 @@
-use crate::persistence::database::{self, Collection, CollectionFolder, CollectionRequest};
+use crate::error::AppError;
+use crate::persistence::database::{
+    self, Collection, CollectionAuthType, CollectionBodyType, CollectionFolder, CollectionRequest,
+};
 use rusqlite::Connection;
 
 pub fn get_all(conn: &Connection) -> Vec<Collection> {
     database::get_collections(conn).unwrap_or_default()
 }
 
-pub fn create(conn: &Connection, name: &str) -> Result<Collection, String> {
-    database::create_collection(conn, name, None).map_err(|e| e.to_string())
+pub fn create(conn: &Connection, name: &str) -> Result<Collection, AppError> {
+    Ok(database::create_collection(conn, name, None)?)
 }
 
-pub fn update(conn: &Connection, collection: &Collection) -> Result<(), String> {
-    database::update_collection(conn, collection).map_err(|e| e.to_string())
+pub fn update(conn: &Connection, collection: &Collection) -> Result<(), AppError> {
+    Ok(database::update_collection(conn, collection)?)
 }
 
-pub fn delete(conn: &Connection, id: i32) -> Result<(), String> {
-    database::delete_collection(conn, id).map_err(|e| e.to_string())
+pub fn delete(conn: &Connection, id: i32) -> Result<(), AppError> {
+    Ok(database::delete_collection(conn, id)?)
 }
 
-pub fn create_and_refresh(conn: &Connection, name: &str) -> Result<Vec<Collection>, String> {
+pub fn create_and_refresh(conn: &Connection, name: &str) -> Result<Vec<Collection>, AppError> {
     create(conn, name)?;
     Ok(get_all(conn))
 }
 
-pub fn delete_and_refresh(conn: &Connection, id: i32) -> Result<Vec<Collection>, String> {
+pub fn delete_and_refresh(conn: &Connection, id: i32) -> Result<Vec<Collection>, AppError> {
     delete(conn, id)?;
     Ok(get_all(conn))
 }
 
-pub fn rename(conn: &Connection, collection: &Collection, new_name: &str) -> Result<(), String> {
+pub fn rename(conn: &Connection, collection: &Collection, new_name: &str) -> Result<(), AppError> {
     let mut updated = collection.clone();
     updated.name = new_name.to_string();
     update(conn, &updated)
@@ -41,23 +44,23 @@ pub fn create_folder(
     conn: &Connection,
     collection_id: i32,
     name: &str,
-) -> Result<CollectionFolder, String> {
-    database::create_folder(conn, collection_id, name, None).map_err(|e| e.to_string())
+) -> Result<CollectionFolder, AppError> {
+    Ok(database::create_folder(conn, collection_id, name, None)?)
 }
 
-pub fn delete_folder(conn: &Connection, id: i32) -> Result<(), String> {
-    database::delete_folder(conn, id).map_err(|e| e.to_string())
+pub fn delete_folder(conn: &Connection, id: i32) -> Result<(), AppError> {
+    Ok(database::delete_folder(conn, id)?)
 }
 
-pub fn rename_folder(conn: &Connection, id: i32, new_name: &str) -> Result<(), String> {
-    database::rename_folder(conn, id, new_name).map_err(|e| e.to_string())
+pub fn rename_folder(conn: &Connection, id: i32, new_name: &str) -> Result<(), AppError> {
+    Ok(database::rename_folder(conn, id, new_name)?)
 }
 
 pub fn create_folder_and_refresh(
     conn: &Connection,
     collection_id: i32,
     name: &str,
-) -> Result<Vec<CollectionFolder>, String> {
+) -> Result<Vec<CollectionFolder>, AppError> {
     create_folder(conn, collection_id, name)?;
     Ok(get_folders(conn, collection_id))
 }
@@ -66,7 +69,7 @@ pub fn delete_folder_and_refresh(
     conn: &Connection,
     collection_id: i32,
     folder_id: i32,
-) -> Result<Vec<CollectionFolder>, String> {
+) -> Result<Vec<CollectionFolder>, AppError> {
     delete_folder(conn, folder_id)?;
     Ok(get_folders(conn, collection_id))
 }
@@ -89,13 +92,13 @@ pub fn save_request(
     url: &str,
     headers: &[(String, String)],
     body: Option<&str>,
-    body_type: &str,
-    auth_type: &str,
+    body_type: &CollectionBodyType,
+    auth_type: &CollectionAuthType,
     auth_data: Option<&str>,
     params: &[(String, String)],
     config_json: Option<&str>,
-) -> Result<CollectionRequest, String> {
-    database::save_collection_request(
+) -> Result<CollectionRequest, AppError> {
+    Ok(database::save_collection_request(
         conn,
         collection_id,
         folder_id,
@@ -109,21 +112,20 @@ pub fn save_request(
         auth_data,
         params,
         config_json,
-    )
-    .map_err(|e| e.to_string())
+    )?)
 }
 
-pub fn rename_request(conn: &Connection, id: i32, new_name: &str) -> Result<(), String> {
-    database::rename_collection_request(conn, id, new_name).map_err(|e| e.to_string())
+pub fn rename_request(conn: &Connection, id: i32, new_name: &str) -> Result<(), AppError> {
+    Ok(database::rename_collection_request(conn, id, new_name)?)
 }
 
 #[allow(dead_code)]
-pub fn move_request(conn: &Connection, id: i32, new_folder_id: Option<i32>) -> Result<(), String> {
-    database::move_collection_request(conn, id, new_folder_id).map_err(|e| e.to_string())
+pub fn move_request(conn: &Connection, id: i32, new_folder_id: Option<i32>) -> Result<(), AppError> {
+    Ok(database::move_collection_request(conn, id, new_folder_id)?)
 }
 
-pub fn delete_request(conn: &Connection, id: i32) -> Result<(), String> {
-    database::delete_collection_request(conn, id).map_err(|e| e.to_string())
+pub fn delete_request(conn: &Connection, id: i32) -> Result<(), AppError> {
+    Ok(database::delete_collection_request(conn, id)?)
 }
 
 pub fn delete_request_and_refresh(
@@ -131,7 +133,7 @@ pub fn delete_request_and_refresh(
     collection_id: i32,
     folder_id: Option<i32>,
     request_id: i32,
-) -> Result<Vec<CollectionRequest>, String> {
+) -> Result<Vec<CollectionRequest>, AppError> {
     delete_request(conn, request_id)?;
     Ok(get_requests(conn, collection_id, folder_id))
 }
@@ -218,8 +220,8 @@ mod tests {
             "https://api.example.com/todos",
             &[],
             None,
-            "text",
-            "none",
+            &CollectionBodyType::Text,
+            &CollectionAuthType::None,
             None,
             &[],
             None,
@@ -265,8 +267,8 @@ mod tests {
             "https://example.com",
             &[],
             None,
-            "text",
-            "none",
+            &CollectionBodyType::Text,
+            &CollectionAuthType::None,
             None,
             &[],
             None,
@@ -291,8 +293,8 @@ mod tests {
             "https://example.com/1",
             &[],
             None,
-            "text",
-            "none",
+            &CollectionBodyType::Text,
+            &CollectionAuthType::None,
             None,
             &[],
             None,
@@ -318,8 +320,8 @@ mod tests {
             "https://api.example.com/login",
             &[],
             None,
-            "text",
-            "none",
+            &CollectionBodyType::Text,
+            &CollectionAuthType::None,
             None,
             &[],
             None,
@@ -382,8 +384,8 @@ mod tests {
             "https://example.com/1",
             &[],
             None,
-            "text",
-            "none",
+            &CollectionBodyType::Text,
+            &CollectionAuthType::None,
             None,
             &[],
             None,

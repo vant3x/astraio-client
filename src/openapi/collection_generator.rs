@@ -1,5 +1,7 @@
 use super::models::{ParsedEndpoint, ParsedSpec};
-use crate::persistence::database::{Collection, CollectionFolder, CollectionRequest};
+use crate::persistence::database::{
+    Collection, CollectionAuthType, CollectionBodyType, CollectionFolder, CollectionRequest,
+};
 
 #[derive(Debug)]
 pub struct GeneratedCollection {
@@ -192,8 +194,8 @@ pub fn to_collection_requests(
                 url: req.url.clone(),
                 headers: req.headers.clone(),
                 body: req.body.clone(),
-                body_type: "text".to_string(),
-                auth_type: "none".to_string(),
+                body_type: CollectionBodyType::Text,
+                auth_type: CollectionAuthType::None,
                 auth_data: None,
                 params: req.params.clone(),
                 config_json: None,

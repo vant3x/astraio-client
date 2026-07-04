@@ -1,13 +1,32 @@
+use crate::http_client::request::HttpMethod;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub enum BodyEncoding {
+    #[default]
+    Text,
+    Base64,
+}
+
+impl std::fmt::Display for BodyEncoding {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Text => write!(f, "text"),
+            Self::Base64 => write!(f, "base64"),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HttpResponse {
     pub url: String,
-    pub method: String,
+    pub method: HttpMethod,
     pub status: u16,
     pub headers: Vec<(String, String)>,
     pub body: String,
+    #[serde(default)]
+    pub body_encoding: BodyEncoding,
     #[serde(with = "duration_millis")]
     pub duration: Duration,
     pub size: u64,
@@ -37,15 +56,17 @@ mod duration_millis {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::http_client::request::HttpMethod;
 
     #[test]
     fn create_response() {
         let resp = HttpResponse {
             url: "https://example.com".to_string(),
-            method: "GET".to_string(),
+            method: HttpMethod::Get,
             status: 200,
             headers: vec![],
             body: "OK".to_string(),
+            body_encoding: BodyEncoding::Text,
             duration: Duration::from_millis(150),
             size: 2,
             redirect_chain: vec![],
@@ -53,16 +74,18 @@ mod tests {
         assert_eq!(resp.status, 200);
         assert_eq!(resp.size, 2);
         assert_eq!(resp.duration, Duration::from_millis(150));
+        assert_eq!(resp.body_encoding, BodyEncoding::Text);
     }
 
     #[test]
     fn response_clone() {
         let resp = HttpResponse {
             url: "https://example.com".to_string(),
-            method: "POST".to_string(),
+            method: HttpMethod::Post,
             status: 201,
             headers: vec![("Location".to_string(), "/resource/1".to_string())],
             body: r#"{"id": 1}"#.to_string(),
+            body_encoding: BodyEncoding::Text,
             duration: Duration::from_millis(200),
             size: 13,
             redirect_chain: vec!["https://old.example.com".to_string()],
@@ -80,10 +103,11 @@ mod tests {
         for status in statuses {
             let resp = HttpResponse {
                 url: String::new(),
-                method: String::new(),
+                method: HttpMethod::Get,
                 status,
                 headers: vec![],
                 body: String::new(),
+                body_encoding: BodyEncoding::default(),
                 duration: Duration::ZERO,
                 size: 0,
                 redirect_chain: vec![],
@@ -96,10 +120,11 @@ mod tests {
     fn response_with_redirect_chain() {
         let resp = HttpResponse {
             url: "https://final.example.com".to_string(),
-            method: "GET".to_string(),
+            method: HttpMethod::Get,
             status: 200,
             headers: vec![],
             body: String::new(),
+            body_encoding: BodyEncoding::default(),
             duration: Duration::ZERO,
             size: 0,
             redirect_chain: vec![
@@ -114,10 +139,11 @@ mod tests {
     fn serialize_response_to_json() {
         let resp = HttpResponse {
             url: "https://api.example.com".to_string(),
-            method: "GET".to_string(),
+            method: HttpMethod::Get,
             status: 200,
             headers: vec![("Content-Type".to_string(), "application/json".to_string())],
             body: r#"{"ok": true}"#.to_string(),
+            body_encoding: BodyEncoding::Text,
             duration: Duration::from_millis(150),
             size: 14,
             redirect_chain: vec![],
@@ -144,16 +170,18 @@ mod tests {
         assert_eq!(resp.status, 201);
         assert_eq!(resp.duration, Duration::from_millis(200));
         assert_eq!(resp.redirect_chain.len(), 1);
+        assert_eq!(resp.body_encoding, BodyEncoding::Text);
     }
 
     #[test]
     fn roundtrip_response_serialization() {
         let resp = HttpResponse {
             url: "https://api.example.com".to_string(),
-            method: "DELETE".to_string(),
+            method: HttpMethod::Delete,
             status: 204,
             headers: vec![],
             body: String::new(),
+            body_encoding: BodyEncoding::default(),
             duration: Duration::from_millis(50),
             size: 0,
             redirect_chain: vec!["https://old.example.com".to_string()],
@@ -163,5 +191,16 @@ mod tests {
         assert_eq!(resp.status, deserialized.status);
         assert_eq!(resp.duration, deserialized.duration);
         assert_eq!(resp.redirect_chain, deserialized.redirect_chain);
+    }
+
+    #[test]
+    fn body_encoding_display() {
+        assert_eq!(BodyEncoding::Text.to_string(), "text");
+        assert_eq!(BodyEncoding::Base64.to_string(), "base64");
+    }
+
+    #[test]
+    fn body_encoding_default_is_text() {
+        assert_eq!(BodyEncoding::default(), BodyEncoding::Text);
     }
 }

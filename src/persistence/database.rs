@@ -2,7 +2,9 @@ use crate::error::AppError;
 use directories::ProjectDirs;
 use rusqlite::{params, Connection, Result};
 use serde::{Deserialize, Serialize};
+use std::fmt;
 use std::path::PathBuf;
+use std::str::FromStr;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Environment {
@@ -39,6 +41,93 @@ pub struct CollectionFolder {
     pub parent_folder_id: Option<i32>,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CollectionBodyType {
+    #[default]
+    None,
+    Text,
+    Json,
+    Xml,
+    Html,
+    FormUrlencoded,
+    Multipart,
+    Binary,
+    Graphql,
+}
+
+impl fmt::Display for CollectionBodyType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::None => write!(f, "none"),
+            Self::Text => write!(f, "text"),
+            Self::Json => write!(f, "json"),
+            Self::Xml => write!(f, "xml"),
+            Self::Html => write!(f, "html"),
+            Self::FormUrlencoded => write!(f, "form_urlencoded"),
+            Self::Multipart => write!(f, "multipart"),
+            Self::Binary => write!(f, "binary"),
+            Self::Graphql => write!(f, "graphql"),
+        }
+    }
+}
+
+impl FromStr for CollectionBodyType {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "none" | "" => Ok(Self::None),
+            "text" => Ok(Self::Text),
+            "json" => Ok(Self::Json),
+            "xml" => Ok(Self::Xml),
+            "html" => Ok(Self::Html),
+            "form_urlencoded" | "form-urlencoded" | "form" => Ok(Self::FormUrlencoded),
+            "multipart" | "form-data" | "form_data" => Ok(Self::Multipart),
+            "binary" | "octet-stream" => Ok(Self::Binary),
+            "graphql" => Ok(Self::Graphql),
+            _ => Ok(Self::Text),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CollectionAuthType {
+    #[default]
+    None,
+    Basic,
+    Bearer,
+    ApiKey,
+    Oauth2,
+    Digest,
+}
+
+impl fmt::Display for CollectionAuthType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::None => write!(f, "none"),
+            Self::Basic => write!(f, "basic"),
+            Self::Bearer => write!(f, "bearer"),
+            Self::ApiKey => write!(f, "api_key"),
+            Self::Oauth2 => write!(f, "oauth2"),
+            Self::Digest => write!(f, "digest"),
+        }
+    }
+}
+
+impl FromStr for CollectionAuthType {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "none" | "" => Ok(Self::None),
+            "basic" => Ok(Self::Basic),
+            "bearer" | "token" => Ok(Self::Bearer),
+            "api_key" | "apikey" | "api-key" => Ok(Self::ApiKey),
+            "oauth2" | "oauth" => Ok(Self::Oauth2),
+            "digest" => Ok(Self::Digest),
+            _ => Ok(Self::None),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CollectionRequest {
     pub id: i32,
@@ -49,8 +138,10 @@ pub struct CollectionRequest {
     pub url: String,
     pub headers: Vec<(String, String)>,
     pub body: Option<String>,
-    pub body_type: String,
-    pub auth_type: String,
+    #[serde(default)]
+    pub body_type: CollectionBodyType,
+    #[serde(default)]
+    pub auth_type: CollectionAuthType,
     pub auth_data: Option<String>,
     pub params: Vec<(String, String)>,
     pub config_json: Option<String>,
@@ -410,8 +501,8 @@ pub fn save_collection_request(
     url: &str,
     headers: &[(String, String)],
     body: Option<&str>,
-    body_type: &str,
-    auth_type: &str,
+    body_type: &CollectionBodyType,
+    auth_type: &CollectionAuthType,
     auth_data: Option<&str>,
     params: &[(String, String)],
     config_json: Option<&str>,
@@ -428,6 +519,9 @@ pub fn save_collection_request(
         )
         .unwrap_or(0);
 
+    let body_type_str = body_type.to_string();
+    let auth_type_str = auth_type.to_string();
+
     conn.execute(
         "INSERT INTO collection_requests (collection_id, folder_id, name, method, url, headers, body, body_type, auth_type, auth_data, params, config_json, sort_order) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
         params![
@@ -438,8 +532,8 @@ pub fn save_collection_request(
             url,
             headers_json,
             body,
-            body_type,
-            auth_type,
+            body_type_str,
+            auth_type_str,
             auth_data,
             params_json,
             config_json,
@@ -456,8 +550,8 @@ pub fn save_collection_request(
         url: url.to_string(),
         headers: headers.to_vec(),
         body: body.map(|s| s.to_string()),
-        body_type: body_type.to_string(),
-        auth_type: auth_type.to_string(),
+        body_type: body_type.clone(),
+        auth_type: auth_type.clone(),
         auth_data: auth_data.map(|s| s.to_string()),
         params: params.to_vec(),
         config_json: config_json.map(|s| s.to_string()),
@@ -482,6 +576,8 @@ pub fn get_collection_requests(
 fn parse_collection_request(row: &rusqlite::Row) -> rusqlite::Result<CollectionRequest> {
     let headers_json: String = row.get(6)?;
     let params_json: String = row.get(11)?;
+    let body_type_str: String = row.get(8)?;
+    let auth_type_str: String = row.get(9)?;
     Ok(CollectionRequest {
         id: row.get(0)?,
         collection_id: row.get(1)?,
@@ -491,8 +587,8 @@ fn parse_collection_request(row: &rusqlite::Row) -> rusqlite::Result<CollectionR
         url: row.get(5)?,
         headers: serde_json::from_str(&headers_json).unwrap_or_default(),
         body: row.get(7)?,
-        body_type: row.get(8)?,
-        auth_type: row.get(9)?,
+        body_type: body_type_str.parse().unwrap_or_default(),
+        auth_type: auth_type_str.parse().unwrap_or_default(),
         auth_data: row.get(10)?,
         params: serde_json::from_str(&params_json).unwrap_or_default(),
         config_json: row.get(12)?,
@@ -915,8 +1011,8 @@ mod tests {
             "https://jsonplaceholder.typicode.com/todos",
             &headers,
             None,
-            "text",
-            "none",
+            &CollectionBodyType::Text,
+            &CollectionAuthType::None,
             None,
             &params,
             None,
@@ -931,8 +1027,8 @@ mod tests {
             "https://jsonplaceholder.typicode.com/todos",
             &headers,
             Some(r#"{"title":"test"}"#),
-            "text",
-            "bearer",
+            &CollectionBodyType::Text,
+            &CollectionAuthType::Bearer,
             Some("token123"),
             &[],
             None,
@@ -945,7 +1041,7 @@ mod tests {
         assert_eq!(reqs[1].name, "Create Todo");
         assert_eq!(reqs[0].headers.len(), 1);
         assert_eq!(reqs[1].body, Some(r#"{"title":"test"}"#.to_string()));
-        assert_eq!(reqs[1].auth_type, "bearer");
+        assert_eq!(reqs[1].auth_type, CollectionAuthType::Bearer);
     }
 
     #[test]
@@ -963,8 +1059,8 @@ mod tests {
             "https://api.example.com/login",
             &[],
             Some(r#"{"user":"admin"}"#),
-            "text",
-            "none",
+            &CollectionBodyType::Text,
+            &CollectionAuthType::None,
             None,
             &[],
             None,
@@ -994,8 +1090,8 @@ mod tests {
             "https://example.com",
             &[],
             None,
-            "text",
-            "none",
+            &CollectionBodyType::Text,
+            &CollectionAuthType::None,
             None,
             &[],
             None,
@@ -1025,8 +1121,8 @@ mod tests {
             "https://example.com/1",
             &[],
             None,
-            "text",
-            "none",
+            &CollectionBodyType::Text,
+            &CollectionAuthType::None,
             None,
             &[],
             None,

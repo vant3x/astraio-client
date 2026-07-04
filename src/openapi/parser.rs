@@ -1,35 +1,36 @@
 use super::models::*;
+use crate::error::AppError;
 use std::collections::HashMap;
 
-pub fn parse_spec(content: &str) -> Result<ParsedSpec, String> {
+pub fn parse_spec(content: &str) -> Result<ParsedSpec, AppError> {
     let spec_value: serde_json::Value =
-        serde_json::from_str(content).map_err(|e| format!("Invalid JSON: {}", e))?;
+        serde_json::from_str(content).map_err(|e| AppError::Parse(format!("Invalid JSON: {}", e)))?;
 
     if spec_value.get("openapi").is_some() {
         parse_openapi3(&spec_value)
     } else if spec_value.get("swagger").is_some() {
         parse_swagger2(&spec_value)
     } else {
-        Err("Not a valid OpenAPI or Swagger spec: missing 'openapi' or 'swagger' field".to_string())
+        Err(AppError::Parse("Not a valid OpenAPI or Swagger spec: missing 'openapi' or 'swagger' field".to_string()))
     }
 }
 
-pub fn parse_spec_from_yaml(content: &str) -> Result<ParsedSpec, String> {
+pub fn parse_spec_from_yaml(content: &str) -> Result<ParsedSpec, AppError> {
     let spec_value: serde_json::Value =
-        serde_yaml::from_str(content).map_err(|e| format!("Invalid YAML: {}", e))?;
+        serde_yaml::from_str(content).map_err(|e| AppError::Parse(format!("Invalid YAML: {}", e)))?;
 
     if spec_value.get("openapi").is_some() {
         parse_openapi3(&spec_value)
     } else if spec_value.get("swagger").is_some() {
         parse_swagger2(&spec_value)
     } else {
-        Err("Not a valid OpenAPI or Swagger spec: missing 'openapi' or 'swagger' field".to_string())
+        Err(AppError::Parse("Not a valid OpenAPI or Swagger spec: missing 'openapi' or 'swagger' field".to_string()))
     }
 }
 
-fn parse_openapi3(value: &serde_json::Value) -> Result<ParsedSpec, String> {
+fn parse_openapi3(value: &serde_json::Value) -> Result<ParsedSpec, AppError> {
     let spec: OpenApiSpec = serde_json::from_value(value.clone())
-        .map_err(|e| format!("Failed to parse spec: {}", e))?;
+        .map_err(|e| AppError::Parse(format!("Failed to parse spec: {}", e)))?;
 
     let base_url = spec.servers.first().map(|s| s.url.clone()).or_else(|| {
         spec.info
@@ -59,9 +60,9 @@ fn parse_openapi3(value: &serde_json::Value) -> Result<ParsedSpec, String> {
     })
 }
 
-fn parse_swagger2(value: &serde_json::Value) -> Result<ParsedSpec, String> {
+fn parse_swagger2(value: &serde_json::Value) -> Result<ParsedSpec, AppError> {
     let spec: OpenApiSpec = serde_json::from_value(value.clone())
-        .map_err(|e| format!("Failed to parse spec: {}", e))?;
+        .map_err(|e| AppError::Parse(format!("Failed to parse spec: {}", e)))?;
 
     let base_url = value.get("host").and_then(|h| h.as_str()).map(|host| {
         let scheme = value

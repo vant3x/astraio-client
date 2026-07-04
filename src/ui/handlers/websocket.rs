@@ -58,7 +58,7 @@ pub fn handle_connect(app: &mut AstraNovaApp) -> Task<Message> {
                 Arc::new(Mutex::new(Some(conn.write_handle))),
                 Arc::new(Mutex::new(Some(conn.read_handle))),
             ),
-            Err(e) => Message::WebSocketMsg(websocket_view::Message::Disconnected(e)),
+            Err(e) => Message::WebSocketMsg(websocket_view::Message::Disconnected(e.to_string())),
         },
     )
 }
@@ -136,7 +136,7 @@ pub fn handle_disconnected(app: &mut AstraNovaApp, reason: String) -> Task<Messa
                     Arc::new(Mutex::new(Some(conn.write_handle))),
                     Arc::new(Mutex::new(Some(conn.read_handle))),
                 ),
-                Err(e) => Message::WebSocketMsg(websocket_view::Message::Disconnected(e)),
+                Err(e) => Message::WebSocketMsg(websocket_view::Message::Disconnected(e.to_string())),
             },
         )
     } else {

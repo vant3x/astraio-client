@@ -1,5 +1,4 @@
-use crate::http_client::config::RequestConfig;
-use crate::http_client::request::HttpRequest;
+use crate::error::AppError;
 
 #[derive(Debug, Clone)]
 pub struct CurlParseResult {
@@ -7,23 +6,17 @@ pub struct CurlParseResult {
     pub url: String,
     pub headers: Vec<(String, String)>,
     pub body: Option<String>,
-    pub config: RequestConfig,
 }
 
-pub fn parse_curl(curl: &str) -> Result<CurlParseResult, String> {
+pub fn parse_curl(curl: &str) -> Result<CurlParseResult, AppError> {
     let curl = curl.trim();
-    let curl = if curl.starts_with("curl ") {
-        &curl[5..]
-    } else {
-        curl
-    };
+    let curl = curl.strip_prefix("curl ").unwrap_or(curl);
 
     let tokens = tokenize(curl)?;
     let mut method: Option<String> = None;
     let mut url: Option<String> = None;
     let mut headers = Vec::new();
     let mut data: Option<String> = None;
-    let mut config = RequestConfig::default();
 
     let mut i = 0;
     while i < tokens.len() {
@@ -65,10 +58,10 @@ pub fn parse_curl(curl: &str) -> Result<CurlParseResult, String> {
                 headers.push(("Accept-Encoding".to_string(), "gzip, deflate".to_string()));
             }
             "-k" | "--insecure" => {
-                config.verify_ssl = false;
+                // SSL verification disabled - not stored in result
             }
             _ => {
-                if token.starts_with("http://") || token.starts_with("https://") || token.starts_with("ws://") || token.starts_with("wss://") {
+                if token.contains("://") || (!token.starts_with('-') && token.contains('/') && !token.starts_with(' ')) {
                     url = Some(token.clone());
                 }
             }
@@ -76,7 +69,7 @@ pub fn parse_curl(curl: &str) -> Result<CurlParseResult, String> {
         i += 1;
     }
 
-    let url = url.ok_or_else(|| "No URL found in curl command".to_string())?;
+    let url = url.ok_or_else(|| AppError::Parse("No URL found in curl command".to_string()))?;
     let method = method.unwrap_or_else(|| {
         if data.is_some() {
             "POST".to_string()
@@ -90,11 +83,10 @@ pub fn parse_curl(curl: &str) -> Result<CurlParseResult, String> {
         url,
         headers,
         body: data,
-        config: RequestConfig::default(),
     })
 }
 
-fn tokenize(input: &str) -> Result<Vec<String>, String> {
+fn tokenize(input: &str) -> Result<Vec<String>, AppError> {
     let mut tokens = Vec::new();
     let mut current = String::new();
     let mut in_single_quote = false;
@@ -151,18 +143,6 @@ fn parse_user_pass(user_pass: &str) -> Option<(String, String)> {
 fn base64_encode(input: &str) -> String {
     use base64::Engine;
     base64::engine::general_purpose::STANDARD.encode(input)
-}
-
-pub fn curl_to_http_request(result: &CurlParseResult) -> HttpRequest {
-    HttpRequest {
-        method: result.method.clone(),
-        url: result.url.clone(),
-        headers: result.headers.clone(),
-        body: result.body.clone(),
-        config: result.config.clone(),
-        multipart_fields: vec![],
-        auth: None,
-    }
 }
 
 #[cfg(test)]
@@ -241,16 +221,5 @@ mod tests {
         let curl = "curl";
         let result = parse_curl(curl);
         assert!(result.is_err());
-    }
-
-    #[test]
-    fn convert_to_http_request() {
-        let curl = "curl -X POST https://api.example.com -H \"Content-Type: application/json\" -d '{\"test\":true}'";
-        let parsed = parse_curl(curl).unwrap();
-        let request = curl_to_http_request(&parsed);
-        assert_eq!(request.method, "POST");
-        assert_eq!(request.url, "https://api.example.com");
-        assert_eq!(request.headers.len(), 1);
-        assert_eq!(request.body, Some("{\"test\":true}".to_string()));
     }
 }

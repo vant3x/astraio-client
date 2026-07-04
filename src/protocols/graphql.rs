@@ -1,3 +1,4 @@
+use crate::error::AppError;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -69,26 +70,26 @@ impl GraphQLRequest {
         self
     }
 
-    pub fn to_json(&self) -> Result<String, String> {
-        serde_json::to_string_pretty(self).map_err(|e| e.to_string())
+    pub fn to_json(&self) -> Result<String, AppError> {
+        serde_json::to_string_pretty(self).map_err(|e| AppError::Serialization(e.to_string()))
     }
 
-    pub fn from_json(json: &str) -> Result<Self, String> {
-        serde_json::from_str(json).map_err(|e| format!("Invalid JSON: {}", e))
+    pub fn from_json(json: &str) -> Result<Self, AppError> {
+        serde_json::from_str(json).map_err(|e| AppError::Validation(format!("Invalid JSON: {}", e)))
     }
 }
 
-pub fn parse_variables(json_str: &str) -> Result<serde_json::Value, String> {
+pub fn parse_variables(json_str: &str) -> Result<serde_json::Value, AppError> {
     if json_str.trim().is_empty() {
         return Ok(serde_json::Value::Null);
     }
-    serde_json::from_str(json_str).map_err(|e| format!("Invalid variables JSON: {}", e))
+    serde_json::from_str(json_str).map_err(|e| AppError::Validation(format!("Invalid variables JSON: {}", e)))
 }
 
-pub fn validate_query(query: &str) -> Result<(), String> {
+pub fn validate_query(query: &str) -> Result<(), AppError> {
     let trimmed = query.trim();
     if trimmed.is_empty() {
-        return Err("Query cannot be empty".to_string());
+        return Err(AppError::Validation("Query cannot be empty".to_string()));
     }
 
     let has_operation = trimmed.starts_with("query")
@@ -98,16 +99,16 @@ pub fn validate_query(query: &str) -> Result<(), String> {
         || trimmed.starts_with("{");
 
     if !has_operation {
-        return Err("Query must start with a valid operation: query, mutation, subscription, fragment, or shorthand { }".to_string());
+        return Err(AppError::Validation("Query must start with a valid operation: query, mutation, subscription, fragment, or shorthand { }".to_string()));
     }
 
     let open_braces = trimmed.bytes().filter(|b| *b == b'{').count();
     let close_braces = trimmed.bytes().filter(|b| *b == b'}').count();
     if open_braces != close_braces {
-        return Err(format!(
+        return Err(AppError::Validation(format!(
             "Unbalanced braces: {} opening, {} closing",
             open_braces, close_braces
-        ));
+        )));
     }
 
     Ok(())

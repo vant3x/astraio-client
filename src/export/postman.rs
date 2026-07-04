@@ -1,3 +1,4 @@
+use crate::error::AppError;
 use crate::persistence::database::{Collection, CollectionFolder, CollectionRequest};
 use serde::{Deserialize, Serialize};
 
@@ -56,7 +57,7 @@ pub fn export_collection(
     collection: &Collection,
     folders: &[CollectionFolder],
     requests: &[CollectionRequest],
-) -> Result<String, String> {
+) -> Result<String, AppError> {
     let mut root_items: Vec<PostmanItem> = Vec::new();
 
     for folder in folders {
@@ -90,7 +91,7 @@ pub fn export_collection(
         schema: "https://schema.getpostman.com/json/collection/v2.1.0/collection.json".to_string(),
     };
 
-    serde_json::to_string_pretty(&collection).map_err(|e| format!("Serialization error: {}", e))
+    serde_json::to_string_pretty(&collection).map_err(|e| AppError::Serialization(e.to_string()))
 }
 
 fn request_to_postman_item(req: &CollectionRequest) -> PostmanItem {
@@ -125,6 +126,7 @@ fn request_to_postman_item(req: &CollectionRequest) -> PostmanItem {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::persistence::database::{CollectionAuthType, CollectionBodyType};
 
     fn make_collection(name: &str) -> Collection {
         Collection {
@@ -155,8 +157,8 @@ mod tests {
             url: "https://api.example.com/users".to_string(),
             headers: vec![],
             body: None,
-            body_type: "text".to_string(),
-            auth_type: "none".to_string(),
+            body_type: CollectionBodyType::Text,
+            auth_type: CollectionAuthType::None,
             auth_data: None,
             params: vec![],
             config_json: None,
@@ -187,8 +189,8 @@ mod tests {
             url: "https://api.example.com/login".to_string(),
             headers: vec![("Content-Type".to_string(), "application/json".to_string())],
             body: Some(r#"{"user":"admin"}"#.to_string()),
-            body_type: "text".to_string(),
-            auth_type: "none".to_string(),
+            body_type: CollectionBodyType::Text,
+            auth_type: CollectionAuthType::None,
             auth_data: None,
             params: vec![],
             config_json: None,
@@ -216,8 +218,8 @@ mod tests {
                 ("Accept".to_string(), "application/json".to_string()),
             ],
             body: None,
-            body_type: "text".to_string(),
-            auth_type: "none".to_string(),
+            body_type: CollectionBodyType::Text,
+            auth_type: CollectionAuthType::None,
             auth_data: None,
             params: vec![],
             config_json: None,
@@ -241,8 +243,8 @@ mod tests {
             url: "https://api.example.com/users".to_string(),
             headers: vec![],
             body: Some(r#"{"name":"John"}"#.to_string()),
-            body_type: "text".to_string(),
-            auth_type: "none".to_string(),
+            body_type: CollectionBodyType::Text,
+            auth_type: CollectionAuthType::None,
             auth_data: None,
             params: vec![],
             config_json: None,
@@ -268,8 +270,8 @@ mod tests {
             url: "https://example.com".to_string(),
             headers: vec![],
             body: None,
-            body_type: "text".to_string(),
-            auth_type: "none".to_string(),
+            body_type: CollectionBodyType::Text,
+            auth_type: CollectionAuthType::None,
             auth_data: None,
             params: vec![],
             config_json: None,

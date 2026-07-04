@@ -1,3 +1,4 @@
+use crate::error::AppError;
 use crate::persistence::database::{self, Environment};
 use rusqlite::Connection;
 
@@ -5,29 +6,29 @@ pub fn get_all(conn: &Connection) -> Vec<Environment> {
     database::get_environments(conn).unwrap_or_default()
 }
 
-pub fn create(conn: &Connection, name: &str) -> Result<Environment, String> {
-    database::create_environment(conn, name).map_err(|e| e.to_string())
+pub fn create(conn: &Connection, name: &str) -> Result<Environment, AppError> {
+    Ok(database::create_environment(conn, name)?)
 }
 
-pub fn update(conn: &Connection, env: &Environment) -> Result<(), String> {
-    database::update_environment(conn, env).map_err(|e| e.to_string())
+pub fn update(conn: &Connection, env: &Environment) -> Result<(), AppError> {
+    Ok(database::update_environment(conn, env)?)
 }
 
-pub fn delete(conn: &Connection, id: i32) -> Result<(), String> {
-    database::delete_environment(conn, id).map_err(|e| e.to_string())
+pub fn delete(conn: &Connection, id: i32) -> Result<(), AppError> {
+    Ok(database::delete_environment(conn, id)?)
 }
 
-pub fn create_and_refresh(conn: &Connection, name: &str) -> Result<Vec<Environment>, String> {
+pub fn create_and_refresh(conn: &Connection, name: &str) -> Result<Vec<Environment>, AppError> {
     create(conn, name)?;
     Ok(get_all(conn))
 }
 
-pub fn save_and_refresh(conn: &Connection, env: &Environment) -> Result<Vec<Environment>, String> {
+pub fn save_and_refresh(conn: &Connection, env: &Environment) -> Result<Vec<Environment>, AppError> {
     update(conn, env)?;
     Ok(get_all(conn))
 }
 
-pub fn delete_and_refresh(conn: &Connection, id: i32) -> Result<Vec<Environment>, String> {
+pub fn delete_and_refresh(conn: &Connection, id: i32) -> Result<Vec<Environment>, AppError> {
     delete(conn, id)?;
     Ok(get_all(conn))
 }

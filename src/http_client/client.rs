@@ -1,15 +1,52 @@
 use super::config::RequestConfig;
 use super::request::{HttpRequest, MultipartValue};
-use super::response::HttpResponse;
+use super::response::{BodyEncoding, HttpResponse};
 use crate::data::auth::Auth;
+use crate::error::AppError;
+use base64::Engine;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-pub fn build_client(config: &RequestConfig) -> Result<reqwest::Client, String> {
+fn is_binary_content_type(content_type: &str) -> bool {
+    content_type.contains("image/")
+        || content_type.contains("application/octet-stream")
+        || content_type.contains("application/pdf")
+        || content_type.contains("application/protobuf")
+        || content_type.contains("application/gzip")
+        || content_type.contains("application/zip")
+        || content_type.contains("application/wasm")
+        || content_type.contains("audio/")
+        || content_type.contains("video/")
+        || content_type.contains("font/")
+        || content_type.contains("application/x-executable")
+        || content_type.contains("application/x-sharedlib")
+}
+
+async fn read_response_body(res: reqwest::Response) -> Result<(String, BodyEncoding, u64), AppError> {
+    let content_type = res
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+
+    if is_binary_content_type(&content_type) {
+        let bytes = res.bytes().await?;
+        let size = bytes.len() as u64;
+        let encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);
+        Ok((encoded, BodyEncoding::Base64, size))
+    } else {
+        let text = res.text().await?;
+        let size = text.len() as u64;
+        Ok((text, BodyEncoding::Text, size))
+    }
+}
+
+pub fn build_client(config: &RequestConfig) -> Result<reqwest::Client, AppError> {
     let mut builder = reqwest::Client::builder();
 
     if let Some(proxy_url) = &config.proxy_url {
-        let proxy = reqwest::Proxy::all(proxy_url).map_err(|e| e.to_string())?;
+        let proxy = reqwest::Proxy::all(proxy_url)?;
         builder = builder.proxy(proxy);
     }
 
@@ -20,13 +57,13 @@ pub fn build_client(config: &RequestConfig) -> Result<reqwest::Client, String> {
     builder
         .redirect(reqwest::redirect::Policy::none())
         .build()
-        .map_err(|e| e.to_string())
+        .map_err(|e| AppError::Http(e.to_string()))
 }
 
 pub async fn send_request(
     client: &reqwest::Client,
     request: HttpRequest,
-) -> Result<HttpResponse, String> {
+) -> Result<HttpResponse, AppError> {
     let url_for_log = request.url.clone();
     let method_for_log = request.method.clone();
     let max_retries = request.config.retry.max_retries;
@@ -51,14 +88,14 @@ pub async fn send_request(
         let mut response_status = 0u16;
         let mut response_headers = Vec::new();
         let mut response_body = String::new();
+        let mut response_body_encoding = BodyEncoding::Text;
+        let mut response_size = 0u64;
         let total_start = Instant::now();
 
         loop {
+            let method: reqwest::Method = request.method.to_string().parse()?;
             let mut req_builder = client.request(
-                request
-                    .method
-                    .parse()
-                    .map_err(|e: http::method::InvalidMethod| e.to_string())?,
+                method,
                 current_url.clone(),
             );
 
@@ -135,13 +172,11 @@ pub async fn send_request(
                                         www_auth,
                                         user,
                                         pass,
-                                        &request.method,
+                                        &request.method.to_string(),
                                         &current_url,
                                     ) {
                                         let mut retry_builder = client.request(
-                                            request.method.parse().map_err(
-                                                |e: http::method::InvalidMethod| e.to_string(),
-                                            )?,
+                                            request.method.to_string().parse()?,
                                             current_url.clone(),
                                         );
                                         retry_builder =
@@ -167,10 +202,10 @@ pub async fn send_request(
                                                         )
                                                     })
                                                     .collect();
-                                                response_body = retry_res
-                                                    .text()
-                                                    .await
-                                                    .map_err(|e| e.to_string())?;
+                                                let (body, encoding, size) = read_response_body(retry_res).await?;
+                                                response_body = body;
+                                                response_body_encoding = encoding;
+                                                response_size = size;
                                                 break;
                                             }
                                             Err(e) => {
@@ -204,7 +239,10 @@ pub async fn send_request(
                         if location.is_empty() {
                             response_status = status;
                             response_headers = res_headers;
-                            response_body = res.text().await.map_err(|e| e.to_string())?;
+                            let (body, encoding, size) = read_response_body(res).await?;
+                            response_body = body;
+                            response_body_encoding = encoding;
+                            response_size = size;
                             break;
                         }
 
@@ -214,16 +252,18 @@ pub async fn send_request(
                         current_url = if location.starts_with("http") {
                             location.to_string()
                         } else {
-                            let base =
-                                reqwest::Url::parse(&current_url).map_err(|e| e.to_string())?;
-                            base.join(location).map_err(|e| e.to_string())?.to_string()
+                            let base = reqwest::Url::parse(&current_url)?;
+                            base.join(location)?.to_string()
                         };
                         continue;
                     }
 
                     response_status = status;
                     response_headers = res_headers;
-                    response_body = res.text().await.map_err(|e| e.to_string())?;
+                    let (body, encoding, size) = read_response_body(res).await?;
+                    response_body = body;
+                    response_body_encoding = encoding;
+                    response_size = size;
                     break;
                 }
                 Err(e) => {
@@ -243,26 +283,25 @@ pub async fn send_request(
             let total_duration = total_start.elapsed();
             log::debug!("Total request completed in: {:?}", total_duration);
 
-            let size = response_body.len() as u64;
-
             return Ok(HttpResponse {
                 url: url_for_log,
                 method: method_for_log,
                 status: response_status,
                 headers: response_headers,
                 body: response_body,
+                body_encoding: response_body_encoding,
                 duration: total_duration,
-                size,
+                size: response_size,
                 redirect_chain,
             });
         }
 
         if attempt == max_retries {
-            return Err(last_error);
+            return Err(AppError::Http(last_error));
         }
     }
 
-    Err(last_error)
+    Err(AppError::Http(last_error))
 }
 
 fn compute_digest_auth(

@@ -11,12 +11,12 @@ use iced::{
 };
 use iced_aw::{TabLabel, Tabs};
 use iced_fonts::lucide;
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 
 use super::views::graphql_view::{self, GraphQLView};
 use super::views::http_request_view::{self, HttpRequestView};
-use crate::http_client::client;
 
 use iced::futures::stream::BoxStream;
 use iced::futures::{self, StreamExt as _};
@@ -96,6 +96,7 @@ pub(crate) struct AstraNovaApp {
     pub(crate) request_tabs: Vec<HttpRequestView>,
     pub(crate) active_request_tab_index: usize,
     pub(crate) http_client: Arc<reqwest::Client>,
+    pub(crate) custom_clients: HashMap<String, Arc<reqwest::Client>>,
     pub(crate) db_conn: rusqlite::Connection,
     pub(crate) environments: Vec<Environment>,
     pub(crate) active_environment: Option<Environment>,
@@ -152,20 +153,20 @@ pub enum Message {
     ),
     SelectProtocol(Protocol),
     OAuth2StartAuth(usize),
-    OAuth2AuthComplete(usize, Result<String, String>, Option<String>),
+    OAuth2AuthComplete(usize, Result<String, crate::error::AppError>, Option<String>),
     OAuth2TokenReceived(
         usize,
-        Result<crate::data::oauth2::OAuth2TokenResponse, String>,
+        Result<crate::data::oauth2::OAuth2TokenResponse, crate::error::AppError>,
     ),
     OAuth2RefreshToken(usize),
     OAuth2StartDeviceAuth(usize),
     OAuth2DeviceAuthReceived(
         usize,
-        Result<crate::data::oauth2::DeviceAuthorizationResponse, String>,
+        Result<crate::data::oauth2::DeviceAuthorizationResponse, crate::error::AppError>,
     ),
     OAuth2DeviceTokenPoll(
         usize,
-        Result<crate::data::oauth2::DeviceTokenResponse, String>,
+        Result<crate::data::oauth2::DeviceTokenResponse, crate::error::AppError>,
     ),
 }
 
@@ -250,6 +251,7 @@ impl AstraNovaApp {
             request_tabs: vec![HttpRequestView::default()],
             active_request_tab_index: 0,
             http_client: Arc::new(reqwest::Client::new()),
+            custom_clients: HashMap::new(),
             db_conn,
             environments: environments.clone(),
             active_environment: None,
@@ -282,7 +284,9 @@ impl AstraNovaApp {
     fn update(&mut self, message: Message) -> Task<Message> {
         self.toast_manager.clean_expired();
         match message {
-            Message::HttpRequestViewMsg(index, msg) => self.handle_http_request_msg(index, msg),
+            Message::HttpRequestViewMsg(index, msg) => {
+                super::handlers::http_request::handle_http_request_msg(self, index, msg)
+            }
             Message::AddRequestTab => {
                 let mut new_view = HttpRequestView::default();
                 if let Some(env) = &self.active_environment {
@@ -413,123 +417,6 @@ impl AstraNovaApp {
             }
             Message::OAuth2DeviceTokenPoll(index, result) => {
                 super::handlers::oauth2::handle_device_token_poll(self, index, result)
-            }
-        }
-    }
-
-    fn handle_http_request_msg(
-        &mut self,
-        index: usize,
-        msg: http_request_view::Message,
-    ) -> Task<Message> {
-        let view = match self.request_tabs.get_mut(index) {
-            Some(v) => v,
-            None => return Task::none(),
-        };
-
-        match msg {
-            http_request_view::Message::SendRequest => {
-                let mut temp_view = view.clone();
-                if let Some(env) = &self.active_environment {
-                    temp_view.apply_environment(env);
-                }
-                let request = temp_view.build_request();
-                view.pending_request_data = serde_json::to_string(&request).ok();
-                view.update(http_request_view::Message::SetLoading);
-
-                let http_client =
-                    if request.config.proxy_url.is_some() || !request.config.verify_ssl {
-                        match client::build_client(&request.config) {
-                            Ok(c) => Arc::new(c),
-                            Err(e) => {
-                                log::error!("Failed to build custom client: {}", e);
-                                Arc::clone(&self.http_client)
-                            }
-                        }
-                    } else {
-                        Arc::clone(&self.http_client)
-                    };
-
-                Task::perform(
-                    async move { client::send_request(&http_client, request).await },
-                    move |result| {
-                        Message::HttpRequestViewMsg(
-                            index,
-                            http_request_view::Message::ResponseReceived(result),
-                        )
-                    },
-                )
-            }
-            http_request_view::Message::ResponseReceived(ref result) => {
-                let view = self.request_tabs.get_mut(index).unwrap();
-                match result {
-                    Ok(response) => {
-                        let request_data = view.pending_request_data.take();
-                        let response_data = serde_json::to_string(response).ok();
-                        let _ = crate::services::history_service::save_raw(
-                            &self.db_conn,
-                            &response.method,
-                            &response.url,
-                            Some(response.status),
-                            Some(response.duration.as_millis() as u64),
-                            request_data.as_deref(),
-                            response_data.as_deref(),
-                        );
-                        crate::services::history_service::trim(
-                            &self.db_conn,
-                            crate::persistence::database::DEFAULT_HISTORY_LIMIT,
-                        );
-                        self.history_view.entries =
-                            crate::services::history_service::get_all(&self.db_conn, 50);
-
-                        if response.status >= 400 {
-                            self.toast_manager
-                                .warning(format!("{} {}", response.status, response.url));
-                        } else {
-                            self.toast_manager.success(format!(
-                                "{} {} - {}ms",
-                                response.status,
-                                response.url,
-                                response.duration.as_millis()
-                            ));
-                        }
-                    }
-                    Err(e) => {
-                        self.toast_manager.error(format!("Request failed: {}", e));
-                    }
-                }
-                view.update(msg);
-                Task::none()
-            }
-            http_request_view::Message::MultipartBrowseFile(entry_id) => {
-                let tab_index = index;
-                Task::perform(
-                    async {
-                        let file = rfd::AsyncFileDialog::new().pick_file().await;
-                        file.map(|f| f.path().to_string_lossy().to_string())
-                    },
-                    move |path| {
-                        Message::HttpRequestViewMsg(
-                            tab_index,
-                            http_request_view::Message::MultipartFilePicked(entry_id, path),
-                        )
-                    },
-                )
-            }
-            http_request_view::Message::OAuth2StartAuth => {
-                Task::perform(async {}, move |_| Message::OAuth2StartAuth(index))
-            }
-            http_request_view::Message::OAuth2RefreshToken => {
-                Task::perform(async {}, move |_| Message::OAuth2RefreshToken(index))
-            }
-            http_request_view::Message::OAuth2StartDeviceAuth => {
-                Task::perform(async {}, move |_| Message::OAuth2StartDeviceAuth(index))
-            }
-            other => {
-                if let Some(view) = self.request_tabs.get_mut(index) {
-                    view.update(other);
-                }
-                Task::none()
             }
         }
     }

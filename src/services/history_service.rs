@@ -1,3 +1,4 @@
+use crate::error::AppError;
 use crate::http_client::request::HttpRequest;
 use crate::http_client::response::HttpResponse;
 use crate::persistence::database::{self, RequestHistoryEntry};
@@ -8,19 +9,18 @@ pub fn save(
     conn: &Connection,
     request: &HttpRequest,
     response: &HttpResponse,
-) -> Result<(), String> {
-    let request_data = serde_json::to_string(request).map_err(|e| e.to_string())?;
-    let response_data = serde_json::to_string(response).map_err(|e| e.to_string())?;
-    database::save_request_history(
+) -> Result<(), AppError> {
+    let request_data = serde_json::to_string(request)?;
+    let response_data = serde_json::to_string(response)?;
+    Ok(database::save_request_history(
         conn,
-        &response.method,
+        &response.method.to_string(),
         &response.url,
         Some(response.status),
         Some(response.duration.as_millis() as u64),
         Some(&request_data),
         Some(&response_data),
-    )
-    .map_err(|e| e.to_string())
+    )?)
 }
 
 pub fn save_raw(
@@ -31,8 +31,8 @@ pub fn save_raw(
     duration_ms: Option<u64>,
     request_data: Option<&str>,
     response_data: Option<&str>,
-) -> Result<(), String> {
-    database::save_request_history(
+) -> Result<(), AppError> {
+    Ok(database::save_request_history(
         conn,
         method,
         url,
@@ -40,8 +40,7 @@ pub fn save_raw(
         duration_ms,
         request_data,
         response_data,
-    )
-    .map_err(|e| e.to_string())
+    )?)
 }
 
 pub fn get_all(conn: &Connection, limit: usize) -> Vec<RequestHistoryEntry> {
@@ -74,6 +73,7 @@ pub fn restore_request(entry: &RequestHistoryEntry) -> Option<HttpRequest> {
 mod tests {
     use super::*;
     use crate::http_client::config::RequestConfig;
+    use crate::http_client::request::HttpMethod;
     use std::time::Duration;
 
     fn setup_test_db() -> Connection {
@@ -97,7 +97,7 @@ mod tests {
 
     fn make_request(method: &str, url: &str) -> HttpRequest {
         HttpRequest {
-            method: method.to_string(),
+            method: method.parse().unwrap(),
             url: url.to_string(),
             headers: vec![],
             body: None,
@@ -108,12 +108,14 @@ mod tests {
     }
 
     fn make_response(method: &str, url: &str, status: u16) -> HttpResponse {
+        use crate::http_client::response::BodyEncoding;
         HttpResponse {
-            method: method.to_string(),
+            method: method.parse().unwrap(),
             url: url.to_string(),
             status,
             headers: vec![],
             body: "OK".to_string(),
+            body_encoding: BodyEncoding::Text,
             duration: Duration::from_millis(100),
             size: 2,
             redirect_chain: vec![],
@@ -148,7 +150,7 @@ mod tests {
 
         let entries = get_all(&conn, 10);
         let restored = restore_request(&entries[0]).unwrap();
-        assert_eq!(restored.method, "POST");
+        assert_eq!(restored.method, HttpMethod::Post);
         assert_eq!(restored.url, "https://api.example.com");
         assert_eq!(restored.headers.len(), 1);
         assert_eq!(restored.body, Some(r#"{"key":"value"}"#.to_string()));

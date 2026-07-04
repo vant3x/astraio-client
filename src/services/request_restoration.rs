@@ -1,5 +1,5 @@
 use crate::http_client::request::HttpRequest;
-use crate::persistence::database::{CollectionRequest, RequestHistoryEntry};
+use crate::persistence::database::{CollectionAuthType, CollectionBodyType, CollectionRequest, RequestHistoryEntry};
 use crate::ui::components::key_value_editor::KeyValueEntry;
 use crate::ui::views::http_request_view::{BodyType, HttpRequestView};
 
@@ -30,7 +30,7 @@ pub fn build_view_from_collection_request(req: &CollectionRequest) -> HttpReques
         view.body_input = iced::widget::text_editor::Content::with_text(body);
     }
 
-    if req.body_type == "multipart" {
+    if req.body_type == CollectionBodyType::Multipart {
         view.body_type = BodyType::Multipart;
     }
 
@@ -62,11 +62,11 @@ pub fn build_view_from_collection_request(req: &CollectionRequest) -> HttpReques
                 view.auth = auth;
             }
         } else {
-            match req.auth_type.as_str() {
-                "bearer" => {
+            match req.auth_type {
+                CollectionAuthType::Bearer => {
                     view.auth = crate::data::auth::Auth::BearerToken(data.clone());
                 }
-                "basic" => {
+                CollectionAuthType::Basic => {
                     let parts: Vec<&str> = data.splitn(2, ':').collect();
                     if parts.len() == 2 {
                         view.auth = crate::data::auth::Auth::Basic {
@@ -75,7 +75,7 @@ pub fn build_view_from_collection_request(req: &CollectionRequest) -> HttpReques
                         };
                     }
                 }
-                "api_key" => {
+                CollectionAuthType::ApiKey => {
                     let parts: Vec<&str> = data.splitn(3, ':').collect();
                     if parts.len() == 3 {
                         let location = match parts[2] {
@@ -95,7 +95,7 @@ pub fn build_view_from_collection_request(req: &CollectionRequest) -> HttpReques
                         };
                     }
                 }
-                "digest" => {
+                CollectionAuthType::Digest => {
                     let parts: Vec<&str> = data.splitn(2, ':').collect();
                     if parts.len() == 2 {
                         view.auth = crate::data::auth::Auth::Digest {
@@ -104,7 +104,7 @@ pub fn build_view_from_collection_request(req: &CollectionRequest) -> HttpReques
                         };
                     }
                 }
-                "oauth2" => {
+                CollectionAuthType::Oauth2 => {
                     view.auth = crate::data::auth::Auth::OAuth2(Box::new(
                         crate::data::auth::OAuth2Config {
                             access_token: data.clone(),
@@ -112,7 +112,7 @@ pub fn build_view_from_collection_request(req: &CollectionRequest) -> HttpReques
                         },
                     ));
                 }
-                _ => {}
+                CollectionAuthType::None => {}
             }
         }
     }
@@ -122,7 +122,7 @@ pub fn build_view_from_collection_request(req: &CollectionRequest) -> HttpReques
 
 fn apply_request_to_view(view: &mut HttpRequestView, request: &HttpRequest) {
     view.url_input = request.url.clone();
-    view.method = request.method.clone();
+    view.method = request.method.to_string();
 
     if let Some(body) = &request.body {
         view.body_input = iced::widget::text_editor::Content::with_text(body);
@@ -187,7 +187,7 @@ mod tests {
 
     fn make_history_entry_with_data(method: &str, url: &str) -> RequestHistoryEntry {
         let request = HttpRequest {
-            method: method.to_string(),
+            method: method.parse().unwrap(),
             url: url.to_string(),
             headers: vec![("Accept".to_string(), "application/json".to_string())],
             body: Some(r#"{"key":"value"}"#.to_string()),
@@ -236,8 +236,8 @@ mod tests {
             url: "https://api.example.com/users".to_string(),
             headers: vec![],
             body: None,
-            body_type: "text".to_string(),
-            auth_type: "none".to_string(),
+            body_type: CollectionBodyType::Text,
+            auth_type: CollectionAuthType::None,
             auth_data: None,
             params: vec![],
             config_json: None,
@@ -259,8 +259,8 @@ mod tests {
             url: "https://api.example.com/protected".to_string(),
             headers: vec![],
             body: None,
-            body_type: "text".to_string(),
-            auth_type: "bearer".to_string(),
+            body_type: CollectionBodyType::Text,
+            auth_type: CollectionAuthType::Bearer,
             auth_data: Some("my-token".to_string()),
             params: vec![],
             config_json: None,
@@ -284,8 +284,8 @@ mod tests {
             url: "https://api.example.com".to_string(),
             headers: vec![],
             body: None,
-            body_type: "text".to_string(),
-            auth_type: "basic".to_string(),
+            body_type: CollectionBodyType::Text,
+            auth_type: CollectionAuthType::Basic,
             auth_data: Some("admin:secret".to_string()),
             params: vec![],
             config_json: None,
@@ -312,8 +312,8 @@ mod tests {
             url: "https://api.example.com".to_string(),
             headers: vec![],
             body: None,
-            body_type: "text".to_string(),
-            auth_type: "api_key".to_string(),
+            body_type: CollectionBodyType::Text,
+            auth_type: CollectionAuthType::ApiKey,
             auth_data: Some("X-API-Key:abc123".to_string()),
             params: vec![],
             config_json: None,
@@ -340,8 +340,8 @@ mod tests {
             url: "https://api.example.com".to_string(),
             headers: vec![],
             body: None,
-            body_type: "text".to_string(),
-            auth_type: "digest".to_string(),
+            body_type: CollectionBodyType::Text,
+            auth_type: CollectionAuthType::Digest,
             auth_data: Some("admin:secret".to_string()),
             params: vec![],
             config_json: None,
@@ -381,8 +381,8 @@ mod tests {
             url: "https://api.example.com".to_string(),
             headers: vec![],
             body: None,
-            body_type: "text".to_string(),
-            auth_type: "oauth2".to_string(),
+            body_type: CollectionBodyType::Text,
+            auth_type: CollectionAuthType::Oauth2,
             auth_data: Some(auth_json),
             params: vec![],
             config_json: None,
@@ -415,8 +415,8 @@ mod tests {
             url: "https://api.example.com".to_string(),
             headers: vec![],
             body: None,
-            body_type: "text".to_string(),
-            auth_type: "oauth2".to_string(),
+            body_type: CollectionBodyType::Text,
+            auth_type: CollectionAuthType::Oauth2,
             auth_data: Some("my-access-token".to_string()),
             params: vec![],
             config_json: None,
@@ -434,7 +434,8 @@ mod tests {
 
     #[test]
     fn build_view_from_collection_request_restores_config() {
-        use crate::http_client::config::RequestConfig;
+    use crate::http_client::config::RequestConfig;
+    use crate::persistence::database::{CollectionAuthType, CollectionBodyType};
 
         let req = CollectionRequest {
             id: 1,
@@ -445,8 +446,8 @@ mod tests {
             url: "https://api.example.com".to_string(),
             headers: vec![],
             body: None,
-            body_type: "text".to_string(),
-            auth_type: "none".to_string(),
+            body_type: CollectionBodyType::Text,
+            auth_type: CollectionAuthType::None,
             auth_data: None,
             params: vec![],
             config_json: None,
@@ -467,8 +468,8 @@ mod tests {
             url: "https://api.example.com/upload".to_string(),
             headers: vec![],
             body: None,
-            body_type: "multipart".to_string(),
-            auth_type: "none".to_string(),
+            body_type: CollectionBodyType::Multipart,
+            auth_type: CollectionAuthType::None,
             auth_data: None,
             params: vec![],
             config_json: None,
@@ -489,8 +490,8 @@ mod tests {
             url: "https://api.example.com".to_string(),
             headers: vec![("X-Custom".to_string(), "value".to_string())],
             body: None,
-            body_type: "text".to_string(),
-            auth_type: "none".to_string(),
+            body_type: CollectionBodyType::Text,
+            auth_type: CollectionAuthType::None,
             auth_data: None,
             params: vec![("key".to_string(), "val".to_string())],
             config_json: None,
@@ -536,8 +537,8 @@ mod tests {
             url: "https://api.example.com/resource".to_string(),
             headers: vec![],
             body: None,
-            body_type: "text".to_string(),
-            auth_type: "oauth2".to_string(),
+            body_type: CollectionBodyType::Text,
+            auth_type: CollectionAuthType::Oauth2,
             auth_data: Some(json),
             params: vec![],
             config_json: None,
@@ -589,8 +590,8 @@ mod tests {
             url: "https://api.example.com".to_string(),
             headers: vec![],
             body: None,
-            body_type: "text".to_string(),
-            auth_type: "api_key".to_string(),
+            body_type: CollectionBodyType::Text,
+            auth_type: CollectionAuthType::ApiKey,
             auth_data: Some(json),
             params: vec![],
             config_json: None,

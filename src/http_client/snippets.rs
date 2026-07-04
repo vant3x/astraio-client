@@ -1,9 +1,9 @@
-use super::request::HttpRequest;
+use super::request::{HttpMethod, HttpRequest};
 
 pub fn to_curl(request: &HttpRequest) -> String {
     let mut parts = vec!["curl".to_string()];
 
-    if request.method != "GET" {
+    if request.method != HttpMethod::Get {
         parts.push(format!("-X {}", request.method));
     }
 
@@ -46,7 +46,7 @@ pub fn to_curl(request: &HttpRequest) -> String {
 pub fn to_python(request: &HttpRequest) -> String {
     let mut lines = vec!["import requests".to_string(), String::new()];
 
-    let method = request.method.to_lowercase();
+    let method = request.method.to_string().to_lowercase();
 
     let mut kwargs = vec![];
 
@@ -119,7 +119,7 @@ pub fn to_python(request: &HttpRequest) -> String {
 pub fn to_javascript(request: &HttpRequest) -> String {
     let mut lines = vec![];
 
-    let method = request.method.to_uppercase();
+    let method = request.method.to_string().to_uppercase();
 
     let mut options = vec![format!("    method: \"{}\"", method)];
 
@@ -180,7 +180,7 @@ pub fn to_javascript(request: &HttpRequest) -> String {
 
 pub fn to_rust(request: &HttpRequest) -> String {
     let mut lines = vec![];
-    let method = request.method.to_lowercase();
+    let method = request.method.to_string().to_lowercase();
 
     lines.push("use reqwest;".to_string());
     lines.push(String::new());
@@ -189,7 +189,7 @@ pub fn to_rust(request: &HttpRequest) -> String {
 
     let mut args = vec![format!("\"{}\"", request.url)];
 
-    if request.method != "GET" {
+    if request.method != HttpMethod::Get {
         args.push(format!(
             ".method(reqwest::Method::{})",
             method.to_uppercase()
@@ -280,7 +280,7 @@ mod tests {
 
     fn make_request(method: &str, url: &str) -> HttpRequest {
         HttpRequest {
-            method: method.to_string(),
+            method: method.parse().unwrap(),
             url: url.to_string(),
             headers: vec![],
             body: None,

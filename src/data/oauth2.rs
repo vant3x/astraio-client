@@ -1,4 +1,5 @@
 use base64::{engine::general_purpose, Engine as _};
+use crate::error::AppError;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -109,7 +110,7 @@ pub async fn exchange_code(
     client_secret: &str,
     redirect_uri: &str,
     pkce_verifier: Option<&str>,
-) -> Result<OAuth2TokenResponse, String> {
+) -> Result<OAuth2TokenResponse, AppError> {
     let client = Client::new();
     let mut params = vec![
         ("grant_type", "authorization_code"),
@@ -131,27 +132,27 @@ pub async fn exchange_code(
         .form(&params)
         .send()
         .await
-        .map_err(|e| format!("Failed to send token request: {}", e))?;
+        .map_err(|e| AppError::OAuth2(format!("Failed to send token request: {}", e)))?;
 
     let status = response.status();
     let body = response
         .text()
         .await
-        .map_err(|e| format!("Failed to read response body: {}", e))?;
+        .map_err(|e| AppError::OAuth2(format!("Failed to read response body: {}", e)))?;
 
     if status.is_success() {
-        serde_json::from_str(&body).map_err(|e| format!("Failed to parse token response: {}", e))
+        serde_json::from_str(&body).map_err(|e| AppError::OAuth2(format!("Failed to parse token response: {}", e)))
     } else {
         let error: OAuth2ErrorResponse =
             serde_json::from_str(&body).unwrap_or_else(|_| OAuth2ErrorResponse {
                 error: "unknown_error".to_string(),
                 error_description: Some(body),
             });
-        Err(format!(
+        Err(AppError::OAuth2(format!(
             "Token request failed: {} - {}",
             error.error,
             error.error_description.unwrap_or_default()
-        ))
+        )))
     }
 }
 
@@ -161,7 +162,7 @@ pub async fn client_credentials(
     client_id: &str,
     client_secret: &str,
     scopes: &str,
-) -> Result<OAuth2TokenResponse, String> {
+) -> Result<OAuth2TokenResponse, AppError> {
     let client = Client::new();
     let mut params = vec![("grant_type", "client_credentials")];
 
@@ -182,27 +183,27 @@ pub async fn client_credentials(
         .form(&params)
         .send()
         .await
-        .map_err(|e| format!("Failed to send client credentials request: {}", e))?;
+        .map_err(|e| AppError::OAuth2(format!("Failed to send client credentials request: {}", e)))?;
 
     let status = response.status();
     let body = response
         .text()
         .await
-        .map_err(|e| format!("Failed to read response body: {}", e))?;
+        .map_err(|e| AppError::OAuth2(format!("Failed to read response body: {}", e)))?;
 
     if status.is_success() {
-        serde_json::from_str(&body).map_err(|e| format!("Failed to parse token response: {}", e))
+        serde_json::from_str(&body).map_err(|e| AppError::OAuth2(format!("Failed to parse token response: {}", e)))
     } else {
         let error: OAuth2ErrorResponse =
             serde_json::from_str(&body).unwrap_or_else(|_| OAuth2ErrorResponse {
                 error: "unknown_error".to_string(),
                 error_description: Some(body),
             });
-        Err(format!(
+        Err(AppError::OAuth2(format!(
             "Client credentials request failed: {} - {}",
             error.error,
             error.error_description.unwrap_or_default()
-        ))
+        )))
     }
 }
 
@@ -211,7 +212,7 @@ pub async fn refresh_token(
     refresh_token: &str,
     client_id: &str,
     client_secret: &str,
-) -> Result<OAuth2TokenResponse, String> {
+) -> Result<OAuth2TokenResponse, AppError> {
     let client = Client::new();
     let mut params = vec![
         ("grant_type", "refresh_token"),
@@ -228,27 +229,27 @@ pub async fn refresh_token(
         .form(&params)
         .send()
         .await
-        .map_err(|e| format!("Failed to send refresh token request: {}", e))?;
+        .map_err(|e| AppError::OAuth2(format!("Failed to send refresh token request: {}", e)))?;
 
     let status = response.status();
     let body = response
         .text()
         .await
-        .map_err(|e| format!("Failed to read response body: {}", e))?;
+        .map_err(|e| AppError::OAuth2(format!("Failed to read response body: {}", e)))?;
 
     if status.is_success() {
-        serde_json::from_str(&body).map_err(|e| format!("Failed to parse token response: {}", e))
+        serde_json::from_str(&body).map_err(|e| AppError::OAuth2(format!("Failed to parse token response: {}", e)))
     } else {
         let error: OAuth2ErrorResponse =
             serde_json::from_str(&body).unwrap_or_else(|_| OAuth2ErrorResponse {
                 error: "unknown_error".to_string(),
                 error_description: Some(body),
             });
-        Err(format!(
+        Err(AppError::OAuth2(format!(
             "Token refresh failed: {} - {}",
             error.error,
             error.error_description.unwrap_or_default()
-        ))
+        )))
     }
 }
 
@@ -267,7 +268,7 @@ pub async fn device_authorization(
     device_auth_url: &str,
     client_id: &str,
     scopes: &str,
-) -> Result<DeviceAuthorizationResponse, String> {
+) -> Result<DeviceAuthorizationResponse, AppError> {
     let client = Client::new();
     let mut params = vec![("client_id", client_id)];
 
@@ -280,28 +281,28 @@ pub async fn device_authorization(
         .form(&params)
         .send()
         .await
-        .map_err(|e| format!("Failed to send device authorization request: {}", e))?;
+        .map_err(|e| AppError::OAuth2(format!("Failed to send device authorization request: {}", e)))?;
 
     let status = response.status();
     let body = response
         .text()
         .await
-        .map_err(|e| format!("Failed to read response body: {}", e))?;
+        .map_err(|e| AppError::OAuth2(format!("Failed to read response body: {}", e)))?;
 
     if status.is_success() {
         serde_json::from_str(&body)
-            .map_err(|e| format!("Failed to parse device authorization response: {}", e))
+            .map_err(|e| AppError::OAuth2(format!("Failed to parse device authorization response: {}", e)))
     } else {
         let error: OAuth2ErrorResponse =
             serde_json::from_str(&body).unwrap_or_else(|_| OAuth2ErrorResponse {
                 error: "unknown_error".to_string(),
                 error_description: Some(body),
             });
-        Err(format!(
+        Err(AppError::OAuth2(format!(
             "Device authorization failed: {} - {}",
             error.error,
             error.error_description.unwrap_or_default()
-        ))
+        )))
     }
 }
 
@@ -310,7 +311,7 @@ pub async fn poll_device_token(
     device_code: &str,
     client_id: &str,
     client_secret: &str,
-) -> Result<DeviceTokenResponse, String> {
+) -> Result<DeviceTokenResponse, AppError> {
     let client = Client::new();
     let mut params = vec![
         ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
@@ -327,28 +328,28 @@ pub async fn poll_device_token(
         .form(&params)
         .send()
         .await
-        .map_err(|e| format!("Failed to poll device token: {}", e))?;
+        .map_err(|e| AppError::OAuth2(format!("Failed to poll device token: {}", e)))?;
 
     let status = response.status();
     let body = response
         .text()
         .await
-        .map_err(|e| format!("Failed to read response body: {}", e))?;
+        .map_err(|e| AppError::OAuth2(format!("Failed to read response body: {}", e)))?;
 
     if status.is_success() {
         serde_json::from_str(&body)
-            .map_err(|e| format!("Failed to parse device token response: {}", e))
+            .map_err(|e| AppError::OAuth2(format!("Failed to parse device token response: {}", e)))
     } else {
         let error: OAuth2ErrorResponse =
             serde_json::from_str(&body).unwrap_or_else(|_| OAuth2ErrorResponse {
                 error: "unknown_error".to_string(),
                 error_description: Some(body),
             });
-        Err(format!(
+        Err(AppError::OAuth2(format!(
             "Device token poll failed: {} - {}",
             error.error,
             error.error_description.unwrap_or_default()
-        ))
+        )))
     }
 }
 

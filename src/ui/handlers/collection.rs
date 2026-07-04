@@ -143,8 +143,8 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: collection_view::Message) -> 
                                                     &req.url,
                                                     &req.headers,
                                                     req.body.as_deref(),
-                                                    "text",
-                                                    "none",
+                                                    &crate::persistence::database::CollectionBodyType::Text,
+                                                    &crate::persistence::database::CollectionAuthType::None,
                                                     None,
                                                     &req.params,
                                                     None,
@@ -164,8 +164,8 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: collection_view::Message) -> 
                                         &req.url,
                                         &req.headers,
                                         req.body.as_deref(),
-                                        "text",
-                                        "none",
+                                        &crate::persistence::database::CollectionBodyType::Text,
+                                        &crate::persistence::database::CollectionAuthType::None,
                                         None,
                                         &req.params,
                                         None,
@@ -247,8 +247,8 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: collection_view::Message) -> 
                                                     &req.url,
                                                     &req.headers,
                                                     req.body.as_deref(),
-                                                    "text",
-                                                    "none",
+                                                    &crate::persistence::database::CollectionBodyType::Text,
+                                                    &crate::persistence::database::CollectionAuthType::None,
                                                     None,
                                                     &req.params,
                                                     None,
@@ -268,8 +268,8 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: collection_view::Message) -> 
                                         &req.url,
                                         &req.headers,
                                         req.body.as_deref(),
-                                        "text",
-                                        "none",
+                                        &crate::persistence::database::CollectionBodyType::Text,
+                                        &crate::persistence::database::CollectionAuthType::None,
                                         None,
                                         &req.params,
                                         None,
@@ -498,12 +498,12 @@ fn save_current_to_collection(app: &mut AstraNovaApp) {
 
         let request = view.build_request();
         let auth_type = match &view.auth {
-            crate::data::auth::Auth::BearerToken(_) => "bearer",
-            crate::data::auth::Auth::Basic { .. } => "basic",
-            crate::data::auth::Auth::ApiKey { .. } => "api_key",
-            crate::data::auth::Auth::Digest { .. } => "digest",
-            crate::data::auth::Auth::OAuth2(_) => "oauth2",
-            crate::data::auth::Auth::None => "none",
+            crate::data::auth::Auth::BearerToken(_) => crate::persistence::database::CollectionAuthType::Bearer,
+            crate::data::auth::Auth::Basic { .. } => crate::persistence::database::CollectionAuthType::Basic,
+            crate::data::auth::Auth::ApiKey { .. } => crate::persistence::database::CollectionAuthType::ApiKey,
+            crate::data::auth::Auth::Digest { .. } => crate::persistence::database::CollectionAuthType::Digest,
+            crate::data::auth::Auth::OAuth2(_) => crate::persistence::database::CollectionAuthType::Oauth2,
+            crate::data::auth::Auth::None => crate::persistence::database::CollectionAuthType::None,
         };
         let auth_data = match &view.auth {
             crate::data::auth::Auth::None => None,
@@ -519,8 +519,8 @@ fn save_current_to_collection(app: &mut AstraNovaApp) {
             .collect();
 
         let body_type = match view.body_type {
-            crate::ui::views::http_request_view::BodyType::Multipart => "multipart",
-            _ => "text",
+            crate::ui::views::http_request_view::BodyType::Multipart => crate::persistence::database::CollectionBodyType::Multipart,
+            _ => crate::persistence::database::CollectionBodyType::Text,
         };
 
         let name = if request.url.len() > 40 {
@@ -534,12 +534,12 @@ fn save_current_to_collection(app: &mut AstraNovaApp) {
             col_id,
             None,
             &name,
-            &request.method,
+            &request.method.to_string(),
             &request.url,
             &request.headers,
             request.body.as_deref(),
-            body_type,
-            auth_type,
+            &body_type,
+            &auth_type,
             auth_data.as_deref(),
             &params,
             None,

@@ -66,7 +66,7 @@ pub enum Message {
                 std::time::Duration,
                 u64,
             ),
-            String,
+            crate::error::AppError,
         >,
     ),
     CopyResponse,
@@ -78,7 +78,7 @@ pub enum Message {
     ToggleWordWrap,
     ValidateQuery,
     #[allow(dead_code)]
-    QueryValidated(Result<(), String>),
+    QueryValidated(Result<(), crate::error::AppError>),
 }
 
 #[derive(Debug)]
@@ -101,7 +101,7 @@ pub struct GraphQLView {
     pub response_size: Option<u64>,
     pub highlighter_theme: highlighter::Theme,
     pub word_wrap: bool,
-    pub query_validation: Option<Result<(), String>>,
+    pub query_validation: Option<Result<(), crate::error::AppError>>,
 }
 
 impl Clone for GraphQLView {
@@ -218,7 +218,7 @@ impl GraphQLView {
         }
     }
 
-    pub fn build_request(&self) -> Result<GraphQLRequest, String> {
+    pub fn build_request(&self) -> Result<GraphQLRequest, crate::error::AppError> {
         let query = self.query_input.text();
         crate::protocols::graphql::validate_query(&query)?;
 
@@ -286,7 +286,7 @@ impl GraphQLView {
         let body = graphql_request.to_json().unwrap_or_default();
 
         crate::http_client::request::HttpRequest {
-            method: "POST".to_string(),
+            method: crate::http_client::request::HttpMethod::Post,
             url: self.url_input.clone(),
             headers,
             body: Some(body),
@@ -493,7 +493,7 @@ impl GraphQLView {
                     container(
                         column![
                             text("Enter query and send request.").size(14),
-                            text(e.clone())
+                            text(e.to_string())
                                 .size(12)
                                 .color(Color::from_rgb(0.8, 0.2, 0.2)),
                         ]
@@ -646,7 +646,7 @@ impl GraphQLView {
                     .size(12)
                     .color(Color::from_rgb(0.2, 0.7, 0.3))
                     .into(),
-                Some(Err(e)) => text(e.clone())
+                Some(Err(e)) => text(e.to_string())
                     .size(12)
                     .color(Color::from_rgb(0.8, 0.2, 0.2))
                     .into(),

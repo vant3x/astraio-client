@@ -1,10 +1,75 @@
 use super::config::RequestConfig;
 use crate::data::auth::Auth;
 use serde::{Deserialize, Serialize};
+use std::fmt;
+use std::str::FromStr;
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum HttpMethod {
+    Get,
+    Post,
+    Put,
+    Delete,
+    Patch,
+    Head,
+    Options,
+    Trace,
+    Connect,
+    Other(String),
+}
+
+impl Serialize for HttpMethod {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+impl<'de> Deserialize<'de> for HttpMethod {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        s.parse().map_err(serde::de::Error::custom)
+    }
+}
+
+impl fmt::Display for HttpMethod {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            HttpMethod::Get => write!(f, "GET"),
+            HttpMethod::Post => write!(f, "POST"),
+            HttpMethod::Put => write!(f, "PUT"),
+            HttpMethod::Delete => write!(f, "DELETE"),
+            HttpMethod::Patch => write!(f, "PATCH"),
+            HttpMethod::Head => write!(f, "HEAD"),
+            HttpMethod::Options => write!(f, "OPTIONS"),
+            HttpMethod::Trace => write!(f, "TRACE"),
+            HttpMethod::Connect => write!(f, "CONNECT"),
+            HttpMethod::Other(method) => write!(f, "{}", method),
+        }
+    }
+}
+
+impl FromStr for HttpMethod {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_uppercase().as_str() {
+            "GET" => Ok(HttpMethod::Get),
+            "POST" => Ok(HttpMethod::Post),
+            "PUT" => Ok(HttpMethod::Put),
+            "DELETE" => Ok(HttpMethod::Delete),
+            "PATCH" => Ok(HttpMethod::Patch),
+            "HEAD" => Ok(HttpMethod::Head),
+            "OPTIONS" => Ok(HttpMethod::Options),
+            "TRACE" => Ok(HttpMethod::Trace),
+            "CONNECT" => Ok(HttpMethod::Connect),
+            other => Ok(HttpMethod::Other(other.to_string())),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HttpRequest {
-    pub method: String,
+    pub method: HttpMethod,
     pub url: String,
     pub headers: Vec<(String, String)>,
     pub body: Option<String>,
@@ -36,7 +101,7 @@ mod tests {
     #[test]
     fn create_get_request() {
         let req = HttpRequest {
-            method: "GET".to_string(),
+            method: HttpMethod::Get,
             url: "https://example.com".to_string(),
             headers: vec![],
             body: None,
@@ -44,7 +109,7 @@ mod tests {
             multipart_fields: vec![],
             auth: None,
         };
-        assert_eq!(req.method, "GET");
+        assert_eq!(req.method, HttpMethod::Get);
         assert_eq!(req.url, "https://example.com");
         assert!(req.headers.is_empty());
         assert!(req.body.is_none());
@@ -54,7 +119,7 @@ mod tests {
     #[test]
     fn create_post_request_with_body() {
         let req = HttpRequest {
-            method: "POST".to_string(),
+            method: HttpMethod::Post,
             url: "https://example.com/api".to_string(),
             headers: vec![("Content-Type".to_string(), "application/json".to_string())],
             body: Some(r#"{"key": "value"}"#.to_string()),
@@ -62,7 +127,7 @@ mod tests {
             multipart_fields: vec![],
             auth: None,
         };
-        assert_eq!(req.method, "POST");
+        assert_eq!(req.method, HttpMethod::Post);
         assert!(req.body.is_some());
         assert_eq!(req.headers.len(), 1);
     }
@@ -70,7 +135,7 @@ mod tests {
     #[test]
     fn request_clone() {
         let req = HttpRequest {
-            method: "PUT".to_string(),
+            method: HttpMethod::Put,
             url: "https://example.com/1".to_string(),
             headers: vec![("X-Custom".to_string(), "test".to_string())],
             body: Some("data".to_string()),
@@ -88,7 +153,7 @@ mod tests {
     #[test]
     fn request_with_multiple_headers() {
         let req = HttpRequest {
-            method: "GET".to_string(),
+            method: HttpMethod::Get,
             url: "https://example.com".to_string(),
             headers: vec![
                 ("Accept".to_string(), "application/json".to_string()),
@@ -111,7 +176,7 @@ mod tests {
             ..Default::default()
         };
         let req = HttpRequest {
-            method: "GET".to_string(),
+            method: HttpMethod::Get,
             url: "https://example.com".to_string(),
             headers: vec![],
             body: None,
@@ -156,7 +221,7 @@ mod tests {
     #[test]
     fn request_with_multipart_fields() {
         let req = HttpRequest {
-            method: "POST".to_string(),
+            method: HttpMethod::Post,
             url: "https://example.com/upload".to_string(),
             headers: vec![],
             body: None,
@@ -182,7 +247,7 @@ mod tests {
     #[test]
     fn serialize_request_to_json() {
         let req = HttpRequest {
-            method: "POST".to_string(),
+            method: HttpMethod::Post,
             url: "https://api.example.com/users".to_string(),
             headers: vec![("Content-Type".to_string(), "application/json".to_string())],
             body: Some(r#"{"name": "John"}"#.to_string()),
@@ -214,7 +279,7 @@ mod tests {
             "multipart_fields": []
         }"#;
         let req: HttpRequest = serde_json::from_str(json).unwrap();
-        assert_eq!(req.method, "GET");
+        assert_eq!(req.method, HttpMethod::Get);
         assert_eq!(req.url, "https://api.example.com/data");
         assert_eq!(req.headers.len(), 1);
         assert!(req.body.is_none());
@@ -223,7 +288,7 @@ mod tests {
     #[test]
     fn roundtrip_request_serialization() {
         let req = HttpRequest {
-            method: "PUT".to_string(),
+            method: HttpMethod::Put,
             url: "https://api.example.com/items/1".to_string(),
             headers: vec![
                 ("Authorization".to_string(), "Bearer token123".to_string()),

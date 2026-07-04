@@ -1,3 +1,4 @@
+use crate::error::AppError;
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -111,16 +112,17 @@ impl std::fmt::Debug for WsSender {
 }
 
 impl WsSender {
-    pub fn send(&self, text: &str) -> Result<(), String> {
+    pub fn send(&self, text: &str) -> Result<(), AppError> {
         self.tx
             .send(Message::Text(text.to_string()))
-            .map_err(|e| format!("Send error: {}", e))
+            .map_err(|e| AppError::WebSocket(format!("Send error: {}", e)))
     }
 
-    pub fn send_binary(&self, data: Vec<u8>) -> Result<(), String> {
+    #[allow(dead_code)]
+    pub fn send_binary(&self, data: Vec<u8>) -> Result<(), AppError> {
         self.tx
             .send(Message::Binary(data))
-            .map_err(|e| format!("Send binary error: {}", e))
+            .map_err(|e| AppError::WebSocket(format!("Send binary error: {}", e)))
     }
 }
 
@@ -152,7 +154,7 @@ pub enum WsEvent {
     Error(String),
 }
 
-pub async fn connect_ws(request: &WsRequest) -> Result<WsConnection, String> {
+pub async fn connect_ws(request: &WsRequest) -> Result<WsConnection, AppError> {
     let mut request_builder = http::Request::builder();
 
     for (key, value) in &request.headers {
@@ -168,10 +170,10 @@ pub async fn connect_ws(request: &WsRequest) -> Result<WsConnection, String> {
     let request = request_builder
         .uri(&request.url)
         .body(())
-        .map_err(|e| format!("Failed to build WebSocket request: {}", e))?;
+        .map_err(|e| AppError::WebSocket(format!("Failed to build WebSocket request: {}", e)))?;
     let (ws_stream, _response) = connect_async(request)
         .await
-        .map_err(|e| format!("WebSocket connection failed: {}", e))?;
+        .map_err(|e| AppError::WebSocket(format!("WebSocket connection failed: {}", e)))?;
 
     let (mut write, mut read) = ws_stream.split();
 
