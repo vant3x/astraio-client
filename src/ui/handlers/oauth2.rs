@@ -180,6 +180,11 @@ pub fn handle_device_auth_received(
 
                     log::info!("Device authorization received. User code: {}", user_code);
 
+                    app.toast_manager.info(format!(
+                        "Device auth started. Code: {}. Polling enabled.",
+                        user_code
+                    ));
+
                     let _ = open::that(&verification_url);
                 }
                 Err(e) => {

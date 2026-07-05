@@ -144,7 +144,7 @@ impl HttpRequestView {
         }
 
         let body_text = self.body_input.text();
-        let body = if body_text.trim().is_empty() {
+        let body = if Self::is_body_empty(&body_text) {
             None
         } else {
             Some(body_text)

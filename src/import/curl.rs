@@ -6,6 +6,10 @@ pub struct CurlParseResult {
     pub url: String,
     pub headers: Vec<(String, String)>,
     pub body: Option<String>,
+    pub auth_user: Option<String>,
+    pub auth_pass: Option<String>,
+    pub form_fields: Vec<(String, String)>,
+    pub insecure: bool,
 }
 
 pub fn parse_curl(curl: &str) -> Result<CurlParseResult, AppError> {
@@ -17,6 +21,10 @@ pub fn parse_curl(curl: &str) -> Result<CurlParseResult, AppError> {
     let mut url: Option<String> = None;
     let mut headers = Vec::new();
     let mut data: Option<String> = None;
+    let mut auth_user: Option<String> = None;
+    let mut auth_pass: Option<String> = None;
+    let mut form_fields = Vec::new();
+    let mut insecure = false;
 
     let mut i = 0;
     while i < tokens.len() {
@@ -32,6 +40,9 @@ pub fn parse_curl(curl: &str) -> Result<CurlParseResult, AppError> {
                 i += 1;
                 if i < tokens.len() {
                     if let Some((key, value)) = parse_header(&tokens[i]) {
+                        if key.eq_ignore_ascii_case("Accept-Encoding") {
+                            headers.retain(|(k, _): &(String, String)| !k.eq_ignore_ascii_case("Accept-Encoding"));
+                        }
                         headers.push((key, value));
                     }
                 }
@@ -45,23 +56,36 @@ pub fn parse_curl(curl: &str) -> Result<CurlParseResult, AppError> {
                     }
                 }
             }
+            "-F" | "--form" => {
+                i += 1;
+                if i < tokens.len() {
+                    if let Some((key, value)) = parse_form_field(&tokens[i]) {
+                        form_fields.push((key, value));
+                    }
+                    if method.is_none() {
+                        method = Some("POST".to_string());
+                    }
+                }
+            }
             "-u" | "--user" => {
                 i += 1;
                 if i < tokens.len() {
                     if let Some((user, pass)) = parse_user_pass(&tokens[i]) {
-                        let auth_header = format!("Basic {}", base64_encode(&format!("{}:{}", user, pass)));
-                        headers.push(("Authorization".to_string(), auth_header));
+                        auth_user = Some(user);
+                        auth_pass = Some(pass);
                     }
                 }
             }
             "--compressed" => {
-                headers.push(("Accept-Encoding".to_string(), "gzip, deflate".to_string()));
+                if !headers.iter().any(|(k, _)| k.eq_ignore_ascii_case("Accept-Encoding")) {
+                    headers.push(("Accept-Encoding".to_string(), "gzip, deflate".to_string()));
+                }
             }
             "-k" | "--insecure" => {
-                // SSL verification disabled - not stored in result
+                insecure = true;
             }
             _ => {
-                if token.contains("://") || (!token.starts_with('-') && token.contains('/') && !token.starts_with(' ')) {
+                if token.contains("://") || (!token.starts_with('-') && token.contains('/')) {
                     url = Some(token.clone());
                 }
             }
@@ -71,7 +95,7 @@ pub fn parse_curl(curl: &str) -> Result<CurlParseResult, AppError> {
 
     let url = url.ok_or_else(|| AppError::Parse("No URL found in curl command".to_string()))?;
     let method = method.unwrap_or_else(|| {
-        if data.is_some() {
+        if data.is_some() || !form_fields.is_empty() {
             "POST".to_string()
         } else {
             "GET".to_string()
@@ -83,6 +107,10 @@ pub fn parse_curl(curl: &str) -> Result<CurlParseResult, AppError> {
         url,
         headers,
         body: data,
+        auth_user,
+        auth_pass,
+        form_fields,
+        insecure,
     })
 }
 
@@ -140,9 +168,11 @@ fn parse_user_pass(user_pass: &str) -> Option<(String, String)> {
     Some((user, pass))
 }
 
-fn base64_encode(input: &str) -> String {
-    use base64::Engine;
-    base64::engine::general_purpose::STANDARD.encode(input)
+fn parse_form_field(field: &str) -> Option<(String, String)> {
+    let equals_pos = field.find('=')?;
+    let key = field[..equals_pos].to_string();
+    let value = field[equals_pos + 1..].to_string();
+    Some((key, value))
 }
 
 #[cfg(test)]
@@ -206,7 +236,33 @@ mod tests {
     fn parse_with_basic_auth() {
         let curl = "curl -u user:pass https://api.example.com";
         let result = parse_curl(curl).unwrap();
-        assert!(result.headers.iter().any(|(k, v)| k == "Authorization" && v.starts_with("Basic ")));
+        assert_eq!(result.auth_user.as_deref(), Some("user"));
+        assert_eq!(result.auth_pass.as_deref(), Some("pass"));
+    }
+
+    #[test]
+    fn parse_with_form_field() {
+        let curl = r#"curl -F "file=@test.txt" -F "name=test" https://api.example.com/upload"#;
+        let result = parse_curl(curl).unwrap();
+        assert_eq!(result.form_fields.len(), 2);
+        assert_eq!(result.form_fields[0].0, "file");
+        assert_eq!(result.form_fields[0].1, "@test.txt");
+        assert_eq!(result.method, "POST");
+    }
+
+    #[test]
+    fn parse_with_insecure() {
+        let curl = "curl -k https://self-signed.example.com";
+        let result = parse_curl(curl).unwrap();
+        assert!(result.insecure);
+    }
+
+    #[test]
+    fn parse_with_compressed_no_duplicate() {
+        let curl = r#"curl --compressed -H "Accept-Encoding: identity" https://api.example.com"#;
+        let result = parse_curl(curl).unwrap();
+        let accept_headers: Vec<_> = result.headers.iter().filter(|(k, _)| k == "Accept-Encoding").collect();
+        assert_eq!(accept_headers.len(), 1);
     }
 
     #[test]

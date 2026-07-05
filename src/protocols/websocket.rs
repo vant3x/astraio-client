@@ -72,6 +72,25 @@ impl WsMessage {
                 }
                 self.data.clone()
             }
+            WsMessageType::Binary => {
+                let bytes: Vec<u8> = self
+                    .data
+                    .split(' ')
+                    .filter_map(|s| u8::from_str_radix(s, 16).ok())
+                    .collect();
+                let hex_formatted: Vec<String> = bytes.iter().map(|b| format!("{:02X}", b)).collect();
+                let hex_display = hex_formatted.chunks(16)
+                    .map(|chunk| chunk.join(" "))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                let as_utf8 = String::from_utf8_lossy(&bytes);
+                let utf8_display = if bytes.iter().all(|b| b.is_ascii_graphic() || b.is_ascii_whitespace()) {
+                    format!("\n\nUTF-8: {}", as_utf8)
+                } else {
+                    String::new()
+                };
+                format!("Hex ({} bytes):\n{}{}", bytes.len(), hex_display, utf8_display)
+            }
             _ => self.data.clone(),
         }
     }

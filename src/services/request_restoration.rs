@@ -161,6 +161,10 @@ fn apply_request_to_view(view: &mut HttpRequestView, request: &HttpRequest) {
 
     view.request_config = request.config.clone();
 
+    if let Some(auth) = &request.auth {
+        view.auth = auth.clone();
+    }
+
     if !request.multipart_fields.is_empty() {
         view.body_type = BodyType::Multipart;
         view.restore_multipart(&request.multipart_fields);

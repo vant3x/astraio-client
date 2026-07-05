@@ -149,6 +149,10 @@ pub enum Message {
     OAuth2CopyRefreshToken(String),
     OAuth2AutoPollToggle(bool),
     CurlImported,
+    ToggleResponseSearch,
+    ResponseSearchChanged(String),
+    SearchNext,
+    SearchPrev,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -200,6 +204,10 @@ pub struct HttpRequestView {
     pub word_wrap: bool,
     pub pending_request_data: Option<String>,
     pub(crate) logo_handle: Handle,
+    pub show_response_search: bool,
+    pub response_search_query: String,
+    pub response_search_matches: Vec<(usize, usize)>,
+    pub response_search_index: usize,
 }
 
 impl Clone for HttpRequestView {
@@ -234,6 +242,10 @@ impl Clone for HttpRequestView {
             word_wrap: self.word_wrap,
             pending_request_data: self.pending_request_data.clone(),
             logo_handle: self.logo_handle.clone(),
+            show_response_search: self.show_response_search,
+            response_search_query: self.response_search_query.clone(),
+            response_search_matches: self.response_search_matches.clone(),
+            response_search_index: self.response_search_index,
         }
     }
 }
@@ -273,11 +285,20 @@ impl Default for HttpRequestView {
             word_wrap: false,
             pending_request_data: None,
             logo_handle: Handle::from_bytes(bytes::Bytes::from_static(LOGO_BG_BYTES)),
+            show_response_search: false,
+            response_search_query: String::new(),
+            response_search_matches: Vec::new(),
+            response_search_index: 0,
         }
     }
 }
 
 impl HttpRequestView {
+    pub fn is_body_empty(text: &str) -> bool {
+        let trimmed = text.trim();
+        trimmed.is_empty() || trimmed == "\n"
+    }
+
     pub fn update(&mut self, message: Message) {
         match message {
             Message::UrlInputChanged(url) => {
@@ -288,6 +309,7 @@ impl HttpRequestView {
                         if let Some(body) = parsed.body {
                             self.body_input = text_editor::Content::with_text(&body);
                         }
+                        self.headers_editor.entries.clear();
                         for (key, value) in parsed.headers {
                             self.headers_editor.entries.push(
                                 crate::ui::components::key_value_editor::KeyValueEntry {
@@ -296,6 +318,27 @@ impl HttpRequestView {
                                     value,
                                 },
                             );
+                        }
+                        if let (Some(user), Some(pass)) = (parsed.auth_user, parsed.auth_pass) {
+                            self.auth = Auth::Basic { user, pass };
+                        }
+                        if parsed.insecure {
+                            self.request_config.verify_ssl = false;
+                        }
+                        if !parsed.form_fields.is_empty() {
+                            self.body_type = BodyType::Multipart;
+                            self.multipart_entries.clear();
+                            for (i, (name, value)) in parsed.form_fields.into_iter().enumerate() {
+                                let is_file = value.starts_with('@');
+                                let file_value = if is_file { value[1..].to_string() } else { value };
+                                self.multipart_entries.push(MultipartEntry {
+                                    id: i,
+                                    name,
+                                    value: file_value,
+                                    is_file,
+                                });
+                            }
+                            self.multipart_next_id = self.multipart_entries.len();
                         }
                     } else {
                         self.url_input = url;
@@ -567,6 +610,51 @@ impl HttpRequestView {
             Message::CurlImported => {
                 // Handled in app.rs to show toast
             }
+            Message::ToggleResponseSearch => {
+                self.show_response_search = !self.show_response_search;
+                if !self.show_response_search {
+                    self.response_search_query.clear();
+                    self.response_search_matches.clear();
+                    self.response_search_index = 0;
+                }
+            }
+            Message::ResponseSearchChanged(query) => {
+                self.response_search_query = query;
+                self.update_search_matches();
+            }
+            Message::SearchNext => {
+                if !self.response_search_matches.is_empty() {
+                    self.response_search_index = (self.response_search_index + 1) % self.response_search_matches.len();
+                }
+            }
+            Message::SearchPrev => {
+                if !self.response_search_matches.is_empty() {
+                    self.response_search_index = if self.response_search_index == 0 {
+                        self.response_search_matches.len() - 1
+                    } else {
+                        self.response_search_index - 1
+                    };
+                }
+            }
+        }
+    }
+
+    fn update_search_matches(&mut self) {
+        self.response_search_matches.clear();
+        self.response_search_index = 0;
+        if self.response_search_query.is_empty() {
+            return;
+        }
+        let body_text = self.response_body_editor.text();
+        let query_lower = self.response_search_query.to_lowercase();
+        let body_lower = body_text.to_lowercase();
+        let mut start = 0;
+        while let Some(pos) = body_lower[start..].find(&query_lower) {
+            let absolute_pos = start + pos;
+            let line = body_text[..absolute_pos].lines().count();
+            let col = absolute_pos - body_text[..absolute_pos].rfind('\n').map(|p| p + 1).unwrap_or(0);
+            self.response_search_matches.push((line, col));
+            start = absolute_pos + 1;
         }
     }
 }

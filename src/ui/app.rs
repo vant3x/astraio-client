@@ -224,6 +224,7 @@ pub enum Message {
         Result<crate::data::oauth2::DeviceTokenResponse, crate::error::AppError>,
     ),
     OAuth2AutoPollToggle(usize, bool),
+    ToggleResponseSearch,
 }
 
 impl Clone for Message {
@@ -268,6 +269,7 @@ impl Clone for Message {
             Self::OAuth2DeviceAuthReceived(i, r) => Self::OAuth2DeviceAuthReceived(*i, r.clone()),
             Self::OAuth2DeviceTokenPoll(i, r) => Self::OAuth2DeviceTokenPoll(*i, r.clone()),
             Self::OAuth2AutoPollToggle(i, b) => Self::OAuth2AutoPollToggle(*i, *b),
+            Self::ToggleResponseSearch => Self::ToggleResponseSearch,
         }
     }
 }
@@ -287,12 +289,60 @@ impl AstraNovaApp {
                     "CREATE TABLE IF NOT EXISTS environments (
                         id INTEGER PRIMARY KEY,
                         name TEXT NOT NULL UNIQUE,
-                        variables TEXT NOT NULL
+                        variables TEXT NOT NULL,
+                        default_endpoint TEXT
                     )",
                     [],
                 );
                 let _ = conn.execute(
-                    "ALTER TABLE environments ADD COLUMN default_endpoint TEXT",
+                    "CREATE TABLE IF NOT EXISTS request_history (
+                        id INTEGER PRIMARY KEY,
+                        method TEXT NOT NULL,
+                        url TEXT NOT NULL,
+                        status INTEGER,
+                        duration_ms INTEGER,
+                        timestamp TEXT NOT NULL,
+                        request_data TEXT,
+                        response_data TEXT
+                    )",
+                    [],
+                );
+                let _ = conn.execute(
+                    "CREATE TABLE IF NOT EXISTS collections (
+                        id INTEGER PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        description TEXT
+                    )",
+                    [],
+                );
+                let _ = conn.execute(
+                    "CREATE TABLE IF NOT EXISTS collection_folders (
+                        id INTEGER PRIMARY KEY,
+                        collection_id INTEGER NOT NULL,
+                        name TEXT NOT NULL,
+                        parent_folder_id INTEGER,
+                        FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE CASCADE,
+                        FOREIGN KEY (parent_folder_id) REFERENCES collection_folders(id) ON DELETE CASCADE
+                    )",
+                    [],
+                );
+                let _ = conn.execute(
+                    "CREATE TABLE IF NOT EXISTS collection_requests (
+                        id INTEGER PRIMARY KEY,
+                        collection_id INTEGER NOT NULL,
+                        folder_id INTEGER,
+                        name TEXT NOT NULL,
+                        method TEXT NOT NULL,
+                        url TEXT NOT NULL,
+                        headers TEXT NOT NULL DEFAULT '[]',
+                        body TEXT,
+                        body_type TEXT NOT NULL DEFAULT 'text',
+                        auth_type TEXT NOT NULL DEFAULT 'none',
+                        auth_data TEXT,
+                        params TEXT NOT NULL DEFAULT '[]',
+                        FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE CASCADE,
+                        FOREIGN KEY (folder_id) REFERENCES collection_folders(id) ON DELETE CASCADE
+                    )",
                     [],
                 );
                 (conn, Vec::new())
@@ -489,6 +539,12 @@ impl AstraNovaApp {
             Message::OAuth2AutoPollToggle(index, enabled) => {
                 super::handlers::oauth2::handle_auto_poll_toggle(self, index, enabled)
             }
+            Message::ToggleResponseSearch => {
+                if let Some(view) = self.request_tabs.get_mut(self.active_request_tab_index) {
+                    view.update(http_request_view::Message::ToggleResponseSearch);
+                }
+                Task::none()
+            }
         }
     }
 
@@ -538,6 +594,9 @@ impl AstraNovaApp {
                         }
                         iced::keyboard::Key::Character(ref c) if c.as_ref() == "5" => {
                             Message::SelectRequestTab(4)
+                        }
+                        iced::keyboard::Key::Character(ref c) if c.as_ref() == "f" => {
+                            Message::ToggleResponseSearch
                         }
                         _ => Message::NoOp,
                     }

@@ -6,7 +6,7 @@ use crate::ui::components::auth_panel;
 use crate::ui::request_status::{status_color, RequestStatus};
 use iced::widget::text_editor;
 use iced::{
-    widget::{button, column, container, pick_list, row, rule, scrollable, text},
+    widget::{button, column, container, pick_list, row, rule, scrollable, text, text_input},
     Alignment, Color, Element, Length, Theme,
 };
 use iced_aw::{ContextMenu, TabLabel, Tabs};
@@ -73,6 +73,33 @@ impl HttpRequestView {
                 .align_y(Alignment::Center)
                 .into(),
             RequestStatus::Success => {
+                let search_bar = if self.show_response_search {
+                    let match_info = if self.response_search_matches.is_empty() {
+                        text("No matches").size(12).color(Color::from_rgb(0.5, 0.5, 0.5))
+                    } else {
+                        text(format!("{}/{}", self.response_search_index + 1, self.response_search_matches.len()))
+                            .size(12)
+                            .color(Color::from_rgb(0.3, 0.7, 0.3))
+                    };
+                    Some(
+                        row![
+                            button(lucide::x().size(12)).on_press(Message::ToggleResponseSearch),
+                            text_input("Search...", &self.response_search_query)
+                                .on_input(Message::ResponseSearchChanged)
+                                .padding(5)
+                                .width(Length::Fill),
+                            match_info,
+                            button(lucide::chevron_up().size(12)).on_press(Message::SearchPrev),
+                            button(lucide::chevron_down().size(12)).on_press(Message::SearchNext),
+                        ]
+                        .spacing(6)
+                        .align_y(Alignment::Center)
+                        .padding(iced::Padding::from([4, 8])),
+                    )
+                } else {
+                    None
+                };
+
                 let response_tabs = Tabs::new(Message::ResponseTabSelected)
                     .push(ResponseTab::Body, TabLabel::Text("Body".to_string()), {
                         let syntax = self
@@ -127,7 +154,18 @@ impl HttpRequestView {
                     .width(Length::Fill)
                     .height(Length::Fill);
 
-                container(response_tabs)
+                let response_content = if let Some(search_bar) = search_bar {
+                    column![search_bar, response_tabs]
+                        .spacing(0)
+                        .width(Length::Fill)
+                        .height(Length::Fill)
+                } else {
+                    column![response_tabs]
+                        .width(Length::Fill)
+                        .height(Length::Fill)
+                };
+
+                container(response_content)
                     .width(Length::Fill)
                     .height(Length::Fill)
                     .into()
