@@ -513,7 +513,8 @@ impl AstraNovaApp {
                     shutdown_tx,
                     write_handle,
                     read_handle,
-                )
+                );
+                Task::none()
             }
             Message::OAuth2StartAuth(index) => {
                 super::handlers::oauth2::handle_start_auth(self, index)

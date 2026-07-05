@@ -20,13 +20,42 @@ pub enum Message {
     Disconnect,
     Disconnected(String),
     SendMessage(String),
+    SendBinary(String),
+    SendPing,
+    SendClose(String),
     InputChanged(String),
+    HexInputChanged(String),
+    MessageTypeSelected(MessageTypeFilter),
     ToggleHeaders,
     ToggleAutoReconnect,
     ReconnectDelayChanged(String),
     MaxRetriesChanged(String),
     SearchChanged(String),
     SubprotocolChanged(String),
+    ClearMessages,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MessageTypeFilter {
+    All,
+    Text,
+    Binary,
+    Ping,
+    Pong,
+    Close,
+}
+
+impl std::fmt::Display for MessageTypeFilter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MessageTypeFilter::All => write!(f, "All"),
+            MessageTypeFilter::Text => write!(f, "Text"),
+            MessageTypeFilter::Binary => write!(f, "Binary"),
+            MessageTypeFilter::Ping => write!(f, "Ping"),
+            MessageTypeFilter::Pong => write!(f, "Pong"),
+            MessageTypeFilter::Close => write!(f, "Close"),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -38,6 +67,8 @@ pub struct WebSocketView {
     pub status: WsStatus,
     pub messages: Vec<WsMessage>,
     pub input: String,
+    pub hex_input: String,
+    pub message_type_filter: MessageTypeFilter,
     pub show_headers: bool,
     pub auto_reconnect: bool,
     pub reconnect_delay_ms: u64,
@@ -58,6 +89,8 @@ impl Clone for WebSocketView {
             status: self.status.clone(),
             messages: self.messages.clone(),
             input: self.input.clone(),
+            hex_input: self.hex_input.clone(),
+            message_type_filter: self.message_type_filter,
             show_headers: self.show_headers,
             auto_reconnect: self.auto_reconnect,
             reconnect_delay_ms: self.reconnect_delay_ms,
@@ -80,6 +113,8 @@ impl Default for WebSocketView {
             status: WsStatus::Disconnected,
             messages: Vec::new(),
             input: String::new(),
+            hex_input: String::new(),
+            message_type_filter: MessageTypeFilter::All,
             show_headers: false,
             auto_reconnect: false,
             reconnect_delay_ms: 3000,
@@ -226,26 +261,46 @@ impl WebSocketView {
             column![]
         };
 
-        let search_input = text_input("Search messages...", &self.search_query)
-            .on_input(Message::SearchChanged)
-            .padding(5);
+        let is_connected = matches!(self.status, WsStatus::Connected);
 
-        let filtered_messages: Vec<_> = if self.search_query.is_empty() {
-            self.messages.clone()
-        } else {
-            let query = self.search_query.to_lowercase();
-            self.messages
-                .iter()
-                .filter(|m| {
-                    m.data.to_lowercase().contains(&query)
-                        || m.direction.to_lowercase().contains(&query)
-                        || format!("{:?}", m.message_type)
-                            .to_lowercase()
-                            .contains(&query)
-                })
-                .cloned()
-                .collect()
-        };
+        let filter_buttons = row![
+            self.filter_button(MessageTypeFilter::All),
+            self.filter_button(MessageTypeFilter::Text),
+            self.filter_button(MessageTypeFilter::Binary),
+            self.filter_button(MessageTypeFilter::Ping),
+            self.filter_button(MessageTypeFilter::Pong),
+            self.filter_button(MessageTypeFilter::Close),
+        ]
+        .spacing(4);
+
+        let search_row = row![
+            text_input("Search...", &self.search_query)
+                .on_input(Message::SearchChanged)
+                .padding(5)
+                .width(Length::Fill),
+            filter_buttons,
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center);
+
+        let filtered_messages: Vec<_> = self.messages.iter().filter(|m| {
+            let matches_type = self.message_type_filter == MessageTypeFilter::All
+                || matches!(
+                    (&self.message_type_filter, &m.message_type),
+                    (MessageTypeFilter::Text, WsMessageType::Text)
+                        | (MessageTypeFilter::Binary, WsMessageType::Binary)
+                        | (MessageTypeFilter::Ping, WsMessageType::Ping)
+                        | (MessageTypeFilter::Pong, WsMessageType::Pong)
+                        | (MessageTypeFilter::Close, WsMessageType::Close)
+                );
+            let matches_search = self.search_query.is_empty()
+                || m.data.to_lowercase().contains(&self.search_query.to_lowercase())
+                || m.direction.to_lowercase().contains(&self.search_query.to_lowercase());
+            matches_type && matches_search
+        }).cloned().collect();
+
+        let total_messages = self.messages.len();
+        let filtered_count = filtered_messages.len();
 
         let mut message_list = column![].spacing(4);
         for msg in &filtered_messages {
@@ -263,12 +318,27 @@ impl WebSocketView {
                 WsMessageType::Close => "CLOSE",
             };
 
+            let type_color = match msg.message_type {
+                WsMessageType::Text => Color::from_rgb(0.3, 0.7, 0.9),
+                WsMessageType::Binary => Color::from_rgb(0.8, 0.5, 0.1),
+                WsMessageType::Ping => Color::from_rgb(0.5, 0.5, 0.5),
+                WsMessageType::Pong => Color::from_rgb(0.5, 0.5, 0.5),
+                WsMessageType::Close => Color::from_rgb(0.8, 0.2, 0.2),
+            };
+
             let formatted = msg.formatted_data();
             let data_display: String = formatted.chars().take(200).collect();
             let truncated = if formatted.len() > 200 {
                 format!("{}...", data_display)
             } else {
                 data_display
+            };
+
+            let byte_size = msg.data.len();
+            let size_label = if byte_size >= 1024 {
+                format!("{:.1}KB", byte_size as f64 / 1024.0)
+            } else {
+                format!("{}B", byte_size)
             };
 
             let timestamp = msg.timestamp.clone();
@@ -284,29 +354,79 @@ impl WebSocketView {
                     row![
                         text(dir_clone).size(13).color(dir_color),
                         text(type_label)
-                            .size(11)
-                            .color(Color::from_rgb(0.5, 0.5, 0.5)),
+                            .size(10)
+                            .color(type_color),
                         text(truncated).size(13),
                     ]
                     .spacing(6),
-                    text(format!("  {}", time_display))
-                        .size(10)
-                        .color(Color::from_rgb(0.4, 0.4, 0.4)),
+                    row![
+                        text(format!("  {} - {}", time_display, size_label))
+                            .size(10)
+                            .color(Color::from_rgb(0.4, 0.4, 0.4)),
+                    ],
                 ]
                 .spacing(2),
             );
         }
 
-        let is_connected = matches!(self.status, WsStatus::Connected);
+        let message_stats = if total_messages != filtered_count {
+            text(format!("Showing {}/{} messages", filtered_count, total_messages))
+                .size(11)
+                .color(Color::from_rgb(0.5, 0.5, 0.5))
+        } else if total_messages > 0 {
+            text(format!("{} messages", total_messages))
+                .size(11)
+                .color(Color::from_rgb(0.5, 0.5, 0.5))
+        } else {
+            text("").size(11)
+        };
 
         let input_row = row![
             text_input("Message...", &self.input)
                 .on_input(Message::InputChanged)
-                .padding(8),
+                .padding(8)
+                .width(Length::Fill),
             if is_connected {
-                button(lucide::send().size(14)).on_press(Message::SendMessage(self.input.clone()))
+                button(row![lucide::send().size(14), text(" Send")].spacing(4))
+                    .on_press(Message::SendMessage(self.input.clone()))
             } else {
-                button(lucide::send().size(14))
+                button(row![lucide::send().size(14), text(" Send")].spacing(4))
+            },
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center);
+
+        let hex_row = row![
+            text_input("Hex: 48656c6c6f", &self.hex_input)
+                .on_input(Message::HexInputChanged)
+                .padding(5)
+                .width(Length::Fill),
+            if is_connected {
+                button(row![lucide::binary().size(12), text(" Send Binary")].spacing(4))
+                    .on_press(Message::SendBinary(self.hex_input.clone()))
+            } else {
+                button(row![lucide::binary().size(12), text(" Send Binary")].spacing(4))
+            },
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center);
+
+        let control_row = row![
+            if is_connected {
+                button(row![lucide::radio().size(12), text(" Ping")].spacing(4))
+                    .on_press(Message::SendPing)
+            } else {
+                button(row![lucide::radio().size(12), text(" Ping")].spacing(4))
+            },
+            text_input("Close reason...", &self.input)
+                .on_input(Message::InputChanged)
+                .padding(5)
+                .width(Length::FillPortion(2)),
+            if is_connected {
+                button(row![lucide::octagon().size(12), text(" Close")].spacing(4))
+                    .on_press(Message::SendClose(self.input.clone()))
+            } else {
+                button(row![lucide::octagon().size(12), text(" Close")].spacing(4))
             },
         ]
         .spacing(8)
@@ -316,7 +436,7 @@ impl WebSocketView {
             button(row![lucide::trash().size(14), text(" Clear")].spacing(4))
         } else {
             button(row![lucide::trash().size(14), text(" Clear")].spacing(4))
-                .on_press(Message::Disconnected("cleared".to_string()))
+                .on_press(Message::ClearMessages)
         };
 
         let header = column![
@@ -337,9 +457,12 @@ impl WebSocketView {
                 header,
                 url_row,
                 headers_section,
-                search_input,
+                search_row,
+                message_stats,
                 scrollable(message_list).height(Length::Fill),
                 input_row,
+                hex_row,
+                control_row,
             ]
             .spacing(8)
             .padding(10),
@@ -347,5 +470,24 @@ impl WebSocketView {
         .width(Length::Fill)
         .height(Length::Fill)
         .into()
+    }
+
+    fn filter_button(&self, filter: MessageTypeFilter) -> Element<'_, Message, Theme, Renderer> {
+        let is_active = self.message_type_filter == filter;
+        let label = match filter {
+            MessageTypeFilter::All => "All",
+            MessageTypeFilter::Text => "T",
+            MessageTypeFilter::Binary => "B",
+            MessageTypeFilter::Ping => "P",
+            MessageTypeFilter::Pong => "Po",
+            MessageTypeFilter::Close => "C",
+        };
+        let btn = button(text(label).size(10))
+            .on_press(Message::MessageTypeSelected(filter));
+        if is_active {
+            btn.style(button::secondary).into()
+        } else {
+            btn.into()
+        }
     }
 }
