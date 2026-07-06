@@ -102,6 +102,24 @@ impl HttpRequestView {
 
                 let response_tabs = Tabs::new(Message::ResponseTabSelected)
                     .push(ResponseTab::Body, TabLabel::Text("Body".to_string()), {
+                        if self.show_image_preview {
+                            if let Some(handle) = &self.image_preview_handle {
+                                let img = iced::widget::image::Image::new(handle.clone())
+                                    .width(Length::Fill)
+                                    .height(Length::Fill)
+                                    .content_fit(iced::ContentFit::Contain);
+                                container(img)
+                                    .width(Length::Fill)
+                                    .height(Length::Fill)
+                                    .center(Length::Fill)
+                            } else {
+                                container(text("No image available"))
+                                    .width(Length::Fill)
+                                    .height(Length::Fill)
+                                    .align_x(Alignment::Center)
+                                    .align_y(Alignment::Center)
+                            }
+                        } else {
                         let syntax = self
                             .content_type
                             .as_deref()
@@ -138,6 +156,7 @@ impl HttpRequestView {
                                 .into()
                             });
                             container(context_menu)
+                        }
                         }
                     })
                     .push(
@@ -192,6 +211,58 @@ impl HttpRequestView {
             Element::from(column![])
         };
 
+        let download_button = if matches!(self.request_status, RequestStatus::Success) {
+            let is_binary = self
+                .content_type
+                .as_deref()
+                .map(|ct| {
+                    ct.contains("image/")
+                        || ct.contains("application/octet-stream")
+                        || ct.contains("application/pdf")
+                        || ct.contains("application/zip")
+                        || ct.contains("application/gzip")
+                        || ct.contains("audio/")
+                        || ct.contains("video/")
+                })
+                .unwrap_or(false);
+            if is_binary {
+                Element::from(
+                    button(
+                        row![lucide::download().size(14), text(" Save File")].spacing(4),
+                    )
+                    .on_press(Message::DownloadResponse),
+                )
+            } else {
+                Element::from(column![])
+            }
+        } else {
+            Element::from(column![])
+        };
+
+        let image_preview_button = if self.image_preview_handle.is_some() {
+            Element::from(
+                button(
+                    row![
+                        if self.show_image_preview {
+                            lucide::eye_off().size(14)
+                        } else {
+                            lucide::eye().size(14)
+                        },
+                        text(if self.show_image_preview {
+                            "Hide Image"
+                        } else {
+                            "Show Image"
+                        })
+                        .size(11),
+                    ]
+                    .spacing(4),
+                )
+                .on_press(Message::ToggleImagePreview),
+            )
+        } else {
+            Element::from(column![])
+        };
+
         let wrap_toggle: Element<'_, Message, Theme, iced::Renderer> =
             if matches!(self.request_status, RequestStatus::Success) {
                 Element::from(
@@ -222,6 +293,37 @@ impl HttpRequestView {
             text(format!("  {}  ", status)).size(14).color(color)
         } else {
             text("".to_string()).size(14)
+        };
+
+        let content_type_badge = if let Some(ct) = &self.content_type {
+            let short_ct = if ct.contains("json") {
+                "JSON"
+            } else if ct.contains("html") {
+                "HTML"
+            } else if ct.contains("xml") {
+                "XML"
+            } else if ct.contains("image/") {
+                "IMG"
+            } else if ct.contains("pdf") {
+                "PDF"
+            } else if ct.contains("octet-stream") {
+                "BIN"
+            } else if ct.contains("text/") {
+                "TEXT"
+            } else {
+                "?"
+            };
+            Element::from(
+                container(text(short_ct).size(10).color(Color::from_rgb(1.0, 1.0, 1.0)))
+                    .padding(iced::Padding::from([2, 6]))
+                    .style(move |_: &Theme| iced::widget::container::Style {
+                        background: Some(iced::Color::from_rgb(0.3, 0.3, 0.5).into()),
+                        border: iced::Border::default().rounded(4),
+                        ..iced::widget::container::Style::default()
+                    }),
+            )
+        } else {
+            Element::from(column![])
         };
 
         let duration_text = text(format!(
@@ -272,12 +374,14 @@ impl HttpRequestView {
                 row![
                     method_colored,
                     status_text,
+                    content_type_badge,
                     duration_text,
                     text(" | ").size(14),
                     size_text,
-                    row![copy_button, wrap_toggle].align_y(Alignment::Center),
+                    row![copy_button, download_button, image_preview_button, wrap_toggle]
+                        .align_y(Alignment::Center),
                 ]
-                .spacing(10)
+                .spacing(8)
                 .padding(10)
                 .align_y(Alignment::Center),
                 response_area,

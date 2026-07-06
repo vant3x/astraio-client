@@ -1,5 +1,5 @@
 use crate::persistence::database::{self, Environment};
-use crate::protocols::websocket::{WsEvent, WsSender};
+use crate::protocols::websocket::{WsEvent, WsSender, WsStatus};
 use crate::ui::toast::ToastManager;
 use crate::ui::views::collection_view::{self, CollectionView};
 use crate::ui::views::environment_manager::{self, EnvironmentManagerView};
@@ -225,6 +225,7 @@ pub enum Message {
     ),
     OAuth2AutoPollToggle(usize, bool),
     ToggleResponseSearch,
+    WsSendFromKeyboard,
 }
 
 impl Clone for Message {
@@ -270,6 +271,7 @@ impl Clone for Message {
             Self::OAuth2DeviceTokenPoll(i, r) => Self::OAuth2DeviceTokenPoll(*i, r.clone()),
             Self::OAuth2AutoPollToggle(i, b) => Self::OAuth2AutoPollToggle(*i, *b),
             Self::ToggleResponseSearch => Self::ToggleResponseSearch,
+            Self::WsSendFromKeyboard => Self::WsSendFromKeyboard,
         }
     }
 }
@@ -546,6 +548,21 @@ impl AstraNovaApp {
                 }
                 Task::none()
             }
+            Message::WsSendFromKeyboard => {
+                if self.active_protocol == Protocol::WebSocket {
+                    let input = self.websocket_view.input.clone();
+                    if !input.is_empty() && matches!(self.websocket_view.status, WsStatus::Connected) {
+                        if let Some(sender) = &self.websocket_view.ws_sender {
+                            let _ = sender.send(&input);
+                            self.websocket_view.messages.push(
+                                crate::protocols::websocket::WsMessage::outgoing(input),
+                            );
+                            self.websocket_view.input.clear();
+                        }
+                    }
+                }
+                Task::none()
+            }
         }
     }
 
@@ -598,6 +615,9 @@ impl AstraNovaApp {
                         }
                         iced::keyboard::Key::Character(ref c) if c.as_ref() == "f" => {
                             Message::ToggleResponseSearch
+                        }
+                        iced::keyboard::Key::Named(iced::keyboard::key::Named::Enter) => {
+                            Message::WsSendFromKeyboard
                         }
                         _ => Message::NoOp,
                     }

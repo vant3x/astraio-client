@@ -153,6 +153,9 @@ pub enum Message {
     ResponseSearchChanged(String),
     SearchNext,
     SearchPrev,
+    DownloadResponse,
+    ResponseFileSaved(Result<String, String>),
+    ToggleImagePreview,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -208,6 +211,8 @@ pub struct HttpRequestView {
     pub response_search_query: String,
     pub response_search_matches: Vec<(usize, usize)>,
     pub response_search_index: usize,
+    pub show_image_preview: bool,
+    pub image_preview_handle: Option<Handle>,
 }
 
 impl Clone for HttpRequestView {
@@ -246,6 +251,8 @@ impl Clone for HttpRequestView {
             response_search_query: self.response_search_query.clone(),
             response_search_matches: self.response_search_matches.clone(),
             response_search_index: self.response_search_index,
+            show_image_preview: self.show_image_preview,
+            image_preview_handle: self.image_preview_handle.clone(),
         }
     }
 }
@@ -289,6 +296,8 @@ impl Default for HttpRequestView {
             response_search_query: String::new(),
             response_search_matches: Vec::new(),
             response_search_index: 0,
+            show_image_preview: false,
+            image_preview_handle: None,
         }
     }
 }
@@ -388,6 +397,8 @@ impl HttpRequestView {
                 self.content_type = None;
                 self.response_duration = None;
                 self.response_size = None;
+                self.show_image_preview = false;
+                self.image_preview_handle = None;
             }
             Message::ResponseReceived(result) => match result {
                 Ok(response) => {
@@ -402,11 +413,24 @@ impl HttpRequestView {
                         .unwrap_or_else(|| "unknown".to_string());
                     self.content_type = Some(content_type.clone());
 
+                    let is_image = content_type.contains("image/");
                     let formatted_body = if content_type.contains("application/json") {
                         match serde_json::from_str::<serde_json::Value>(&response.body) {
                             Ok(json_value) => serde_json::to_string_pretty(&json_value)
                                 .unwrap_or_else(|_| response.body.clone()),
                             Err(_) => response.body.clone(),
+                        }
+                    } else if is_image && response.body_encoding == crate::http_client::response::BodyEncoding::Base64 {
+                        // Decode base64 image and create preview handle
+                        if let Ok(bytes) = base64::Engine::decode(
+                            &base64::engine::general_purpose::STANDARD,
+                            &response.body,
+                        ) {
+                            self.image_preview_handle = Some(iced::widget::image::Handle::from_bytes(bytes));
+                            self.show_image_preview = true;
+                            format!("[Image: {} bytes, base64 decoded for preview]", response.body.len())
+                        } else {
+                            response.body.clone()
                         }
                     } else {
                         response.body.clone()
@@ -635,6 +659,15 @@ impl HttpRequestView {
                         self.response_search_index - 1
                     };
                 }
+            }
+            Message::DownloadResponse => {
+                // Handled in app.rs to use async file dialog
+            }
+            Message::ResponseFileSaved(_result) => {
+                // Toast is handled in app.rs
+            }
+            Message::ToggleImagePreview => {
+                self.show_image_preview = !self.show_image_preview;
             }
         }
     }
