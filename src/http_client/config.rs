@@ -13,6 +13,10 @@ pub struct RequestConfig {
     pub retry: RetryConfig,
     pub proxy_url: Option<String>,
     pub verify_ssl: bool,
+    #[serde(default)]
+    pub proxy: Option<ProxyConfig>,
+    #[serde(default)]
+    pub tls: TlsConfig,
 }
 
 impl Default for RequestConfig {
@@ -24,6 +28,8 @@ impl Default for RequestConfig {
             retry: RetryConfig::default(),
             proxy_url: None,
             verify_ssl: true,
+            proxy: None,
+            tls: TlsConfig::default(),
         }
     }
 }
@@ -61,22 +67,29 @@ pub enum RedirectPolicy {
     Limited(u32),
 }
 
-impl RedirectPolicy {
-    #[allow(dead_code)]
-    pub const ALL: [RedirectPolicy; 3] = [
-        RedirectPolicy::Follow,
-        RedirectPolicy::NoFollow,
-        RedirectPolicy::Limited(DEFAULT_MAX_REDIRECTS),
-    ];
+impl fmt::Display for RedirectPolicy {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            RedirectPolicy::Follow => write!(f, "Follow"),
+            RedirectPolicy::NoFollow => write!(f, "No Follow"),
+            RedirectPolicy::Limited(n) => write!(f, "Limited ({})", n),
+        }
+    }
 }
 
-#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ProxyConfig {
     pub url: String,
-    pub auth: Option<(String, String)>,
+    pub auth: Option<ProxyAuth>,
 }
 
-#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ProxyAuth {
+    pub username: String,
+    pub password: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TlsConfig {
     pub ca_cert_path: Option<String>,
     pub client_cert_path: Option<String>,
@@ -84,7 +97,6 @@ pub struct TlsConfig {
     pub verify_ssl: bool,
 }
 
-#[allow(dead_code)]
 impl Default for TlsConfig {
     fn default() -> Self {
         Self {
@@ -92,16 +104,6 @@ impl Default for TlsConfig {
             client_cert_path: None,
             client_key_path: None,
             verify_ssl: true,
-        }
-    }
-}
-
-impl fmt::Display for RedirectPolicy {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            RedirectPolicy::Follow => write!(f, "Follow"),
-            RedirectPolicy::NoFollow => write!(f, "No Follow"),
-            RedirectPolicy::Limited(n) => write!(f, "Limited ({})", n),
         }
     }
 }
@@ -135,6 +137,33 @@ mod tests {
         assert_eq!(config.retry.max_retries, 0);
         assert!(config.verify_ssl);
         assert!(config.proxy_url.is_none());
+        assert!(config.proxy.is_none());
+        assert_eq!(config.tls, TlsConfig::default());
+    }
+
+    #[test]
+    fn proxy_config_stores_credentials() {
+        let config = ProxyConfig {
+            url: "http://proxy:8080".to_string(),
+            auth: Some(ProxyAuth {
+                username: "user".to_string(),
+                password: "pass".to_string(),
+            }),
+        };
+        assert_eq!(config.url, "http://proxy:8080");
+        assert!(config.auth.is_some());
+        let auth = config.auth.unwrap();
+        assert_eq!(auth.username, "user");
+        assert_eq!(auth.password, "pass");
+    }
+
+    #[test]
+    fn tls_config_default() {
+        let config = TlsConfig::default();
+        assert!(config.ca_cert_path.is_none());
+        assert!(config.client_cert_path.is_none());
+        assert!(config.client_key_path.is_none());
+        assert!(config.verify_ssl);
     }
 
     #[test]
@@ -145,31 +174,7 @@ mod tests {
     }
 
     #[test]
-    fn redirect_policy_all_has_3_variants() {
-        assert_eq!(RedirectPolicy::ALL.len(), 3);
-    }
-
-    #[test]
     fn redirect_policy_default_is_follow() {
         assert_eq!(RedirectPolicy::default(), RedirectPolicy::Follow);
-    }
-
-    #[test]
-    fn default_tls_config() {
-        let config = TlsConfig::default();
-        assert!(config.ca_cert_path.is_none());
-        assert!(config.client_cert_path.is_none());
-        assert!(config.client_key_path.is_none());
-        assert!(config.verify_ssl);
-    }
-
-    #[test]
-    fn proxy_config_stores_credentials() {
-        let config = ProxyConfig {
-            url: "http://proxy:8080".to_string(),
-            auth: Some(("user".to_string(), "pass".to_string())),
-        };
-        assert_eq!(config.url, "http://proxy:8080");
-        assert!(config.auth.is_some());
     }
 }

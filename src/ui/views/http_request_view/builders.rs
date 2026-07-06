@@ -1,5 +1,6 @@
 use super::{BodyType, ContentType, HttpRequestView, MultipartEntry};
 use crate::data::auth::Auth;
+use crate::error::AppError;
 use crate::http_client::request::{MultipartField, MultipartValue};
 use crate::persistence::database::Environment;
 use iced::widget::text_editor;
@@ -74,7 +75,7 @@ impl HttpRequestView {
         }
     }
 
-    pub fn build_request(&self) -> crate::http_client::request::HttpRequest {
+    pub fn build_request(&self) -> Result<crate::http_client::request::HttpRequest, AppError> {
         let params: Vec<(String, String)> = self
             .params_editor
             .entries
@@ -187,14 +188,17 @@ impl HttpRequestView {
             vec![]
         };
 
-        crate::http_client::request::HttpRequest {
-            method: self.method.parse().unwrap(),
+        Ok(crate::http_client::request::HttpRequest {
+            method: self
+                .method
+                .parse()
+                .map_err(|_| AppError::Parse(format!("Invalid HTTP method: {}", self.method)))?,
             url: final_url,
             headers,
             body,
             config: self.request_config.clone(),
             multipart_fields,
             auth: Some(self.auth.clone()),
-        }
+        })
     }
 }

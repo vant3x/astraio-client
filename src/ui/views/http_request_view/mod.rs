@@ -133,7 +133,12 @@ pub enum Message {
     RetryCountChanged(String),
     RetryBackoffChanged(String),
     ProxyUrlChanged(String),
+    ProxyAuthUsernameChanged(String),
+    ProxyAuthPasswordChanged(String),
     VerifySslToggled(bool),
+    CaCertPathChanged(String),
+    ClientCertPathChanged(String),
+    ClientKeyPathChanged(String),
     ThemeSelected(highlighter::Theme),
     ShowSnippets,
     HideSnippets,
@@ -535,10 +540,65 @@ impl HttpRequestView {
                 }
             }
             Message::ProxyUrlChanged(url) => {
-                self.request_config.proxy_url = if url.is_empty() { None } else { Some(url) };
+                if url.is_empty() {
+                    self.request_config.proxy_url = None;
+                } else {
+                    self.request_config.proxy_url = Some(url);
+                }
+            }
+            Message::ProxyAuthUsernameChanged(username) => {
+                let url = self
+                    .request_config
+                    .proxy_url
+                    .clone()
+                    .or_else(|| self.request_config.proxy.as_ref().map(|p| p.url.clone()))
+                    .unwrap_or_default();
+                let password = self
+                    .request_config
+                    .proxy
+                    .as_ref()
+                    .and_then(|p| p.auth.as_ref())
+                    .map(|a| a.password.clone())
+                    .unwrap_or_default();
+                self.request_config.proxy = Some(crate::http_client::config::ProxyConfig {
+                    url,
+                    auth: Some(crate::http_client::config::ProxyAuth { username, password }),
+                });
+            }
+            Message::ProxyAuthPasswordChanged(password) => {
+                let url = self
+                    .request_config
+                    .proxy_url
+                    .clone()
+                    .or_else(|| self.request_config.proxy.as_ref().map(|p| p.url.clone()))
+                    .unwrap_or_default();
+                let username = self
+                    .request_config
+                    .proxy
+                    .as_ref()
+                    .and_then(|p| p.auth.as_ref())
+                    .map(|a| a.username.clone())
+                    .unwrap_or_default();
+                self.request_config.proxy = Some(crate::http_client::config::ProxyConfig {
+                    url,
+                    auth: Some(crate::http_client::config::ProxyAuth { username, password }),
+                });
             }
             Message::VerifySslToggled(verify) => {
                 self.request_config.verify_ssl = verify;
+                self.request_config.tls.verify_ssl = verify;
+            }
+            Message::CaCertPathChanged(path) => {
+                self.request_config.tls.ca_cert_path =
+                    if path.is_empty() { None } else { Some(path) };
+            }
+            Message::ClientCertPathChanged(path) => {
+                self.request_config.tls.client_cert_path =
+                    if path.is_empty() { None } else { Some(path) };
+            }
+            Message::ClientKeyPathChanged(path) => {
+                self.request_config.tls.client_key_path =
+                    if path.is_empty() { None } else { Some(path) };
             }
             Message::ThemeSelected(theme) => {
                 self.highlighter_theme = theme;
@@ -578,18 +638,22 @@ impl HttpRequestView {
             }
             Message::ShowSnippets => {
                 self.show_snippets = true;
-                let request = self.build_request();
-                let code = crate::http_client::snippets::generate(&request, self.snippet_format);
-                self.snippet_content = text_editor::Content::with_text(&code);
+                if let Ok(request) = self.build_request() {
+                    let code =
+                        crate::http_client::snippets::generate(&request, self.snippet_format);
+                    self.snippet_content = text_editor::Content::with_text(&code);
+                }
             }
             Message::HideSnippets => {
                 self.show_snippets = false;
             }
             Message::SnippetFormatSelected(format) => {
                 self.snippet_format = format;
-                let request = self.build_request();
-                let code = crate::http_client::snippets::generate(&request, self.snippet_format);
-                self.snippet_content = text_editor::Content::with_text(&code);
+                if let Ok(request) = self.build_request() {
+                    let code =
+                        crate::http_client::snippets::generate(&request, self.snippet_format);
+                    self.snippet_content = text_editor::Content::with_text(&code);
+                }
             }
             Message::CopySnippet => {
                 let text = self.snippet_content.text();

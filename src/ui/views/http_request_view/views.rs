@@ -909,6 +909,21 @@ impl HttpRequestView {
             .on_input(Message::ProxyUrlChanged)
             .padding(10);
 
+        let proxy_auth = self
+            .request_config
+            .proxy
+            .as_ref()
+            .and_then(|p| p.auth.as_ref());
+        let proxy_username = proxy_auth.map(|a| a.username.as_str()).unwrap_or("");
+        let proxy_password = proxy_auth.map(|a| a.password.as_str()).unwrap_or("");
+
+        let proxy_username_input = iced::widget::text_input("Proxy Username", proxy_username)
+            .on_input(Message::ProxyAuthUsernameChanged)
+            .padding(10);
+        let proxy_password_input = iced::widget::text_input("Proxy Password", proxy_password)
+            .on_input(Message::ProxyAuthPasswordChanged)
+            .padding(10);
+
         let verify_ssl = self.request_config.verify_ssl;
         let ssl_toggle = button(if verify_ssl {
             "Verify SSL: ON"
@@ -916,6 +931,37 @@ impl HttpRequestView {
             "Verify SSL: OFF (insecure)"
         })
         .on_press(Message::VerifySslToggled(!verify_ssl));
+
+        let ca_cert = self
+            .request_config
+            .tls
+            .ca_cert_path
+            .as_deref()
+            .unwrap_or("");
+        let ca_cert_input = iced::widget::text_input("CA Certificate Path (optional)", ca_cert)
+            .on_input(Message::CaCertPathChanged)
+            .padding(10);
+
+        let client_cert = self
+            .request_config
+            .tls
+            .client_cert_path
+            .as_deref()
+            .unwrap_or("");
+        let client_cert_input =
+            iced::widget::text_input("Client Certificate Path (mTLS)", client_cert)
+                .on_input(Message::ClientCertPathChanged)
+                .padding(10);
+
+        let client_key = self
+            .request_config
+            .tls
+            .client_key_path
+            .as_deref()
+            .unwrap_or("");
+        let client_key_input = iced::widget::text_input("Client Key Path (mTLS)", client_key)
+            .on_input(Message::ClientKeyPathChanged)
+            .padding(10);
 
         let theme_selector = pick_list(
             iced::highlighter::Theme::ALL,
@@ -945,7 +991,15 @@ impl HttpRequestView {
                 rule::horizontal(10),
                 text("Network").size(16),
                 proxy_input,
+                row![proxy_username_input, proxy_password_input]
+                    .spacing(10)
+                    .width(Length::Fill),
                 ssl_toggle,
+                rule::horizontal(10),
+                text("TLS / mTLS").size(16),
+                ca_cert_input,
+                client_cert_input,
+                client_key_input,
                 rule::horizontal(10),
                 text("Appearance").size(16),
                 row![text("Highlight Theme:"), theme_selector]

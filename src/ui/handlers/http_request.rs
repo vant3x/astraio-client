@@ -20,7 +20,14 @@ pub fn handle_http_request_msg(
             if let Some(env) = &app.active_environment {
                 temp_view.apply_environment(env);
             }
-            let request = temp_view.build_request();
+            let request = match temp_view.build_request() {
+                Ok(r) => r,
+                Err(e) => {
+                    app.toast_manager
+                        .error(format!("Failed to build request: {}", e));
+                    return Task::none();
+                }
+            };
             view.pending_request_data = serde_json::to_string(&request).ok();
             view.update(http_request_view::Message::SetLoading);
 
@@ -60,7 +67,9 @@ pub fn handle_http_request_msg(
             )
         }
         http_request_view::Message::ResponseReceived(ref result) => {
-            let view = app.request_tabs.get_mut(index).unwrap();
+            let Some(view) = app.request_tabs.get_mut(index) else {
+                return Task::none();
+            };
             match result {
                 Ok(response) => {
                     let request_data = view.pending_request_data.take();

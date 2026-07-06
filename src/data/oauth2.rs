@@ -3,6 +3,8 @@ use base64::{engine::general_purpose, Engine as _};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::net::TcpListener;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct OAuth2TokenResponse {
@@ -102,7 +104,6 @@ pub fn build_authorization_url(
     url
 }
 
-#[allow(dead_code)]
 pub async fn exchange_code(
     token_url: &str,
     code: &str,
@@ -267,6 +268,121 @@ pub fn generate_state() -> String {
             format!("{:x}", idx)
         })
         .collect()
+}
+
+pub struct LocalAuthCallback {
+    pub redirect_uri: String,
+    handle: tokio::task::JoinHandle<Option<(String, String)>>,
+}
+
+impl LocalAuthCallback {
+    pub async fn start() -> Result<Self, AppError> {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .map_err(|e| AppError::OAuth2(format!("Failed to bind local server: {}", e)))?;
+        let port = listener
+            .local_addr()
+            .map_err(|e| AppError::OAuth2(format!("Failed to get local server address: {}", e)))?
+            .port();
+        let redirect_uri = format!("http://127.0.0.1:{}/callback", port);
+
+        let handle = tokio::spawn(async move { Self::wait_for_callback(listener).await });
+
+        Ok(Self {
+            redirect_uri,
+            handle,
+        })
+    }
+
+    pub async fn wait_for_code(self, timeout_secs: u64) -> Result<(String, String), AppError> {
+        match tokio::time::timeout(std::time::Duration::from_secs(timeout_secs), self.handle).await
+        {
+            Ok(Ok(Some((code, state)))) => Ok((code, state)),
+            Ok(Ok(None)) => Err(AppError::OAuth2(
+                "No authorization code received".to_string(),
+            )),
+            Ok(Err(e)) => Err(AppError::OAuth2(format!("Local server error: {}", e))),
+            Err(_) => Err(AppError::OAuth2(format!(
+                "Authorization timed out after {} seconds",
+                timeout_secs
+            ))),
+        }
+    }
+
+    async fn wait_for_callback(listener: TcpListener) -> Option<(String, String)> {
+        loop {
+            let (stream, _) = match listener.accept().await {
+                Ok(s) => s,
+                Err(_) => return None,
+            };
+
+            let result = Self::handle_connection(stream).await;
+            if let Some((code, state)) = result {
+                return Some((code, state));
+            }
+        }
+    }
+
+    async fn handle_connection(stream: tokio::net::TcpStream) -> Option<(String, String)> {
+        let (reader, mut writer) = stream.into_split();
+        let mut reader = BufReader::new(reader);
+        let mut request_line = String::new();
+
+        if reader.read_line(&mut request_line).await.is_err() {
+            return None;
+        }
+
+        let path = request_line.split_whitespace().nth(1)?;
+
+        if !path.starts_with("/callback") {
+            let response = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n";
+            let _ = writer.write_all(response.as_bytes()).await;
+            return None;
+        }
+
+        let query = path.split('?').nth(1).unwrap_or("");
+        let params: std::collections::HashMap<String, String> = query
+            .split('&')
+            .filter_map(|pair| {
+                let mut parts = pair.splitn(2, '=');
+                let key = parts.next()?.to_string();
+                let value = parts.next().unwrap_or("").to_string();
+                Some((
+                    key,
+                    urlencoding::decode(&value).unwrap_or_default().to_string(),
+                ))
+            })
+            .collect();
+
+        let code = params.get("code")?.clone();
+        let state = params.get("state").cloned().unwrap_or_default();
+
+        let html = r#"<!DOCTYPE html>
+<html><head><title>AstraNova - Authorization Complete</title>
+<style>
+  body { font-family: -apple-system, sans-serif; display: flex; justify-content: center;
+         align-items: center; height: 100vh; margin: 0; background: #1a1a2e; color: #e0e0e0; }
+  .card { background: #16213e; padding: 3rem; border-radius: 12px; text-align: center;
+          box-shadow: 0 8px 32px rgba(0,0,0,0.3); }
+  h1 { color: #7c3aed; margin-bottom: 0.5rem; }
+  p { color: #a0a0a0; }
+  .check { font-size: 4rem; margin-bottom: 1rem; }
+</style></head>
+<body><div class="card">
+  <div class="check">&#10003;</div>
+  <h1>Authorization Complete</h1>
+  <p>You can close this tab and return to AstraNova.</p>
+</div></body></html>"#;
+
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            html.len(),
+            html
+        );
+        let _ = writer.write_all(response.as_bytes()).await;
+
+        Some((code, state))
+    }
 }
 
 pub async fn device_authorization(

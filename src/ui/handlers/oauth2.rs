@@ -13,29 +13,29 @@ pub fn handle_start_auth(app: &mut AstraNovaApp, index: usize) -> Task<Message> 
             };
 
             let state = crate::data::oauth2::generate_state();
-            let auth_url = crate::data::oauth2::build_authorization_url(
-                &config.auth_url,
-                &config.client_id,
-                &config.redirect_uri,
-                &config.scopes,
-                pkce.as_ref(),
-                &state,
-            );
+            let pkce_verifier = pkce.as_ref().map(|p| p.verifier.clone());
+            config.pkce_verifier = pkce_verifier.clone();
 
-            let verifier = pkce.map(|p| p.verifier);
-            config.pkce_verifier = verifier.clone();
+            let auth_url = config.auth_url.clone();
+            let client_id = config.client_id.clone();
+            let scopes = config.scopes.clone();
 
             return Task::perform(
                 async move {
-                    let _ = open::that(&auth_url);
+                    let server = crate::data::oauth2::LocalAuthCallback::start().await?;
+                    let url = crate::data::oauth2::build_authorization_url(
+                        &auth_url,
+                        &client_id,
+                        &server.redirect_uri,
+                        &scopes,
+                        pkce.as_ref(),
+                        &state,
+                    );
+                    let _ = open::that(&url);
+                    let (code, _state) = server.wait_for_code(120).await?;
+                    Ok::<_, AppError>(code)
                 },
-                move |_| {
-                    Message::OAuth2AuthComplete(
-                        index,
-                        Ok::<String, crate::error::AppError>(String::new()),
-                        verifier,
-                    )
-                },
+                move |result| Message::OAuth2AuthComplete(index, result, pkce_verifier),
             );
         }
     }
@@ -45,19 +45,47 @@ pub fn handle_start_auth(app: &mut AstraNovaApp, index: usize) -> Task<Message> 
 pub fn handle_auth_complete(
     app: &mut AstraNovaApp,
     index: usize,
-    _result: Result<String, AppError>,
+    result: Result<String, AppError>,
     pkce_verifier: Option<String>,
 ) -> Task<Message> {
-    if let Some(view) = app.request_tabs.get_mut(index) {
-        if let Auth::OAuth2(config) = &mut view.auth {
-            if let Some(ref v) = pkce_verifier {
-                config.pkce_verifier = Some(v.clone());
+    match result {
+        Ok(code) => {
+            if code.is_empty() {
+                app.toast_manager
+                    .warning("No authorization code received".to_string());
+                return Task::none();
             }
 
-            log::warn!(
-                "OAuth2 Authorization Code flow: authorization code not yet captured from redirect. \
-                 PKCE verifier stored. Implement redirect capture to complete the flow."
-            );
+            if let Some(view) = app.request_tabs.get(index) {
+                if let Auth::OAuth2(config) = &view.auth {
+                    let token_url = config.token_url.clone();
+                    let client_id = config.client_id.clone();
+                    let client_secret = config.client_secret.clone();
+                    let redirect_uri = config.redirect_uri.clone();
+                    let verifier = pkce_verifier.clone();
+                    let tab_index = index;
+
+                    return Task::perform(
+                        async move {
+                            crate::data::oauth2::exchange_code(
+                                &token_url,
+                                &code,
+                                &client_id,
+                                &client_secret,
+                                &redirect_uri,
+                                verifier.as_deref(),
+                            )
+                            .await
+                        },
+                        move |result| Message::OAuth2TokenReceived(tab_index, result),
+                    );
+                }
+            }
+            app.toast_manager.error("Tab not found".to_string());
+        }
+        Err(e) => {
+            app.toast_manager
+                .error(format!("Authorization failed: {}", e));
         }
     }
     Task::none()
@@ -76,10 +104,18 @@ pub fn handle_token_received(
                     if let Some(refresh) = token_response.refresh_token {
                         config.refresh_token = refresh;
                     }
-                    log::info!("OAuth2 token received successfully");
+                    if let Some(expiry) = token_response.expires_in {
+                        let expiry_time =
+                            chrono::Utc::now() + chrono::Duration::seconds(expiry as i64);
+                        config.token_expiry =
+                            Some(expiry_time.format("%Y-%m-%dT%H:%M:%SZ").to_string());
+                    }
+                    app.toast_manager
+                        .success("OAuth2 token received successfully".to_string());
                 }
                 Err(e) => {
-                    log::error!("OAuth2 token exchange failed: {}", e);
+                    app.toast_manager
+                        .error(format!("OAuth2 token exchange failed: {}", e));
                 }
             }
         }

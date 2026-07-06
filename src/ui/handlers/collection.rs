@@ -496,7 +496,10 @@ fn save_current_to_collection(app: &mut AstraNovaApp) {
             }
         };
 
-        let request = view.build_request();
+        let request = match view.build_request() {
+            Ok(r) => r,
+            Err(_) => return,
+        };
         let auth_type = match &view.auth {
             crate::data::auth::Auth::BearerToken(_) => {
                 crate::persistence::database::CollectionAuthType::Bearer

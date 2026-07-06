@@ -17,10 +17,15 @@ mod tests {
         }
     }
 
+    fn build(view: &HttpRequestView) -> crate::http_client::request::HttpRequest {
+        view.build_request()
+            .expect("build_request should succeed in tests")
+    }
+
     #[test]
     fn build_request_basic_get() {
         let view = make_view("https://example.com/api", "GET");
-        let req = view.build_request();
+        let req = build(&view);
         assert_eq!(req.method, crate::http_client::request::HttpMethod::Get);
         assert_eq!(req.url, "https://example.com/api");
         assert!(req.body.is_none());
@@ -41,7 +46,7 @@ mod tests {
                 value: "10".to_string(),
             },
         ];
-        let req = view.build_request();
+        let req = build(&view);
         assert!(req.url.contains("page=1"));
         assert!(req.url.contains("limit=10"));
         assert!(req.url.contains('?'));
@@ -56,7 +61,7 @@ mod tests {
             key: "new".to_string(),
             value: "val".to_string(),
         }];
-        let req = view.build_request();
+        let req = build(&view);
         assert!(req.url.contains("existing=true"));
         assert!(req.url.contains("new=val"));
         if let Some(query_start) = req.url.find('?') {
@@ -82,7 +87,7 @@ mod tests {
                 value: "yes".to_string(),
             },
         ];
-        let req = view.build_request();
+        let req = build(&view);
         assert!(!req.url.contains("val"));
         assert!(req.url.contains("good=yes"));
     }
@@ -95,7 +100,7 @@ mod tests {
             key: "Accept".to_string(),
             value: "text/html".to_string(),
         }];
-        let req = view.build_request();
+        let req = build(&view);
         assert!(req
             .headers
             .iter()
@@ -110,7 +115,7 @@ mod tests {
             key: String::new(),
             value: "val".to_string(),
         }];
-        let req = view.build_request();
+        let req = build(&view);
         assert!(!req.headers.iter().any(|(k, _)| k.is_empty()));
     }
 
@@ -118,7 +123,7 @@ mod tests {
     fn build_request_bearer_auth() {
         let mut view = make_view("https://example.com", "GET");
         view.auth = Auth::BearerToken("my-secret-token".to_string());
-        let req = view.build_request();
+        let req = build(&view);
         assert!(req
             .headers
             .iter()
@@ -129,7 +134,7 @@ mod tests {
     fn build_request_bearer_empty_token_ignored() {
         let mut view = make_view("https://example.com", "GET");
         view.auth = Auth::BearerToken(String::new());
-        let req = view.build_request();
+        let req = build(&view);
         assert!(!req.headers.iter().any(|(k, _)| k == "Authorization"));
     }
 
@@ -140,7 +145,7 @@ mod tests {
             user: "admin".to_string(),
             pass: "secret123".to_string(),
         };
-        let req = view.build_request();
+        let req = build(&view);
         let auth_header = req.headers.iter().find(|(k, _)| k == "Authorization");
         if let Some((_, value)) = auth_header {
             assert!(value.starts_with("Basic "));
@@ -162,7 +167,7 @@ mod tests {
             user: String::new(),
             pass: String::new(),
         };
-        let req = view.build_request();
+        let req = build(&view);
         assert!(!req.headers.iter().any(|(k, _)| k == "Authorization"));
     }
 
@@ -171,7 +176,7 @@ mod tests {
         let mut view = make_view("https://example.com", "POST");
         view.body_input = text_editor::Content::with_text(r#"{"key": "value"}"#);
         view.request_content_type = ContentType::Json;
-        let req = view.build_request();
+        let req = build(&view);
         assert!(req.body.is_some());
         assert!(req
             .headers
@@ -182,7 +187,7 @@ mod tests {
     #[test]
     fn build_request_no_body_no_content_type() {
         let view = make_view("https://example.com", "GET");
-        let req = view.build_request();
+        let req = build(&view);
         assert_eq!(req.method, crate::http_client::request::HttpMethod::Get);
         assert_eq!(req.url, "https://example.com");
     }
@@ -199,7 +204,7 @@ mod tests {
             let mut view = make_view("https://example.com", "POST");
             view.body_input = text_editor::Content::with_text("data");
             view.request_content_type = ct;
-            let req = view.build_request();
+            let req = build(&view);
             assert!(
                 req.headers
                     .iter()
@@ -368,7 +373,7 @@ mod tests {
                 is_file: false,
             },
         ];
-        let req = view.build_request();
+        let req = build(&view);
         assert_eq!(req.multipart_fields.len(), 2);
         assert!(!req.headers.iter().any(|(k, _)| k == "Content-Type"));
     }
@@ -383,7 +388,7 @@ mod tests {
             value: "/tmp/test.pdf".to_string(),
             is_file: true,
         }];
-        let req = view.build_request();
+        let req = build(&view);
         assert_eq!(req.multipart_fields.len(), 1);
         match &req.multipart_fields[0].value {
             crate::http_client::request::MultipartValue::File { path, .. } => {
@@ -411,7 +416,7 @@ mod tests {
                 is_file: false,
             },
         ];
-        let req = view.build_request();
+        let req = build(&view);
         assert_eq!(req.multipart_fields.len(), 1);
         assert_eq!(req.multipart_fields[0].name, "good");
     }
@@ -426,7 +431,7 @@ mod tests {
             value: "val".to_string(),
             is_file: false,
         }];
-        let req = view.build_request();
+        let req = build(&view);
         assert!(req.multipart_fields.is_empty());
     }
 
@@ -438,7 +443,7 @@ mod tests {
             value: "secret123".to_string(),
             location: crate::data::auth::ApiKeyLocation::Header,
         };
-        let req = view.build_request();
+        let req = build(&view);
         assert!(req
             .headers
             .iter()
@@ -453,7 +458,7 @@ mod tests {
             value: "secret123".to_string(),
             location: crate::data::auth::ApiKeyLocation::Query,
         };
-        let req = view.build_request();
+        let req = build(&view);
         assert!(req.url.contains("api_key=secret123"));
         assert!(!req.headers.iter().any(|(k, _)| k == "api_key"));
     }
@@ -466,7 +471,7 @@ mod tests {
             value: "secret123".to_string(),
             location: crate::data::auth::ApiKeyLocation::Query,
         };
-        let req = view.build_request();
+        let req = build(&view);
         assert!(req.url.contains("page=1"));
         assert!(req.url.contains("api_key=secret123"));
     }
@@ -479,7 +484,7 @@ mod tests {
             value: "secret123".to_string(),
             location: crate::data::auth::ApiKeyLocation::Header,
         };
-        let req = view.build_request();
+        let req = build(&view);
         assert!(!req
             .headers
             .iter()
@@ -490,7 +495,7 @@ mod tests {
     fn build_request_sets_auth_field() {
         let mut view = make_view("https://example.com", "GET");
         view.auth = Auth::BearerToken("token".to_string());
-        let req = view.build_request();
+        let req = build(&view);
         assert!(req.auth.is_some());
         assert_eq!(
             req.auth.as_ref().unwrap(),
@@ -506,7 +511,7 @@ mod tests {
             ..Default::default()
         };
         view.auth = Auth::OAuth2(Box::new(config));
-        let req = view.build_request();
+        let req = build(&view);
         assert!(req
             .headers
             .iter()

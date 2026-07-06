@@ -47,13 +47,66 @@ async fn read_response_body(
 pub fn build_client(config: &RequestConfig) -> Result<reqwest::Client, AppError> {
     let mut builder = reqwest::Client::builder();
 
-    if let Some(proxy_url) = &config.proxy_url {
+    // Proxy: prefer ProxyConfig (with auth) over flat proxy_url
+    if let Some(proxy_config) = &config.proxy {
+        let proxy = if let Some(auth) = &proxy_config.auth {
+            let proxy_url = proxy_config.url.clone();
+            let username = auth.username.clone();
+            let password = auth.password.clone();
+            reqwest::Proxy::custom(move |url| {
+                if url.host_str() == Some("localhost") || url.host_str() == Some("127.0.0.1") {
+                    None
+                } else {
+                    let auth_url = format!("http://{}:{}@{}", username, password, &proxy_url[7..]);
+                    reqwest::Url::parse(&auth_url)
+                        .or_else(|_| reqwest::Url::parse(&proxy_url))
+                        .ok()
+                }
+            })
+        } else {
+            reqwest::Proxy::all(&proxy_config.url)?
+        };
+        builder = builder.proxy(proxy);
+    } else if let Some(proxy_url) = &config.proxy_url {
         let proxy = reqwest::Proxy::all(proxy_url)?;
         builder = builder.proxy(proxy);
     }
 
-    if !config.verify_ssl {
+    // TLS configuration
+    let verify = config.tls.verify_ssl && config.verify_ssl;
+    if !verify {
         builder = builder.danger_accept_invalid_certs(true);
+    }
+
+    // CA certificate
+    if let Some(ca_path) = &config.tls.ca_cert_path {
+        let ca_cert = std::fs::read(ca_path)
+            .map_err(|e| AppError::Http(format!("Failed to read CA cert {}: {}", ca_path, e)))?;
+        let cert = reqwest::Certificate::from_pem(&ca_cert)
+            .map_err(|e| AppError::Http(format!("Invalid CA cert: {}", e)))?;
+        builder = builder.add_root_certificate(cert);
+    }
+
+    // Client certificate (mTLS)
+    if let Some(cert_path) = &config.tls.client_cert_path {
+        let key_path = config.tls.client_key_path.as_deref().ok_or_else(|| {
+            AppError::Http("Client cert provided but no client key path".to_string())
+        })?;
+
+        let cert_bytes = std::fs::read(cert_path).map_err(|e| {
+            AppError::Http(format!("Failed to read client cert {}: {}", cert_path, e))
+        })?;
+        let key_bytes = std::fs::read(key_path).map_err(|e| {
+            AppError::Http(format!("Failed to read client key {}: {}", key_path, e))
+        })?;
+
+        // Combine cert + key PEM into a single identity
+        let mut combined = cert_bytes;
+        combined.extend_from_slice(&key_bytes);
+
+        let identity = reqwest::Identity::from_pem(&combined)
+            .map_err(|e| AppError::Http(format!("Invalid client certificate/key: {}", e)))?;
+        builder = builder.identity(identity);
     }
 
     builder
