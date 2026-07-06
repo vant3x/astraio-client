@@ -1,18 +1,9 @@
 use crate::error::AppError;
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
-use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
-
-pub const WS_MAX_MESSAGES: usize = 1000;
-
-static WS_CONNECTION_COUNTER: AtomicU64 = AtomicU64::new(0);
-
-pub fn next_ws_connection_id() -> u64 {
-    WS_CONNECTION_COUNTER.fetch_add(1, Ordering::Relaxed)
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum WsMessageType {
@@ -78,18 +69,28 @@ impl WsMessage {
                     .split(' ')
                     .filter_map(|s| u8::from_str_radix(s, 16).ok())
                     .collect();
-                let hex_formatted: Vec<String> = bytes.iter().map(|b| format!("{:02X}", b)).collect();
-                let hex_display = hex_formatted.chunks(16)
+                let hex_formatted: Vec<String> =
+                    bytes.iter().map(|b| format!("{:02X}", b)).collect();
+                let hex_display = hex_formatted
+                    .chunks(16)
                     .map(|chunk| chunk.join(" "))
                     .collect::<Vec<_>>()
                     .join("\n");
                 let as_utf8 = String::from_utf8_lossy(&bytes);
-                let utf8_display = if bytes.iter().all(|b| b.is_ascii_graphic() || b.is_ascii_whitespace()) {
+                let utf8_display = if bytes
+                    .iter()
+                    .all(|b| b.is_ascii_graphic() || b.is_ascii_whitespace())
+                {
                     format!("\n\nUTF-8: {}", as_utf8)
                 } else {
                     String::new()
                 };
-                format!("Hex ({} bytes):\n{}{}", bytes.len(), hex_display, utf8_display)
+                format!(
+                    "Hex ({} bytes):\n{}{}",
+                    bytes.len(),
+                    hex_display,
+                    utf8_display
+                )
             }
             _ => self.data.clone(),
         }
@@ -259,7 +260,10 @@ pub fn parse_ws_message(msg: Message) -> Option<WsMessage> {
     match msg {
         Message::Text(text) => Some(WsMessage::incoming(WsMessageType::Text, text)),
         Message::Binary(data) => {
-            let hex = data.iter().map(|b| format!("{:02x}", b)).collect::<String>();
+            let hex = data
+                .iter()
+                .map(|b| format!("{:02x}", b))
+                .collect::<String>();
             let preview = if data.len() <= 32 {
                 hex.clone()
             } else {

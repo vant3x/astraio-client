@@ -1,5 +1,7 @@
 use crate::http_client::request::HttpRequest;
-use crate::persistence::database::{CollectionAuthType, CollectionBodyType, CollectionRequest, RequestHistoryEntry};
+use crate::persistence::database::{
+    CollectionAuthType, CollectionBodyType, CollectionRequest, RequestHistoryEntry,
+};
 use crate::ui::components::key_value_editor::KeyValueEntry;
 use crate::ui::views::http_request_view::{BodyType, HttpRequestView};
 
@@ -22,9 +24,11 @@ pub fn build_view_from_history(entry: &RequestHistoryEntry) -> Option<HttpReques
 }
 
 pub fn build_view_from_collection_request(req: &CollectionRequest) -> HttpRequestView {
-    let mut view = HttpRequestView::default();
-    view.url_input = req.url.clone();
-    view.method = req.method.clone();
+    let mut view = HttpRequestView {
+        url_input: req.url.clone(),
+        method: req.method.clone(),
+        ..Default::default()
+    };
 
     if let Some(body) = &req.body {
         view.body_input = iced::widget::text_editor::Content::with_text(body);
@@ -438,8 +442,8 @@ mod tests {
 
     #[test]
     fn build_view_from_collection_request_restores_config() {
-    use crate::http_client::config::RequestConfig;
-    use crate::persistence::database::{CollectionAuthType, CollectionBodyType};
+        use crate::http_client::config::RequestConfig;
+        use crate::persistence::database::{CollectionAuthType, CollectionBodyType};
 
         let req = CollectionRequest {
             id: 1,

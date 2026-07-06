@@ -83,29 +83,23 @@ impl Recipe for DevicePollRecipe {
         let token_url = self.token_url;
         let interval = std::time::Duration::from_secs(self.interval_secs.max(5));
 
-        futures::stream::unfold(
-            (),
-            move |()| {
-                let device_code = device_code.clone();
-                let client_id = client_id.clone();
-                let client_secret = client_secret.clone();
-                let token_url = token_url.clone();
-                async move {
-                    tokio::time::sleep(interval).await;
-                    let result = crate::data::oauth2::poll_device_token(
-                        &token_url,
-                        &device_code,
-                        &client_id,
-                        &client_secret,
-                    )
-                    .await;
-                    Some((
-                        Message::OAuth2DeviceTokenPoll(tab_index, result),
-                        (),
-                    ))
-                }
-            },
-        )
+        futures::stream::unfold((), move |()| {
+            let device_code = device_code.clone();
+            let client_id = client_id.clone();
+            let client_secret = client_secret.clone();
+            let token_url = token_url.clone();
+            async move {
+                tokio::time::sleep(interval).await;
+                let result = crate::data::oauth2::poll_device_token(
+                    &token_url,
+                    &device_code,
+                    &client_id,
+                    &client_secret,
+                )
+                .await;
+                Some((Message::OAuth2DeviceTokenPoll(tab_index, result), ()))
+            }
+        })
         .boxed()
     }
 }
@@ -208,7 +202,11 @@ pub enum Message {
     ),
     SelectProtocol(Protocol),
     OAuth2StartAuth(usize),
-    OAuth2AuthComplete(usize, Result<String, crate::error::AppError>, Option<String>),
+    OAuth2AuthComplete(
+        usize,
+        Result<String, crate::error::AppError>,
+        Option<String>,
+    ),
     OAuth2TokenReceived(
         usize,
         Result<crate::data::oauth2::OAuth2TokenResponse, crate::error::AppError>,
@@ -551,12 +549,14 @@ impl AstraNovaApp {
             Message::WsSendFromKeyboard => {
                 if self.active_protocol == Protocol::WebSocket {
                     let input = self.websocket_view.input.clone();
-                    if !input.is_empty() && matches!(self.websocket_view.status, WsStatus::Connected) {
+                    if !input.is_empty()
+                        && matches!(self.websocket_view.status, WsStatus::Connected)
+                    {
                         if let Some(sender) = &self.websocket_view.ws_sender {
                             let _ = sender.send(&input);
-                            self.websocket_view.messages.push(
-                                crate::protocols::websocket::WsMessage::outgoing(input),
-                            );
+                            self.websocket_view
+                                .messages
+                                .push(crate::protocols::websocket::WsMessage::outgoing(input));
                             self.websocket_view.input.clear();
                         }
                     }
@@ -668,8 +668,7 @@ impl AstraNovaApp {
     }
 
     fn create_toolbar(&self) -> (Element<'_, Message>, Element<'_, Message>) {
-        let add_tab_button =
-            button(lucide::plus().size(16)).on_press(Message::AddRequestTab);
+        let add_tab_button = button(lucide::plus().size(16)).on_press(Message::AddRequestTab);
         let close_tab_button = if self.request_tabs.len() > 1 {
             button(lucide::x().size(16))
                 .on_press(Message::CloseRequestTab(self.active_request_tab_index))
@@ -677,9 +676,8 @@ impl AstraNovaApp {
             button(lucide::x().size(16))
         };
 
-        let history_button =
-            button(row![lucide::history().size(14), text(" History")].spacing(4))
-                .on_press(Message::ToggleHistory);
+        let history_button = button(row![lucide::history().size(14), text(" History")].spacing(4))
+            .on_press(Message::ToggleHistory);
 
         let collections_button =
             button(row![lucide::folder().size(14), text(" Collections")].spacing(4))
@@ -712,10 +710,8 @@ impl AstraNovaApp {
             theme_button,
             protocol_selector,
             env_selector,
-            button(
-                row![lucide::settings().size(14), text(" Manage Environments")].spacing(4)
-            )
-            .on_press(Message::SwitchView(View::EnvironmentManager))
+            button(row![lucide::settings().size(14), text(" Manage Environments")].spacing(4))
+                .on_press(Message::SwitchView(View::EnvironmentManager))
         ]
         .spacing(10);
 
@@ -736,31 +732,31 @@ impl AstraNovaApp {
             .padding(10)
             .align_y(Alignment::Center);
 
-        let env_help_section: Element<Message> =
-            if let Some(active_env) = &self.active_environment {
-                if self.show_env_info {
-                    let variables_text = if active_env.variables.is_empty() {
-                        "This environment has no variables.".to_string()
-                    } else {
-                        let keys: Vec<_> = active_env
-                            .variables
-                            .iter()
-                            .map(|(k, _)| k.as_str())
-                            .collect();
-                        format!("Available: {}", keys.join(", "))
-                    };
-                    column![
-                        text("Use {{variable}} in URL, Headers, or Body.").size(12),
-                        text(variables_text).size(12)
-                    ]
-                    .spacing(5)
-                    .into()
+        let env_help_section: Element<Message> = if let Some(active_env) = &self.active_environment
+        {
+            if self.show_env_info {
+                let variables_text = if active_env.variables.is_empty() {
+                    "This environment has no variables.".to_string()
                 } else {
-                    column![].into()
-                }
+                    let keys: Vec<_> = active_env
+                        .variables
+                        .iter()
+                        .map(|(k, _)| k.as_str())
+                        .collect();
+                    format!("Available: {}", keys.join(", "))
+                };
+                column![
+                    text("Use {{variable}} in URL, Headers, or Body.").size(12),
+                    text(variables_text).size(12)
+                ]
+                .spacing(5)
+                .into()
             } else {
                 column![].into()
-            };
+            }
+        } else {
+            column![].into()
+        };
 
         (toolbar.into(), env_help_section)
     }
@@ -801,11 +797,7 @@ impl AstraNovaApp {
 
                 let main_content = match self.active_protocol {
                     Protocol::Http => {
-                        column![
-                            toolbar,
-                            env_help_section,
-                            tabs_widget,
-                        ]
+                        column![toolbar, env_help_section, tabs_widget,]
                     }
                     Protocol::WebSocket => {
                         column![

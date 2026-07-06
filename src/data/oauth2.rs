@@ -1,5 +1,5 @@
-use base64::{engine::general_purpose, Engine as _};
 use crate::error::AppError;
+use base64::{engine::general_purpose, Engine as _};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -141,7 +141,8 @@ pub async fn exchange_code(
         .map_err(|e| AppError::OAuth2(format!("Failed to read response body: {}", e)))?;
 
     if status.is_success() {
-        serde_json::from_str(&body).map_err(|e| AppError::OAuth2(format!("Failed to parse token response: {}", e)))
+        serde_json::from_str(&body)
+            .map_err(|e| AppError::OAuth2(format!("Failed to parse token response: {}", e)))
     } else {
         let error: OAuth2ErrorResponse =
             serde_json::from_str(&body).unwrap_or_else(|_| OAuth2ErrorResponse {
@@ -183,7 +184,9 @@ pub async fn client_credentials(
         .form(&params)
         .send()
         .await
-        .map_err(|e| AppError::OAuth2(format!("Failed to send client credentials request: {}", e)))?;
+        .map_err(|e| {
+            AppError::OAuth2(format!("Failed to send client credentials request: {}", e))
+        })?;
 
     let status = response.status();
     let body = response
@@ -192,7 +195,8 @@ pub async fn client_credentials(
         .map_err(|e| AppError::OAuth2(format!("Failed to read response body: {}", e)))?;
 
     if status.is_success() {
-        serde_json::from_str(&body).map_err(|e| AppError::OAuth2(format!("Failed to parse token response: {}", e)))
+        serde_json::from_str(&body)
+            .map_err(|e| AppError::OAuth2(format!("Failed to parse token response: {}", e)))
     } else {
         let error: OAuth2ErrorResponse =
             serde_json::from_str(&body).unwrap_or_else(|_| OAuth2ErrorResponse {
@@ -238,7 +242,8 @@ pub async fn refresh_token(
         .map_err(|e| AppError::OAuth2(format!("Failed to read response body: {}", e)))?;
 
     if status.is_success() {
-        serde_json::from_str(&body).map_err(|e| AppError::OAuth2(format!("Failed to parse token response: {}", e)))
+        serde_json::from_str(&body)
+            .map_err(|e| AppError::OAuth2(format!("Failed to parse token response: {}", e)))
     } else {
         let error: OAuth2ErrorResponse =
             serde_json::from_str(&body).unwrap_or_else(|_| OAuth2ErrorResponse {
@@ -281,7 +286,12 @@ pub async fn device_authorization(
         .form(&params)
         .send()
         .await
-        .map_err(|e| AppError::OAuth2(format!("Failed to send device authorization request: {}", e)))?;
+        .map_err(|e| {
+            AppError::OAuth2(format!(
+                "Failed to send device authorization request: {}",
+                e
+            ))
+        })?;
 
     let status = response.status();
     let body = response
@@ -290,8 +300,12 @@ pub async fn device_authorization(
         .map_err(|e| AppError::OAuth2(format!("Failed to read response body: {}", e)))?;
 
     if status.is_success() {
-        serde_json::from_str(&body)
-            .map_err(|e| AppError::OAuth2(format!("Failed to parse device authorization response: {}", e)))
+        serde_json::from_str(&body).map_err(|e| {
+            AppError::OAuth2(format!(
+                "Failed to parse device authorization response: {}",
+                e
+            ))
+        })
     } else {
         let error: OAuth2ErrorResponse =
             serde_json::from_str(&body).unwrap_or_else(|_| OAuth2ErrorResponse {

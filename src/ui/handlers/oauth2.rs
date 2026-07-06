@@ -29,7 +29,13 @@ pub fn handle_start_auth(app: &mut AstraNovaApp, index: usize) -> Task<Message> 
                 async move {
                     let _ = open::that(&auth_url);
                 },
-                move |_| Message::OAuth2AuthComplete(index, Ok::<String, crate::error::AppError>(String::new()), verifier),
+                move |_| {
+                    Message::OAuth2AuthComplete(
+                        index,
+                        Ok::<String, crate::error::AppError>(String::new()),
+                        verifier,
+                    )
+                },
             );
         }
     }

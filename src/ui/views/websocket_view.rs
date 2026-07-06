@@ -283,21 +283,30 @@ impl WebSocketView {
         .spacing(8)
         .align_y(Alignment::Center);
 
-        let filtered_messages: Vec<_> = self.messages.iter().filter(|m| {
-            let matches_type = self.message_type_filter == MessageTypeFilter::All
-                || matches!(
-                    (&self.message_type_filter, &m.message_type),
-                    (MessageTypeFilter::Text, WsMessageType::Text)
-                        | (MessageTypeFilter::Binary, WsMessageType::Binary)
-                        | (MessageTypeFilter::Ping, WsMessageType::Ping)
-                        | (MessageTypeFilter::Pong, WsMessageType::Pong)
-                        | (MessageTypeFilter::Close, WsMessageType::Close)
-                );
-            let matches_search = self.search_query.is_empty()
-                || m.data.to_lowercase().contains(&self.search_query.to_lowercase())
-                || m.direction.to_lowercase().contains(&self.search_query.to_lowercase());
-            matches_type && matches_search
-        }).cloned().collect();
+        let filtered_messages: Vec<_> = self
+            .messages
+            .iter()
+            .filter(|m| {
+                let matches_type = self.message_type_filter == MessageTypeFilter::All
+                    || matches!(
+                        (&self.message_type_filter, &m.message_type),
+                        (MessageTypeFilter::Text, WsMessageType::Text)
+                            | (MessageTypeFilter::Binary, WsMessageType::Binary)
+                            | (MessageTypeFilter::Ping, WsMessageType::Ping)
+                            | (MessageTypeFilter::Pong, WsMessageType::Pong)
+                            | (MessageTypeFilter::Close, WsMessageType::Close)
+                    );
+                let matches_search = self.search_query.is_empty()
+                    || m.data
+                        .to_lowercase()
+                        .contains(&self.search_query.to_lowercase())
+                    || m.direction
+                        .to_lowercase()
+                        .contains(&self.search_query.to_lowercase());
+                matches_type && matches_search
+            })
+            .cloned()
+            .collect();
 
         let total_messages = self.messages.len();
         let filtered_count = filtered_messages.len();
@@ -343,7 +352,11 @@ impl WebSocketView {
 
             let timestamp = msg.timestamp.clone();
             let time_display = if timestamp.len() >= 10 {
-                format!("{}:{}", &timestamp[..timestamp.len()-4], &timestamp[timestamp.len()-2..])
+                format!(
+                    "{}:{}",
+                    &timestamp[..timestamp.len() - 4],
+                    &timestamp[timestamp.len() - 2..]
+                )
             } else {
                 timestamp.clone()
             };
@@ -353,26 +366,25 @@ impl WebSocketView {
                 column![
                     row![
                         text(dir_clone).size(13).color(dir_color),
-                        text(type_label)
-                            .size(10)
-                            .color(type_color),
+                        text(type_label).size(10).color(type_color),
                         text(truncated).size(13),
                     ]
                     .spacing(6),
-                    row![
-                        text(format!("  {} - {}", time_display, size_label))
-                            .size(10)
-                            .color(Color::from_rgb(0.4, 0.4, 0.4)),
-                    ],
+                    row![text(format!("  {} - {}", time_display, size_label))
+                        .size(10)
+                        .color(Color::from_rgb(0.4, 0.4, 0.4)),],
                 ]
                 .spacing(2),
             );
         }
 
         let message_stats = if total_messages != filtered_count {
-            text(format!("Showing {}/{} messages", filtered_count, total_messages))
-                .size(11)
-                .color(Color::from_rgb(0.5, 0.5, 0.5))
+            text(format!(
+                "Showing {}/{} messages",
+                filtered_count, total_messages
+            ))
+            .size(11)
+            .color(Color::from_rgb(0.5, 0.5, 0.5))
         } else if total_messages > 0 {
             text(format!("{} messages", total_messages))
                 .size(11)
@@ -482,8 +494,7 @@ impl WebSocketView {
             MessageTypeFilter::Pong => "Po",
             MessageTypeFilter::Close => "C",
         };
-        let btn = button(text(label).size(10))
-            .on_press(Message::MessageTypeSelected(filter));
+        let btn = button(text(label).size(10)).on_press(Message::MessageTypeSelected(filter));
         if is_active {
             btn.style(button::secondary).into()
         } else {

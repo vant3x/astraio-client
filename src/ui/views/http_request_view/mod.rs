@@ -339,7 +339,11 @@ impl HttpRequestView {
                             self.multipart_entries.clear();
                             for (i, (name, value)) in parsed.form_fields.into_iter().enumerate() {
                                 let is_file = value.starts_with('@');
-                                let file_value = if is_file { value[1..].to_string() } else { value };
+                                let file_value = if is_file {
+                                    value[1..].to_string()
+                                } else {
+                                    value
+                                };
                                 self.multipart_entries.push(MultipartEntry {
                                     id: i,
                                     name,
@@ -420,15 +424,22 @@ impl HttpRequestView {
                                 .unwrap_or_else(|_| response.body.clone()),
                             Err(_) => response.body.clone(),
                         }
-                    } else if is_image && response.body_encoding == crate::http_client::response::BodyEncoding::Base64 {
+                    } else if is_image
+                        && response.body_encoding
+                            == crate::http_client::response::BodyEncoding::Base64
+                    {
                         // Decode base64 image and create preview handle
                         if let Ok(bytes) = base64::Engine::decode(
                             &base64::engine::general_purpose::STANDARD,
                             &response.body,
                         ) {
-                            self.image_preview_handle = Some(iced::widget::image::Handle::from_bytes(bytes));
+                            self.image_preview_handle =
+                                Some(iced::widget::image::Handle::from_bytes(bytes));
                             self.show_image_preview = true;
-                            format!("[Image: {} bytes, base64 decoded for preview]", response.body.len())
+                            format!(
+                                "[Image: {} bytes, base64 decoded for preview]",
+                                response.body.len()
+                            )
                         } else {
                             response.body.clone()
                         }
@@ -568,8 +579,7 @@ impl HttpRequestView {
             Message::ShowSnippets => {
                 self.show_snippets = true;
                 let request = self.build_request();
-                let code =
-                    crate::http_client::snippets::generate(&request, self.snippet_format);
+                let code = crate::http_client::snippets::generate(&request, self.snippet_format);
                 self.snippet_content = text_editor::Content::with_text(&code);
             }
             Message::HideSnippets => {
@@ -578,8 +588,7 @@ impl HttpRequestView {
             Message::SnippetFormatSelected(format) => {
                 self.snippet_format = format;
                 let request = self.build_request();
-                let code =
-                    crate::http_client::snippets::generate(&request, self.snippet_format);
+                let code = crate::http_client::snippets::generate(&request, self.snippet_format);
                 self.snippet_content = text_editor::Content::with_text(&code);
             }
             Message::CopySnippet => {
@@ -648,7 +657,8 @@ impl HttpRequestView {
             }
             Message::SearchNext => {
                 if !self.response_search_matches.is_empty() {
-                    self.response_search_index = (self.response_search_index + 1) % self.response_search_matches.len();
+                    self.response_search_index =
+                        (self.response_search_index + 1) % self.response_search_matches.len();
                 }
             }
             Message::SearchPrev => {
@@ -685,7 +695,11 @@ impl HttpRequestView {
         while let Some(pos) = body_lower[start..].find(&query_lower) {
             let absolute_pos = start + pos;
             let line = body_text[..absolute_pos].lines().count();
-            let col = absolute_pos - body_text[..absolute_pos].rfind('\n').map(|p| p + 1).unwrap_or(0);
+            let col = absolute_pos
+                - body_text[..absolute_pos]
+                    .rfind('\n')
+                    .map(|p| p + 1)
+                    .unwrap_or(0);
             self.response_search_matches.push((line, col));
             start = absolute_pos + 1;
         }

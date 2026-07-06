@@ -41,9 +41,9 @@ pub fn handle_message(app: &mut AstraNovaApp, message: websocket_view::Message) 
             if let Some(sender) = &app.websocket_view.ws_sender {
                 if !text.is_empty() {
                     let _ = sender.send(&text);
-                    app.websocket_view.messages.push(
-                        crate::protocols::websocket::WsMessage::outgoing(text),
-                    );
+                    app.websocket_view
+                        .messages
+                        .push(crate::protocols::websocket::WsMessage::outgoing(text));
                     app.websocket_view.input.clear();
                 }
             }
@@ -58,15 +58,19 @@ pub fn handle_message(app: &mut AstraNovaApp, message: websocket_view::Message) 
                         .collect();
                     if !bytes.is_empty() {
                         let _ = sender.send_binary(bytes.clone());
-                        let hex_display = bytes.iter().map(|b| format!("{:02X}", b)).collect::<Vec<_>>().join(" ");
-                        app.websocket_view.messages.push(
-                            crate::protocols::websocket::WsMessage {
+                        let hex_display = bytes
+                            .iter()
+                            .map(|b| format!("{:02X}", b))
+                            .collect::<Vec<_>>()
+                            .join(" ");
+                        app.websocket_view
+                            .messages
+                            .push(crate::protocols::websocket::WsMessage {
                                 direction: ">".to_string(),
                                 message_type: crate::protocols::websocket::WsMessageType::Binary,
                                 data: hex_display,
                                 timestamp: crate::utils::timestamp_seconds(),
-                            },
-                        );
+                            });
                         app.websocket_view.hex_input.clear();
                     }
                 }
@@ -76,12 +80,12 @@ pub fn handle_message(app: &mut AstraNovaApp, message: websocket_view::Message) 
         websocket_view::Message::SendPing => {
             if let Some(sender) = &app.websocket_view.ws_sender {
                 let _ = sender.send("ping");
-                app.websocket_view.messages.push(
-                    crate::protocols::websocket::WsMessage::incoming(
+                app.websocket_view
+                    .messages
+                    .push(crate::protocols::websocket::WsMessage::incoming(
                         crate::protocols::websocket::WsMessageType::Ping,
                         "ping".to_string(),
-                    ),
-                );
+                    ));
             }
             Task::none()
         }
@@ -159,8 +163,7 @@ fn handle_connect(app: &mut AstraNovaApp) -> Task<Message> {
     };
 
     if url.is_empty() {
-        app.websocket_view.status =
-            WsStatus::Error("URL is required".to_string());
+        app.websocket_view.status = WsStatus::Error("URL is required".to_string());
         return Task::none();
     }
 
@@ -224,12 +227,7 @@ fn handle_disconnected(app: &mut AstraNovaApp, reason: String) -> Task<Message> 
         let retries = app.websocket_view.current_retries;
         let max = app.websocket_view.max_retries;
 
-        log::info!(
-            "Auto-reconnect {}/{} in {}ms",
-            retries,
-            max,
-            delay
-        );
+        log::info!("Auto-reconnect {}/{} in {}ms", retries, max, delay);
 
         app.websocket_view.status = WsStatus::Connecting;
 
@@ -302,7 +300,9 @@ pub fn handle_ws_event(
 pub fn handle_ws_connected(
     app: &mut AstraNovaApp,
     sender: crate::protocols::websocket::WsSender,
-    receiver: Arc<Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<crate::protocols::websocket::WsEvent>>>>,
+    receiver: Arc<
+        Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<crate::protocols::websocket::WsEvent>>>,
+    >,
     shutdown_tx: Option<tokio::sync::mpsc::UnboundedSender<()>>,
     write_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
     read_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,

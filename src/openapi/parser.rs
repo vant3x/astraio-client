@@ -3,28 +3,32 @@ use crate::error::AppError;
 use std::collections::HashMap;
 
 pub fn parse_spec(content: &str) -> Result<ParsedSpec, AppError> {
-    let spec_value: serde_json::Value =
-        serde_json::from_str(content).map_err(|e| AppError::Parse(format!("Invalid JSON: {}", e)))?;
+    let spec_value: serde_json::Value = serde_json::from_str(content)
+        .map_err(|e| AppError::Parse(format!("Invalid JSON: {}", e)))?;
 
     if spec_value.get("openapi").is_some() {
         parse_openapi3(&spec_value)
     } else if spec_value.get("swagger").is_some() {
         parse_swagger2(&spec_value)
     } else {
-        Err(AppError::Parse("Not a valid OpenAPI or Swagger spec: missing 'openapi' or 'swagger' field".to_string()))
+        Err(AppError::Parse(
+            "Not a valid OpenAPI or Swagger spec: missing 'openapi' or 'swagger' field".to_string(),
+        ))
     }
 }
 
 pub fn parse_spec_from_yaml(content: &str) -> Result<ParsedSpec, AppError> {
-    let spec_value: serde_json::Value =
-        serde_yaml::from_str(content).map_err(|e| AppError::Parse(format!("Invalid YAML: {}", e)))?;
+    let spec_value: serde_json::Value = serde_yaml::from_str(content)
+        .map_err(|e| AppError::Parse(format!("Invalid YAML: {}", e)))?;
 
     if spec_value.get("openapi").is_some() {
         parse_openapi3(&spec_value)
     } else if spec_value.get("swagger").is_some() {
         parse_swagger2(&spec_value)
     } else {
-        Err(AppError::Parse("Not a valid OpenAPI or Swagger spec: missing 'openapi' or 'swagger' field".to_string()))
+        Err(AppError::Parse(
+            "Not a valid OpenAPI or Swagger spec: missing 'openapi' or 'swagger' field".to_string(),
+        ))
     }
 }
 

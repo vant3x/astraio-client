@@ -162,31 +162,30 @@ impl HttpRequestView {
         }
 
         // Convert multipart entries to MultipartField
-        let multipart_fields: Vec<MultipartField> =
-            if self.body_type == BodyType::Multipart {
-                self.multipart_entries
-                    .iter()
-                    .filter(|e| !e.name.is_empty())
-                    .map(|e| {
-                        if e.is_file {
-                            MultipartField {
-                                name: e.name.clone(),
-                                value: MultipartValue::File {
-                                    path: e.value.clone(),
-                                    filename: None,
-                                },
-                            }
-                        } else {
-                            MultipartField {
-                                name: e.name.clone(),
-                                value: MultipartValue::Text(e.value.clone()),
-                            }
+        let multipart_fields: Vec<MultipartField> = if self.body_type == BodyType::Multipart {
+            self.multipart_entries
+                .iter()
+                .filter(|e| !e.name.is_empty())
+                .map(|e| {
+                    if e.is_file {
+                        MultipartField {
+                            name: e.name.clone(),
+                            value: MultipartValue::File {
+                                path: e.value.clone(),
+                                filename: None,
+                            },
                         }
-                    })
-                    .collect()
-            } else {
-                vec![]
-            };
+                    } else {
+                        MultipartField {
+                            name: e.name.clone(),
+                            value: MultipartValue::Text(e.value.clone()),
+                        }
+                    }
+                })
+                .collect()
+        } else {
+            vec![]
+        };
 
         crate::http_client::request::HttpRequest {
             method: self.method.parse().unwrap(),

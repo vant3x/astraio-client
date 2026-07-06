@@ -22,7 +22,9 @@ fn is_binary_content_type(content_type: &str) -> bool {
         || content_type.contains("application/x-sharedlib")
 }
 
-async fn read_response_body(res: reqwest::Response) -> Result<(String, BodyEncoding, u64), AppError> {
+async fn read_response_body(
+    res: reqwest::Response,
+) -> Result<(String, BodyEncoding, u64), AppError> {
     let content_type = res
         .headers()
         .get("content-type")
@@ -94,10 +96,7 @@ pub async fn send_request(
 
         loop {
             let method: reqwest::Method = request.method.to_string().parse()?;
-            let mut req_builder = client.request(
-                method,
-                current_url.clone(),
-            );
+            let mut req_builder = client.request(method, current_url.clone());
 
             req_builder = req_builder.timeout(request.config.timeout);
 
@@ -202,7 +201,8 @@ pub async fn send_request(
                                                         )
                                                     })
                                                     .collect();
-                                                let (body, encoding, size) = read_response_body(retry_res).await?;
+                                                let (body, encoding, size) =
+                                                    read_response_body(retry_res).await?;
                                                 response_body = body;
                                                 response_body_encoding = encoding;
                                                 response_size = size;

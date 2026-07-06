@@ -24,31 +24,30 @@ pub fn handle_http_request_msg(
             view.pending_request_data = serde_json::to_string(&request).ok();
             view.update(http_request_view::Message::SetLoading);
 
-            let http_client =
-                if request.config.proxy_url.is_some() || !request.config.verify_ssl {
-                    let cache_key = format!(
-                        "{}|{}",
-                        request.config.proxy_url.as_deref().unwrap_or(""),
-                        request.config.verify_ssl
-                    );
-                    if let Some(cached) = app.custom_clients.get(&cache_key) {
-                        Arc::clone(cached)
-                    } else {
-                        match client::build_client(&request.config) {
-                            Ok(c) => {
-                                let c = Arc::new(c);
-                                app.custom_clients.insert(cache_key, Arc::clone(&c));
-                                c
-                            }
-                            Err(e) => {
-                                log::error!("Failed to build custom client: {}", e);
-                                Arc::clone(&app.http_client)
-                            }
+            let http_client = if request.config.proxy_url.is_some() || !request.config.verify_ssl {
+                let cache_key = format!(
+                    "{}|{}",
+                    request.config.proxy_url.as_deref().unwrap_or(""),
+                    request.config.verify_ssl
+                );
+                if let Some(cached) = app.custom_clients.get(&cache_key) {
+                    Arc::clone(cached)
+                } else {
+                    match client::build_client(&request.config) {
+                        Ok(c) => {
+                            let c = Arc::new(c);
+                            app.custom_clients.insert(cache_key, Arc::clone(&c));
+                            c
+                        }
+                        Err(e) => {
+                            log::error!("Failed to build custom client: {}", e);
+                            Arc::clone(&app.http_client)
                         }
                     }
-                } else {
-                    Arc::clone(&app.http_client)
-                };
+                }
+            } else {
+                Arc::clone(&app.http_client)
+            };
 
             Task::perform(
                 async move { client::send_request(&http_client, request).await },
@@ -95,8 +94,7 @@ pub fn handle_http_request_msg(
                     }
                 }
                 Err(e) => {
-                    app.toast_manager
-                        .error(format!("Request failed: {}", e));
+                    app.toast_manager.error(format!("Request failed: {}", e));
                 }
             }
             view.update(msg);
@@ -127,7 +125,9 @@ pub fn handle_http_request_msg(
             Task::perform(async {}, move |_| Message::OAuth2StartDeviceAuth(index))
         }
         http_request_view::Message::OAuth2AutoPollToggle(enabled) => {
-            Task::perform(async {}, move |_| Message::OAuth2AutoPollToggle(index, enabled))
+            Task::perform(async {}, move |_| {
+                Message::OAuth2AutoPollToggle(index, enabled)
+            })
         }
         http_request_view::Message::DownloadResponse => {
             let view = app.request_tabs.get(index).cloned();
@@ -150,7 +150,9 @@ pub fn handle_http_request_msg(
 
                     let ext = if content_type.contains("image/png") {
                         "png"
-                    } else if content_type.contains("image/jpeg") || content_type.contains("image/jpg") {
+                    } else if content_type.contains("image/jpeg")
+                        || content_type.contains("image/jpg")
+                    {
                         "jpg"
                     } else if content_type.contains("image/gif") {
                         "gif"
@@ -162,11 +164,15 @@ pub fn handle_http_request_msg(
                         "pdf"
                     } else if content_type.contains("application/zip") {
                         "zip"
-                    } else if content_type.contains("application/gzip") || content_type.contains("application/x-gzip") {
+                    } else if content_type.contains("application/gzip")
+                        || content_type.contains("application/x-gzip")
+                    {
                         "gz"
                     } else if content_type.contains("application/json") {
                         "json"
-                    } else if content_type.contains("application/xml") || content_type.contains("text/xml") {
+                    } else if content_type.contains("application/xml")
+                        || content_type.contains("text/xml")
+                    {
                         "xml"
                     } else if content_type.contains("text/html") {
                         "html"
@@ -186,7 +192,9 @@ pub fn handle_http_request_msg(
                         None => return Err("Cancelled".to_string()),
                     };
 
-                    let bytes = if response.body_encoding == crate::http_client::response::BodyEncoding::Base64 {
+                    let bytes = if response.body_encoding
+                        == crate::http_client::response::BodyEncoding::Base64
+                    {
                         use base64::Engine;
                         base64::engine::general_purpose::STANDARD
                             .decode(&response.body)

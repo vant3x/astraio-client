@@ -23,7 +23,10 @@ pub fn create_and_refresh(conn: &Connection, name: &str) -> Result<Vec<Environme
     Ok(get_all(conn))
 }
 
-pub fn save_and_refresh(conn: &Connection, env: &Environment) -> Result<Vec<Environment>, AppError> {
+pub fn save_and_refresh(
+    conn: &Connection,
+    env: &Environment,
+) -> Result<Vec<Environment>, AppError> {
     update(conn, env)?;
     Ok(get_all(conn))
 }

@@ -1,12 +1,12 @@
 #[cfg(test)]
 mod tests {
-    use base64::Engine;
     use crate::data::auth::Auth;
     use crate::persistence::database::Environment;
     use crate::ui::components::key_value_editor::KeyValueEntry;
     use crate::ui::views::http_request_view::{
         BodyType, ContentType, HttpRequestView, MultipartEntry,
     };
+    use base64::Engine;
     use iced::widget::text_editor;
 
     fn make_view(url: &str, method: &str) -> HttpRequestView {

@@ -95,8 +95,8 @@ pub struct ImportedRequest {
 }
 
 pub fn parse_postman_collection(json: &str) -> Result<ImportedCollection, AppError> {
-    let collection: PostmanCollection =
-        serde_json::from_str(json).map_err(|e| AppError::Parse(format!("Invalid Postman collection: {}", e)))?;
+    let collection: PostmanCollection = serde_json::from_str(json)
+        .map_err(|e| AppError::Parse(format!("Invalid Postman collection: {}", e)))?;
 
     let mut imported_folders = Vec::new();
     let mut imported_requests = Vec::new();

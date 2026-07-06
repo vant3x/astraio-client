@@ -120,7 +120,11 @@ pub fn rename_request(conn: &Connection, id: i32, new_name: &str) -> Result<(), 
 }
 
 #[allow(dead_code)]
-pub fn move_request(conn: &Connection, id: i32, new_folder_id: Option<i32>) -> Result<(), AppError> {
+pub fn move_request(
+    conn: &Connection,
+    id: i32,
+    new_folder_id: Option<i32>,
+) -> Result<(), AppError> {
     Ok(database::move_collection_request(conn, id, new_folder_id)?)
 }
 

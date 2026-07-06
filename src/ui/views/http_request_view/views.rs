@@ -75,11 +75,17 @@ impl HttpRequestView {
             RequestStatus::Success => {
                 let search_bar = if self.show_response_search {
                     let match_info = if self.response_search_matches.is_empty() {
-                        text("No matches").size(12).color(Color::from_rgb(0.5, 0.5, 0.5))
-                    } else {
-                        text(format!("{}/{}", self.response_search_index + 1, self.response_search_matches.len()))
+                        text("No matches")
                             .size(12)
-                            .color(Color::from_rgb(0.3, 0.7, 0.3))
+                            .color(Color::from_rgb(0.5, 0.5, 0.5))
+                    } else {
+                        text(format!(
+                            "{}/{}",
+                            self.response_search_index + 1,
+                            self.response_search_matches.len()
+                        ))
+                        .size(12)
+                        .color(Color::from_rgb(0.3, 0.7, 0.3))
                     };
                     Some(
                         row![
@@ -120,43 +126,46 @@ impl HttpRequestView {
                                     .align_y(Alignment::Center)
                             }
                         } else {
-                        let syntax = self
-                            .content_type
-                            .as_deref()
-                            .map(response_content_type_to_syntax)
-                            .unwrap_or("text");
-                        if self.word_wrap {
-                            let body_text = self.response_body_editor.text();
-                            let wrapped_text = text(body_text).size(13).font(iced::Font::MONOSPACE);
-                            let context_menu = ContextMenu::new(scrollable(wrapped_text), || {
-                                column![button(
-                                    row![lucide::copy().size(12), text(" Copy Body")].spacing(4)
-                                )
-                                .on_press(Message::CopyBody),]
-                                .into()
-                            });
-                            container(context_menu)
-                        } else {
-                            let editor = text_editor(&self.response_body_editor)
-                                .on_action(Message::ResponseContentChanged)
-                                .highlight(syntax, self.highlighter_theme);
-                            let context_menu = ContextMenu::new(scrollable(editor), || {
-                                column![
-                                    button(
-                                        row![lucide::copy().size(12), text(" Copy Selection")]
-                                            .spacing(4)
-                                    )
-                                    .on_press(Message::CopySelection),
-                                    button(
-                                        row![lucide::copy().size(12), text(" Copy Body")]
-                                            .spacing(4)
-                                    )
-                                    .on_press(Message::CopyBody),
-                                ]
-                                .into()
-                            });
-                            container(context_menu)
-                        }
+                            let syntax = self
+                                .content_type
+                                .as_deref()
+                                .map(response_content_type_to_syntax)
+                                .unwrap_or("text");
+                            if self.word_wrap {
+                                let body_text = self.response_body_editor.text();
+                                let wrapped_text =
+                                    text(body_text).size(13).font(iced::Font::MONOSPACE);
+                                let context_menu =
+                                    ContextMenu::new(scrollable(wrapped_text), || {
+                                        column![button(
+                                            row![lucide::copy().size(12), text(" Copy Body")]
+                                                .spacing(4)
+                                        )
+                                        .on_press(Message::CopyBody),]
+                                        .into()
+                                    });
+                                container(context_menu)
+                            } else {
+                                let editor = text_editor(&self.response_body_editor)
+                                    .on_action(Message::ResponseContentChanged)
+                                    .highlight(syntax, self.highlighter_theme);
+                                let context_menu = ContextMenu::new(scrollable(editor), || {
+                                    column![
+                                        button(
+                                            row![lucide::copy().size(12), text(" Copy Selection")]
+                                                .spacing(4)
+                                        )
+                                        .on_press(Message::CopySelection),
+                                        button(
+                                            row![lucide::copy().size(12), text(" Copy Body")]
+                                                .spacing(4)
+                                        )
+                                        .on_press(Message::CopyBody),
+                                    ]
+                                    .into()
+                                });
+                                container(context_menu)
+                            }
                         }
                     })
                     .push(
@@ -227,10 +236,8 @@ impl HttpRequestView {
                 .unwrap_or(false);
             if is_binary {
                 Element::from(
-                    button(
-                        row![lucide::download().size(14), text(" Save File")].spacing(4),
-                    )
-                    .on_press(Message::DownloadResponse),
+                    button(row![lucide::download().size(14), text(" Save File")].spacing(4))
+                        .on_press(Message::DownloadResponse),
                 )
             } else {
                 Element::from(column![])
@@ -314,13 +321,17 @@ impl HttpRequestView {
                 "?"
             };
             Element::from(
-                container(text(short_ct).size(10).color(Color::from_rgb(1.0, 1.0, 1.0)))
-                    .padding(iced::Padding::from([2, 6]))
-                    .style(move |_: &Theme| iced::widget::container::Style {
-                        background: Some(iced::Color::from_rgb(0.3, 0.3, 0.5).into()),
-                        border: iced::Border::default().rounded(4),
-                        ..iced::widget::container::Style::default()
-                    }),
+                container(
+                    text(short_ct)
+                        .size(10)
+                        .color(Color::from_rgb(1.0, 1.0, 1.0)),
+                )
+                .padding(iced::Padding::from([2, 6]))
+                .style(move |_: &Theme| iced::widget::container::Style {
+                    background: Some(iced::Color::from_rgb(0.3, 0.3, 0.5).into()),
+                    border: iced::Border::default().rounded(4),
+                    ..iced::widget::container::Style::default()
+                }),
             )
         } else {
             Element::from(column![])
@@ -378,8 +389,13 @@ impl HttpRequestView {
                     duration_text,
                     text(" | ").size(14),
                     size_text,
-                    row![copy_button, download_button, image_preview_button, wrap_toggle]
-                        .align_y(Alignment::Center),
+                    row![
+                        copy_button,
+                        download_button,
+                        image_preview_button,
+                        wrap_toggle
+                    ]
+                    .align_y(Alignment::Center),
                 ]
                 .spacing(8)
                 .padding(10)
@@ -612,17 +628,14 @@ impl HttpRequestView {
                                         Message::OAuth2CopyUserCode(code)
                                     }),
                                     button(
-                                        row![poll_button_icon, text(poll_button_text)]
-                                            .spacing(4)
+                                        row![poll_button_icon, text(poll_button_text)].spacing(4)
                                     )
-                                    .on_press(Message::OAuth2AutoPollToggle(
-                                        !config.auto_polling
-                                    )),
+                                    .on_press(Message::OAuth2AutoPollToggle(!config.auto_polling)),
                                     if config.auto_polling {
                                         Element::from(
-                                            text("Polling...").size(11).color(
-                                                Color::from_rgb(0.2, 0.7, 0.3),
-                                            ),
+                                            text("Polling...")
+                                                .size(11)
+                                                .color(Color::from_rgb(0.2, 0.7, 0.3)),
                                         )
                                     } else {
                                         Element::from(column![])
@@ -809,9 +822,11 @@ impl HttpRequestView {
                         .spacing(8)
                     };
                     let row = row![
-                        pick_list(&super::MultipartFieldType::ALL[..], Some(current_type), move |t| {
-                            Message::MultipartFieldTypeChanged(entry.id, t)
-                        },)
+                        pick_list(
+                            &super::MultipartFieldType::ALL[..],
+                            Some(current_type),
+                            move |t| { Message::MultipartFieldTypeChanged(entry.id, t) },
+                        )
                         .padding(8)
                         .width(Length::Fixed(80.0)),
                         iced::widget::text_input("Name", &entry.name)

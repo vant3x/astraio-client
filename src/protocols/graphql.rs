@@ -83,7 +83,8 @@ pub fn parse_variables(json_str: &str) -> Result<serde_json::Value, AppError> {
     if json_str.trim().is_empty() {
         return Ok(serde_json::Value::Null);
     }
-    serde_json::from_str(json_str).map_err(|e| AppError::Validation(format!("Invalid variables JSON: {}", e)))
+    serde_json::from_str(json_str)
+        .map_err(|e| AppError::Validation(format!("Invalid variables JSON: {}", e)))
 }
 
 pub fn validate_query(query: &str) -> Result<(), AppError> {

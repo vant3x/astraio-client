@@ -498,11 +498,21 @@ fn save_current_to_collection(app: &mut AstraNovaApp) {
 
         let request = view.build_request();
         let auth_type = match &view.auth {
-            crate::data::auth::Auth::BearerToken(_) => crate::persistence::database::CollectionAuthType::Bearer,
-            crate::data::auth::Auth::Basic { .. } => crate::persistence::database::CollectionAuthType::Basic,
-            crate::data::auth::Auth::ApiKey { .. } => crate::persistence::database::CollectionAuthType::ApiKey,
-            crate::data::auth::Auth::Digest { .. } => crate::persistence::database::CollectionAuthType::Digest,
-            crate::data::auth::Auth::OAuth2(_) => crate::persistence::database::CollectionAuthType::Oauth2,
+            crate::data::auth::Auth::BearerToken(_) => {
+                crate::persistence::database::CollectionAuthType::Bearer
+            }
+            crate::data::auth::Auth::Basic { .. } => {
+                crate::persistence::database::CollectionAuthType::Basic
+            }
+            crate::data::auth::Auth::ApiKey { .. } => {
+                crate::persistence::database::CollectionAuthType::ApiKey
+            }
+            crate::data::auth::Auth::Digest { .. } => {
+                crate::persistence::database::CollectionAuthType::Digest
+            }
+            crate::data::auth::Auth::OAuth2(_) => {
+                crate::persistence::database::CollectionAuthType::Oauth2
+            }
             crate::data::auth::Auth::None => crate::persistence::database::CollectionAuthType::None,
         };
         let auth_data = match &view.auth {
@@ -519,7 +529,9 @@ fn save_current_to_collection(app: &mut AstraNovaApp) {
             .collect();
 
         let body_type = match view.body_type {
-            crate::ui::views::http_request_view::BodyType::Multipart => crate::persistence::database::CollectionBodyType::Multipart,
+            crate::ui::views::http_request_view::BodyType::Multipart => {
+                crate::persistence::database::CollectionBodyType::Multipart
+            }
             _ => crate::persistence::database::CollectionBodyType::Text,
         };
 

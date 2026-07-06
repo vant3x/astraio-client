@@ -41,7 +41,9 @@ pub fn parse_curl(curl: &str) -> Result<CurlParseResult, AppError> {
                 if i < tokens.len() {
                     if let Some((key, value)) = parse_header(&tokens[i]) {
                         if key.eq_ignore_ascii_case("Accept-Encoding") {
-                            headers.retain(|(k, _): &(String, String)| !k.eq_ignore_ascii_case("Accept-Encoding"));
+                            headers.retain(|(k, _): &(String, String)| {
+                                !k.eq_ignore_ascii_case("Accept-Encoding")
+                            });
                         }
                         headers.push((key, value));
                     }
@@ -77,7 +79,10 @@ pub fn parse_curl(curl: &str) -> Result<CurlParseResult, AppError> {
                 }
             }
             "--compressed" => {
-                if !headers.iter().any(|(k, _)| k.eq_ignore_ascii_case("Accept-Encoding")) {
+                if !headers
+                    .iter()
+                    .any(|(k, _)| k.eq_ignore_ascii_case("Accept-Encoding"))
+                {
                     headers.push(("Accept-Encoding".to_string(), "gzip, deflate".to_string()));
                 }
             }
@@ -261,7 +266,11 @@ mod tests {
     fn parse_with_compressed_no_duplicate() {
         let curl = r#"curl --compressed -H "Accept-Encoding: identity" https://api.example.com"#;
         let result = parse_curl(curl).unwrap();
-        let accept_headers: Vec<_> = result.headers.iter().filter(|(k, _)| k == "Accept-Encoding").collect();
+        let accept_headers: Vec<_> = result
+            .headers
+            .iter()
+            .filter(|(k, _)| k == "Accept-Encoding")
+            .collect();
         assert_eq!(accept_headers.len(), 1);
     }
 
@@ -269,7 +278,10 @@ mod tests {
     fn parse_with_compressed() {
         let curl = "curl --compressed https://api.example.com";
         let result = parse_curl(curl).unwrap();
-        assert!(result.headers.iter().any(|(k, v)| k == "Accept-Encoding" && v == "gzip, deflate"));
+        assert!(result
+            .headers
+            .iter()
+            .any(|(k, v)| k == "Accept-Encoding" && v == "gzip, deflate"));
     }
 
     #[test]

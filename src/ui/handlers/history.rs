@@ -41,10 +41,7 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: history_view::Message) -> Tas
 
                     if let Some(path) = file {
                         let path = path.path();
-                        let ext = path
-                            .extension()
-                            .and_then(|e| e.to_str())
-                            .unwrap_or("json");
+                        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("json");
 
                         let content = if ext == "csv" {
                             export_csv(&entries)
@@ -70,9 +67,6 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: history_view::Message) -> Tas
                 },
             );
         }
-        history_view::Message::HistoryExportComplete(_) => {
-            app.history_view.update(msg);
-        }
     }
     Task::none()
 }
@@ -84,15 +78,11 @@ fn refresh_history_entries(app: &mut AstraNovaApp) {
         crate::services::history_service::search(&app.db_conn, &query, &method, 500);
 }
 
-fn export_json(
-    entries: &[crate::persistence::database::RequestHistoryEntry],
-) -> String {
+fn export_json(entries: &[crate::persistence::database::RequestHistoryEntry]) -> String {
     serde_json::to_string_pretty(entries).unwrap_or_else(|_| "[]".to_string())
 }
 
-fn export_csv(
-    entries: &[crate::persistence::database::RequestHistoryEntry],
-) -> String {
+fn export_csv(entries: &[crate::persistence::database::RequestHistoryEntry]) -> String {
     let mut wtr = csv::Writer::from_writer(vec![]);
     let _ = wtr.write_record(["id", "method", "url", "status", "duration_ms", "timestamp"]);
     for e in entries {

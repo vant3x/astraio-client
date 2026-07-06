@@ -18,9 +18,7 @@ pub fn basic_auth_inputs<'a, M: Clone + 'a>(
     on_pass: impl Fn(String) -> M + 'a,
 ) -> Element<'a, M, Theme, Renderer> {
     column![
-        text_input("Username", user)
-            .on_input(on_user)
-            .padding(10),
+        text_input("Username", user).on_input(on_user).padding(10),
         text_input("Password", pass)
             .on_input(on_pass)
             .padding(10)
@@ -51,12 +49,8 @@ pub fn api_key_inputs<'a, M: Clone + 'a>(
     on_location: impl Fn(crate::data::auth::ApiKeyLocation) -> M + 'a,
 ) -> Element<'a, M, Theme, Renderer> {
     column![
-        text_input("Key Name", key)
-            .on_input(on_key)
-            .padding(10),
-        text_input("Value", value)
-            .on_input(on_value)
-            .padding(10),
+        text_input("Key Name", key).on_input(on_key).padding(10),
+        text_input("Value", value).on_input(on_value).padding(10),
         pick_list(
             &crate::data::auth::ApiKeyLocation::ALL[..],
             Some(location),
@@ -76,9 +70,7 @@ pub fn digest_auth_inputs<'a, M: Clone + 'a>(
 ) -> Element<'a, M, Theme, Renderer> {
     column![
         text("Digest Authentication").size(14),
-        text_input("Username", user)
-            .on_input(on_user)
-            .padding(10),
+        text_input("Username", user).on_input(on_user).padding(10),
         text_input("Password", pass)
             .on_input(on_pass)
             .padding(10)
@@ -105,35 +97,27 @@ pub fn auth_panel<'a, M: Clone + 'a>(
     let current_auth_type = auth.auth_type();
 
     let auth_inputs = match auth {
-        Auth::BearerToken(token) => {
-            bearer_token_input(token, on_bearer_token)
-        }
-        Auth::Basic { user, pass } => {
-            basic_auth_inputs(user, pass, on_basic_user, on_basic_pass)
-        }
+        Auth::BearerToken(token) => bearer_token_input(token, on_bearer_token),
+        Auth::Basic { user, pass } => basic_auth_inputs(user, pass, on_basic_user, on_basic_pass),
         Auth::ApiKey {
             key,
             value,
             location,
-        } => {
-            api_key_inputs(
-                key,
-                value,
-                *location,
-                on_api_key_key,
-                on_api_key_value,
-                on_api_key_location,
-            )
-        }
+        } => api_key_inputs(
+            key,
+            value,
+            *location,
+            on_api_key_key,
+            on_api_key_value,
+            on_api_key_location,
+        ),
         Auth::Digest { user, pass } => {
             digest_auth_inputs(user, pass, on_digest_user, on_digest_pass)
         }
         Auth::OAuth2(_) => oauth2_content,
-        Auth::None => {
-            column![text("No authentication required.").size(14)]
-                .spacing(10)
-                .into()
-        }
+        Auth::None => column![text("No authentication required.").size(14)]
+            .spacing(10)
+            .into(),
     };
 
     column![
