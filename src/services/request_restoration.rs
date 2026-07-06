@@ -46,6 +46,7 @@ pub fn build_view_from_collection_request(req: &CollectionRequest) -> HttpReques
             id: i,
             key: k.clone(),
             value: v.clone(),
+            secret: false,
         })
         .collect();
 
@@ -57,6 +58,7 @@ pub fn build_view_from_collection_request(req: &CollectionRequest) -> HttpReques
             id: i,
             key: k.clone(),
             value: v.clone(),
+            secret: false,
         })
         .collect();
 
@@ -140,6 +142,7 @@ fn apply_request_to_view(view: &mut HttpRequestView, request: &HttpRequest) {
             id: i,
             key: k.clone(),
             value: v.clone(),
+            secret: false,
         })
         .collect();
 
@@ -160,6 +163,7 @@ fn apply_request_to_view(view: &mut HttpRequestView, request: &HttpRequest) {
             id: i,
             key: k,
             value: v,
+            secret: false,
         })
         .collect();
 

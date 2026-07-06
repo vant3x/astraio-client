@@ -58,6 +58,7 @@ impl EnvironmentManagerView {
                             id: i,
                             key: k.clone(),
                             value: v.clone(),
+                            secret: env.secret_keys.contains(k),
                         })
                         .collect();
                 }
@@ -91,6 +92,7 @@ impl EnvironmentManagerView {
                                 id: self.variables_editor.entries.len(),
                                 key,
                                 value,
+                                secret: false,
                             });
                     }
                 }
@@ -106,6 +108,13 @@ impl EnvironmentManagerView {
                         .entries
                         .iter()
                         .map(|e| (e.key.clone(), e.value.clone()))
+                        .collect();
+                    env.secret_keys = self
+                        .variables_editor
+                        .entries
+                        .iter()
+                        .filter(|e| e.secret && !e.key.is_empty())
+                        .map(|e| e.key.clone())
                         .collect();
                 }
             }

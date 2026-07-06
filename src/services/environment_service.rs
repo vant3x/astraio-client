@@ -56,6 +56,11 @@ mod tests {
             [],
         )
         .ok();
+        conn.execute(
+            "ALTER TABLE environments ADD COLUMN secret_keys TEXT NOT NULL DEFAULT '[]'",
+            [],
+        )
+        .ok();
         conn
     }
 

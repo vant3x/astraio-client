@@ -8,6 +8,7 @@ pub struct KeyValueEntry {
     pub id: usize,
     pub key: String,
     pub value: String,
+    pub secret: bool,
 }
 
 impl KeyValueEntry {
@@ -16,6 +17,15 @@ impl KeyValueEntry {
             id,
             key: String::new(),
             value: String::new(),
+            secret: false,
+        }
+    }
+
+    fn display_value(&self) -> String {
+        if self.secret {
+            "••••••••".to_string()
+        } else {
+            self.value.clone()
         }
     }
 }
@@ -31,6 +41,7 @@ pub struct KeyValueEditor {
 pub enum Message {
     EntryKeyChanged(usize, String),
     EntryValueChanged(usize, String),
+    ToggleSecret(usize),
     AddEntry,
     RemoveEntry(usize),
 }
@@ -61,6 +72,11 @@ impl KeyValueEditor {
                     entry.value = new_value;
                 }
             }
+            Message::ToggleSecret(id) => {
+                if let Some(entry) = self.entries.iter_mut().find(|e| e.id == id) {
+                    entry.secret = !entry.secret;
+                }
+            }
             Message::AddEntry => {
                 self.entries.push(KeyValueEntry::new(self.next_id));
                 self.next_id += 1;
@@ -76,13 +92,25 @@ impl KeyValueEditor {
             .entries
             .iter()
             .fold(column![].spacing(8), |col, entry| {
+                let lock_label = if entry.secret {
+                    "\u{1f512}"
+                } else {
+                    "\u{1f513}"
+                };
+                let value_input = if entry.secret {
+                    text_input("••••••••", &entry.display_value())
+                        .on_input(move |v| Message::EntryValueChanged(entry.id, v))
+                } else {
+                    text_input("Value", &entry.value)
+                        .on_input(move |v| Message::EntryValueChanged(entry.id, v))
+                };
                 col.push(
                     row![
                         text_input("Key", &entry.key)
                             .on_input(move |k| Message::EntryKeyChanged(entry.id, k)),
-                        text_input("Value", &entry.value)
-                            .on_input(move |v| Message::EntryValueChanged(entry.id, v)),
-                        button(text("Remove")).on_press(Message::RemoveEntry(entry.id))
+                        value_input,
+                        button(text(lock_label)).on_press(Message::ToggleSecret(entry.id)),
+                        button(text("X")).on_press(Message::RemoveEntry(entry.id))
                     ]
                     .spacing(10),
                 )

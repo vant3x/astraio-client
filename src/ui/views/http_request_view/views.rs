@@ -362,21 +362,47 @@ impl HttpRequestView {
             iced::widget::image::Image::new(self.logo_handle.clone())
                 .width(Length::Fixed(100.0))
                 .height(Length::Fixed(100.0)),
-            row![
-                pick_list(
-                    &super::HTTP_METHODS[..],
-                    Some(self.method.as_str()),
-                    |s: &str| { Message::MethodSelected(s.to_string()) }
-                )
-                .padding(10),
-                iced::widget::text_input("URL or paste cURL command", &self.url_input)
-                    .on_input(Message::UrlInputChanged)
-                    .padding(10),
-                button(row![lucide::send().size(14), text(" Send")].spacing(4))
-                    .on_press(Message::SendRequest),
-                button(row![lucide::code().size(14), text(" Code")].spacing(4))
-                    .on_press(Message::ShowSnippets),
-            ]
+            {
+                let send_btn =
+                    button(row![lucide::send().size(14), text(" Send")].spacing(4))
+                        .on_press(Message::SendRequest);
+                let cancel_btn =
+                    button(row![lucide::x().size(14), text(" Cancel")].spacing(4))
+                        .on_press(Message::CancelRequest);
+                let code_btn =
+                    button(row![lucide::code().size(14), text(" Code")].spacing(4))
+                        .on_press(Message::ShowSnippets);
+
+                if matches!(self.request_status, RequestStatus::Loading) {
+                    row![
+                        pick_list(
+                            &super::HTTP_METHODS[..],
+                            Some(self.method.as_str()),
+                            |s: &str| { Message::MethodSelected(s.to_string()) }
+                        )
+                        .padding(10),
+                        iced::widget::text_input("URL or paste cURL command", &self.url_input)
+                            .on_input(Message::UrlInputChanged)
+                            .padding(10),
+                        cancel_btn,
+                        code_btn,
+                    ]
+                } else {
+                    row![
+                        pick_list(
+                            &super::HTTP_METHODS[..],
+                            Some(self.method.as_str()),
+                            |s: &str| { Message::MethodSelected(s.to_string()) }
+                        )
+                        .padding(10),
+                        iced::widget::text_input("URL or paste cURL command", &self.url_input)
+                            .on_input(Message::UrlInputChanged)
+                            .padding(10),
+                        send_btn,
+                        code_btn,
+                    ]
+                }
+            }
             .spacing(10)
             .padding(10),
             tabs.height(Length::Fixed(280.0)),

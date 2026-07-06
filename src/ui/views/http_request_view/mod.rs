@@ -10,7 +10,7 @@ use crate::http_client::snippets::SnippetFormat;
 use crate::ui::components::key_value_editor::{self, KeyValueEditor};
 use crate::ui::request_status::RequestStatus;
 use iced::highlighter;
-use iced::widget::image::Handle;
+use iced::widget::image::Handle as ImageHandle;
 use iced::widget::text_editor;
 use std::time::Duration;
 
@@ -161,6 +161,8 @@ pub enum Message {
     DownloadResponse,
     ResponseFileSaved(Result<String, String>),
     ToggleImagePreview,
+    CancelRequest,
+    SetIdle,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -211,13 +213,14 @@ pub struct HttpRequestView {
     pub snippet_content: text_editor::Content,
     pub word_wrap: bool,
     pub pending_request_data: Option<String>,
-    pub(crate) logo_handle: Handle,
+    pub(crate) logo_handle: ImageHandle,
     pub show_response_search: bool,
     pub response_search_query: String,
     pub response_search_matches: Vec<(usize, usize)>,
     pub response_search_index: usize,
     pub show_image_preview: bool,
-    pub image_preview_handle: Option<Handle>,
+    pub image_preview_handle: Option<ImageHandle>,
+    pub abort_handle: Option<iced::task::Handle>,
 }
 
 impl Clone for HttpRequestView {
@@ -258,6 +261,7 @@ impl Clone for HttpRequestView {
             response_search_index: self.response_search_index,
             show_image_preview: self.show_image_preview,
             image_preview_handle: self.image_preview_handle.clone(),
+            abort_handle: None,
         }
     }
 }
@@ -296,13 +300,14 @@ impl Default for HttpRequestView {
             snippet_content: text_editor::Content::new(),
             word_wrap: false,
             pending_request_data: None,
-            logo_handle: Handle::from_bytes(bytes::Bytes::from_static(LOGO_BG_BYTES)),
+            logo_handle: ImageHandle::from_bytes(bytes::Bytes::from_static(LOGO_BG_BYTES)),
             show_response_search: false,
             response_search_query: String::new(),
             response_search_matches: Vec::new(),
             response_search_index: 0,
             show_image_preview: false,
             image_preview_handle: None,
+            abort_handle: None,
         }
     }
 }
@@ -330,6 +335,7 @@ impl HttpRequestView {
                                     id: self.headers_editor.entries.len(),
                                     key,
                                     value,
+                                    secret: false,
                                 },
                             );
                         }
@@ -408,6 +414,9 @@ impl HttpRequestView {
                 self.response_size = None;
                 self.show_image_preview = false;
                 self.image_preview_handle = None;
+            }
+            Message::SetIdle => {
+                self.request_status = RequestStatus::Idle;
             }
             Message::ResponseReceived(result) => match result {
                 Ok(response) => {
@@ -742,6 +751,10 @@ impl HttpRequestView {
             }
             Message::ToggleImagePreview => {
                 self.show_image_preview = !self.show_image_preview;
+            }
+            Message::CancelRequest => {
+                // Handled in app.rs via handle_http_request_msg:
+                // aborts the in-flight Task and resets status to Idle.
             }
         }
     }

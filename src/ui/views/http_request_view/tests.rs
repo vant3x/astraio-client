@@ -39,11 +39,13 @@ mod tests {
                 id: 0,
                 key: "page".to_string(),
                 value: "1".to_string(),
+                secret: false,
             },
             KeyValueEntry {
                 id: 1,
                 key: "limit".to_string(),
                 value: "10".to_string(),
+                secret: false,
             },
         ];
         let req = build(&view);
@@ -60,6 +62,7 @@ mod tests {
             id: 0,
             key: "new".to_string(),
             value: "val".to_string(),
+            secret: false,
         }];
         let req = build(&view);
         assert!(req.url.contains("existing=true"));
@@ -80,11 +83,13 @@ mod tests {
                 id: 0,
                 key: String::new(),
                 value: "val".to_string(),
+                secret: false,
             },
             KeyValueEntry {
                 id: 1,
                 key: "good".to_string(),
                 value: "yes".to_string(),
+                secret: false,
             },
         ];
         let req = build(&view);
@@ -99,6 +104,7 @@ mod tests {
             id: 0,
             key: "Accept".to_string(),
             value: "text/html".to_string(),
+            secret: false,
         }];
         let req = build(&view);
         assert!(req
@@ -114,6 +120,7 @@ mod tests {
             id: 0,
             key: String::new(),
             value: "val".to_string(),
+            secret: false,
         }];
         let req = build(&view);
         assert!(!req.headers.iter().any(|(k, _)| k.is_empty()));
@@ -226,6 +233,7 @@ mod tests {
                 "BASE_URL".to_string(),
                 "https://api.example.com".to_string(),
             )],
+            secret_keys: vec![],
             default_endpoint: None,
         };
         view.apply_environment(&env);
@@ -240,6 +248,7 @@ mod tests {
             id: 1,
             name: "test".to_string(),
             variables: vec![("API_TOKEN".to_string(), "abc123".to_string())],
+            secret_keys: vec![],
             default_endpoint: None,
         };
         view.apply_environment(&env);
@@ -253,11 +262,13 @@ mod tests {
             id: 0,
             key: "Authorization".to_string(),
             value: "Bearer {{TOKEN}}".to_string(),
+            secret: false,
         }];
         let env = Environment {
             id: 1,
             name: "test".to_string(),
             variables: vec![("TOKEN".to_string(), "my-jwt-token".to_string())],
+            secret_keys: vec![],
             default_endpoint: None,
         };
         view.apply_environment(&env);
@@ -271,11 +282,13 @@ mod tests {
             id: 0,
             key: "key".to_string(),
             value: "{{API_KEY}}".to_string(),
+            secret: false,
         }];
         let env = Environment {
             id: 1,
             name: "test".to_string(),
             variables: vec![("API_KEY".to_string(), "secret-key-123".to_string())],
+            secret_keys: vec![],
             default_endpoint: None,
         };
         view.apply_environment(&env);
@@ -290,6 +303,7 @@ mod tests {
             id: 1,
             name: "test".to_string(),
             variables: vec![("JWT".to_string(), "eyJhbGciOiJIUzI1NiJ9".to_string())],
+            secret_keys: vec![],
             default_endpoint: None,
         };
         view.apply_environment(&env);
@@ -313,6 +327,7 @@ mod tests {
                 ("USER".to_string(), "admin".to_string()),
                 ("PASS".to_string(), "secret".to_string()),
             ],
+            secret_keys: vec![],
             default_endpoint: None,
         };
         view.apply_environment(&env);
@@ -336,6 +351,7 @@ mod tests {
                 ("HOST".to_string(), "localhost".to_string()),
                 ("PORT".to_string(), "8080".to_string()),
             ],
+            secret_keys: vec![],
             default_endpoint: None,
         };
         view.apply_environment(&env);
@@ -349,6 +365,7 @@ mod tests {
             id: 1,
             name: "test".to_string(),
             variables: vec![],
+            secret_keys: vec![],
             default_endpoint: None,
         };
         view.apply_environment(&env);
@@ -530,6 +547,7 @@ mod tests {
             id: 1,
             name: "test".to_string(),
             variables: vec![("API_KEY".to_string(), "my-secret".to_string())],
+            secret_keys: vec![],
             default_endpoint: None,
         };
         view.apply_environment(&env);
@@ -554,6 +572,7 @@ mod tests {
                 "DEVICE_AUTH".to_string(),
                 "https://device.example.com".to_string(),
             )],
+            secret_keys: vec![],
             default_endpoint: None,
         };
         view.apply_environment(&env);

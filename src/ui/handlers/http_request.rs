@@ -56,7 +56,7 @@ pub fn handle_http_request_msg(
                 Arc::clone(&app.http_client)
             };
 
-            Task::perform(
+            let (task, handle) = Task::perform(
                 async move { client::send_request(&http_client, request).await },
                 move |result| {
                     Message::HttpRequestViewMsg(
@@ -65,6 +65,9 @@ pub fn handle_http_request_msg(
                     )
                 },
             )
+            .abortable();
+            view.abort_handle = Some(handle);
+            task
         }
         http_request_view::Message::ResponseReceived(ref result) => {
             let Some(view) = app.request_tabs.get_mut(index) else {
@@ -235,6 +238,17 @@ pub fn handle_http_request_msg(
                         app.toast_manager.error(e);
                     }
                 }
+            }
+            Task::none()
+        }
+        http_request_view::Message::CancelRequest => {
+            let Some(view) = app.request_tabs.get_mut(index) else {
+                return Task::none();
+            };
+            if let Some(handle) = view.abort_handle.take() {
+                handle.abort();
+                view.update(http_request_view::Message::SetIdle);
+                app.toast_manager.warning("Request cancelled".to_string());
             }
             Task::none()
         }
