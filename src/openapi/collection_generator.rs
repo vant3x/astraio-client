@@ -27,6 +27,7 @@ pub fn generate_collection(spec: &ParsedSpec, collection_id: i32) -> GeneratedCo
         id: collection_id,
         name: format!("{} (OpenAPI)", spec.title),
         description: spec.description.clone(),
+        sort_order: 0,
     };
 
     let by_tag = spec.endpoints_by_tag();
@@ -47,6 +48,7 @@ pub fn generate_collection(spec: &ParsedSpec, collection_id: i32) -> GeneratedCo
                 collection_id,
                 name: tag_name.clone(),
                 parent_folder_id: None,
+                sort_order: folder_id_counter,
             };
             folders.push(folder);
             let fid = folder_id_counter;

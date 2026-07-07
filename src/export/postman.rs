@@ -133,6 +133,7 @@ mod tests {
             id: 1,
             name: name.to_string(),
             description: None,
+            sort_order: 0,
         }
     }
 
@@ -179,6 +180,7 @@ mod tests {
             collection_id: 1,
             name: "Auth".to_string(),
             parent_folder_id: None,
+            sort_order: 0,
         }];
         let requests = vec![CollectionRequest {
             id: 1,

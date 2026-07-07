@@ -4,6 +4,41 @@ use iced::Task;
 
 pub fn handle_message(app: &mut AstraNovaApp, msg: collection_view::Message) -> Task<Message> {
     match msg.clone() {
+        collection_view::Message::ToggleCollection(idx) => {
+            if let Some(col) = app.collection_view.collections.get(idx) {
+                let col_id = col.id;
+                let is_expanding = app
+                    .collection_view
+                    .expanded_collections
+                    .get(idx)
+                    .is_some_and(|e| !*e);
+                app.collection_view.update(msg);
+                if is_expanding {
+                    refresh_collection_data(app, col_id);
+                }
+                return Task::none();
+            }
+        }
+        collection_view::Message::ToggleFolder(folder_id) => {
+            app.collection_view.update(msg.clone());
+            if let Some(folder) = app
+                .collection_view
+                .folders
+                .iter()
+                .find(|f| f.id == folder_id)
+            {
+                let col_id = folder.collection_id;
+                let is_expanding = app
+                    .collection_view
+                    .folder_index(folder_id)
+                    .and_then(|f_idx| app.collection_view.expanded_folders.get(f_idx))
+                    .is_some_and(|e| !*e);
+                if is_expanding {
+                    refresh_collection_data(app, col_id);
+                }
+            }
+            return Task::none();
+        }
         collection_view::Message::NewCollectionNameChanged(name) => {
             app.collection_view.new_collection_name = name;
         }
@@ -14,85 +49,73 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: collection_view::Message) -> 
                     Ok(cols) => {
                         app.collection_view.sync_collections(&cols);
                         app.collection_view.new_collection_name.clear();
+                        refresh_all_data(app);
                     }
                     Err(e) => log::error!("Error creating collection: {}", e),
                 }
             }
         }
-        collection_view::Message::SelectCollection(idx) => {
-            app.collection_view.panel_state = collection_view::PanelState::CollectionDetail(idx);
-            if let Some(col) = app.collection_view.collections.get(idx) {
-                let col_id = col.id;
-                let folders =
-                    crate::services::collection_service::get_folders(&app.db_conn, col_id);
-                app.collection_view.sync_folders(&folders);
-                let reqs =
-                    crate::services::collection_service::get_requests(&app.db_conn, col_id, None);
-                app.collection_view.sync_requests(&reqs);
-            }
-        }
-        collection_view::Message::SelectFolder(folder_id) => {
-            if let collection_view::PanelState::CollectionDetail(col_idx) =
-                app.collection_view.panel_state
-            {
-                app.collection_view.panel_state =
-                    collection_view::PanelState::FolderDetail(col_idx, folder_id);
-                if let Some(col) = app.collection_view.collections.get(col_idx) {
-                    let reqs = crate::services::collection_service::get_requests(
+        collection_view::Message::CreateFolder => {
+            let name = app.collection_view.new_folder_name.clone();
+            let col_id = app.collection_view.new_folder_target;
+            let parent_id = app.collection_view.new_folder_parent;
+            if let Some(col_id) = col_id {
+                if !name.is_empty() {
+                    match crate::services::collection_service::create_folder_with_parent(
                         &app.db_conn,
-                        col.id,
-                        Some(folder_id),
-                    );
-                    app.collection_view.sync_requests(&reqs);
+                        col_id,
+                        &name,
+                        parent_id,
+                    ) {
+                        Ok(_) => {
+                            app.collection_view.new_folder_name.clear();
+                            app.collection_view.new_folder_target = None;
+                            app.collection_view.new_folder_parent = None;
+                            refresh_collection_data(app, col_id);
+                        }
+                        Err(e) => log::error!("Error creating folder: {}", e),
+                    }
                 }
             }
         }
-        collection_view::Message::Close => {
-            app.collection_view.panel_state = collection_view::PanelState::Collections;
+        collection_view::Message::HideNewFolderInput => {
+            app.collection_view.new_folder_target = None;
+            app.collection_view.new_folder_parent = None;
+            app.collection_view.new_folder_name.clear();
         }
-        collection_view::Message::NewFolderNameChanged(_col_id, name) => {
+        collection_view::Message::NewFolderNameChanged(name) => {
             app.collection_view.new_folder_name = name;
         }
-        collection_view::Message::CreateFolder(col_id) => {
-            let name = app.collection_view.new_folder_name.clone();
-            if !name.is_empty() {
-                match crate::services::collection_service::create_folder_and_refresh(
-                    &app.db_conn,
-                    col_id,
-                    &name,
-                ) {
-                    Ok(folders) => {
-                        app.collection_view.sync_folders(&folders);
-                        app.collection_view.new_folder_name.clear();
-                    }
-                    Err(e) => log::error!("Error creating folder: {}", e),
-                }
-            }
-        }
-        collection_view::Message::DeleteCollection(_idx) => {}
         collection_view::Message::ConfirmDeleteCollection(idx) => {
             if let Some(col) = app.collection_view.collections.get(idx) {
-                match crate::services::collection_service::delete_and_refresh(&app.db_conn, col.id)
+                let col_id = col.id;
+                match crate::services::collection_service::delete_and_refresh(&app.db_conn, col_id)
                 {
-                    Ok(cols) => app.collection_view.sync_collections(&cols),
+                    Ok(cols) => {
+                        app.collection_view.sync_collections(&cols);
+                        refresh_all_data(app);
+                    }
                     Err(e) => log::error!("Error deleting collection: {}", e),
                 }
             }
         }
-        collection_view::Message::DeleteFolder(_folder_id) => {}
         collection_view::Message::ConfirmDeleteFolder(folder_id) => {
-            if let collection_view::PanelState::CollectionDetail(col_idx) =
-                app.collection_view.panel_state
+            if let Some(folder) = app
+                .collection_view
+                .folders
+                .iter()
+                .find(|f| f.id == folder_id)
             {
-                if let Some(col) = app.collection_view.collections.get(col_idx) {
-                    match crate::services::collection_service::delete_folder_and_refresh(
-                        &app.db_conn,
-                        col.id,
-                        folder_id,
-                    ) {
-                        Ok(folders) => app.collection_view.sync_folders(&folders),
-                        Err(e) => log::error!("Error deleting folder: {}", e),
+                let col_id = folder.collection_id;
+                match crate::services::collection_service::delete_folder_and_refresh(
+                    &app.db_conn,
+                    col_id,
+                    folder_id,
+                ) {
+                    Ok(_) => {
+                        refresh_collection_data(app, col_id);
                     }
+                    Err(e) => log::error!("Error deleting folder: {}", e),
                 }
             }
         }
@@ -171,9 +194,7 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: collection_view::Message) -> 
                                         None,
                                     );
                                 }
-                                let cols =
-                                    crate::services::collection_service::get_all(&app.db_conn);
-                                app.collection_view.sync_collections(&cols);
+                                refresh_all_data(app);
                             }
                         }
                         Err(e) => log::error!("Error creating collection: {}", e),
@@ -275,9 +296,7 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: collection_view::Message) -> 
                                         None,
                                     );
                                 }
-                                let cols =
-                                    crate::services::collection_service::get_all(&app.db_conn);
-                                app.collection_view.sync_collections(&cols);
+                                refresh_all_data(app);
                                 app.toast_manager.success(format!(
                                     "Imported {} endpoints from OpenAPI spec",
                                     generated.requests.len()
@@ -323,7 +342,7 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: collection_view::Message) -> 
                             },
                             |_: Option<_>| {
                                 Message::CollectionMsg(
-                                    collection_view::Message::ExportCollectionData(String::new()),
+                                    collection_view::Message::ExportCollectionData(()),
                                 )
                             },
                         );
@@ -340,8 +359,7 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: collection_view::Message) -> 
                     match crate::services::collection_service::rename(&app.db_conn, col, &new_name)
                     {
                         Ok(()) => {
-                            let cols = crate::services::collection_service::get_all(&app.db_conn);
-                            app.collection_view.sync_collections(&cols);
+                            refresh_all_data(app);
                         }
                         Err(e) => log::error!("Error renaming collection: {}", e),
                     }
@@ -357,16 +375,14 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: collection_view::Message) -> 
                     &new_name,
                 ) {
                     Ok(()) => {
-                        if let collection_view::PanelState::CollectionDetail(col_idx) =
-                            app.collection_view.panel_state
+                        if let Some(folder) = app
+                            .collection_view
+                            .folders
+                            .iter()
+                            .find(|f| f.id == folder_id)
                         {
-                            if let Some(col) = app.collection_view.collections.get(col_idx) {
-                                let folders = crate::services::collection_service::get_folders(
-                                    &app.db_conn,
-                                    col.id,
-                                );
-                                app.collection_view.sync_folders(&folders);
-                            }
+                            let col_id = folder.collection_id;
+                            refresh_collection_data(app, col_id);
                         }
                     }
                     Err(e) => log::error!("Error renaming folder: {}", e),
@@ -382,15 +398,33 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: collection_view::Message) -> 
                     &new_name,
                 ) {
                     Ok(()) => {
-                        refresh_requests_after_rename(app);
+                        if let Some(req) =
+                            app.collection_view.requests.iter().find(|r| r.id == req_id)
+                        {
+                            let col_id = req.collection_id;
+                            refresh_collection_data(app, col_id);
+                        }
                     }
                     Err(e) => log::error!("Error renaming request: {}", e),
                 }
             }
         }
-        collection_view::Message::DeleteRequest(_req_id) => {}
         collection_view::Message::ConfirmDeleteRequest(req_id) => {
-            handle_delete_request(app, req_id);
+            if let Some(req) = app.collection_view.requests.iter().find(|r| r.id == req_id) {
+                let col_id = req.collection_id;
+                let folder_id = req.folder_id;
+                match crate::services::collection_service::delete_request_and_refresh(
+                    &app.db_conn,
+                    col_id,
+                    folder_id,
+                    req_id,
+                ) {
+                    Ok(_) => {
+                        refresh_collection_data(app, col_id);
+                    }
+                    Err(e) => log::error!("Error deleting request: {}", e),
+                }
+            }
         }
         collection_view::Message::LoadRequest(req_id) => {
             load_collection_request(app, req_id);
@@ -404,76 +438,37 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: collection_view::Message) -> 
     Task::none()
 }
 
-fn refresh_requests_after_rename(app: &mut AstraNovaApp) {
-    if let collection_view::PanelState::CollectionDetail(col_idx) = app.collection_view.panel_state
-    {
-        if let Some(col) = app.collection_view.collections.get(col_idx) {
-            let reqs =
-                crate::services::collection_service::get_requests(&app.db_conn, col.id, None);
-            app.collection_view.sync_requests(&reqs);
-        }
-    } else if let collection_view::PanelState::FolderDetail(col_idx, folder_id) =
-        app.collection_view.panel_state
-    {
-        if let Some(col) = app.collection_view.collections.get(col_idx) {
-            let reqs = crate::services::collection_service::get_requests(
-                &app.db_conn,
-                col.id,
-                Some(folder_id),
-            );
-            app.collection_view.sync_requests(&reqs);
-        }
-    }
+fn refresh_collection_data(app: &mut AstraNovaApp, col_id: i32) {
+    let folders = crate::services::collection_service::get_folders(&app.db_conn, col_id);
+    app.collection_view
+        .sync_folders_for_collection(col_id, &folders);
+    let reqs = crate::services::collection_service::get_requests(&app.db_conn, col_id, None);
+    app.collection_view
+        .sync_requests_for_collection(col_id, &reqs);
 }
 
-fn handle_delete_request(app: &mut AstraNovaApp, req_id: i32) {
-    if let collection_view::PanelState::CollectionDetail(col_idx) = app.collection_view.panel_state
-    {
-        if let Some(col) = app.collection_view.collections.get(col_idx) {
-            match crate::services::collection_service::delete_request_and_refresh(
-                &app.db_conn,
-                col.id,
-                None,
-                req_id,
-            ) {
-                Ok(reqs) => app.collection_view.sync_requests(&reqs),
-                Err(e) => log::error!("Error deleting request: {}", e),
-            }
-        }
-    } else if let collection_view::PanelState::FolderDetail(col_idx, folder_id) =
-        app.collection_view.panel_state
-    {
-        if let Some(col) = app.collection_view.collections.get(col_idx) {
-            match crate::services::collection_service::delete_request_and_refresh(
-                &app.db_conn,
-                col.id,
-                Some(folder_id),
-                req_id,
-            ) {
-                Ok(reqs) => app.collection_view.sync_requests(&reqs),
-                Err(e) => log::error!("Error deleting request: {}", e),
-            }
+fn refresh_all_data(app: &mut AstraNovaApp) {
+    let cols = crate::services::collection_service::get_all(&app.db_conn);
+    app.collection_view.sync_collections(&cols);
+
+    let expanded_indices: Vec<usize> = app
+        .collection_view
+        .expanded_collections
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, &expanded)| if expanded { Some(idx) } else { None })
+        .collect();
+
+    for idx in expanded_indices {
+        if let Some(col) = app.collection_view.collections.get(idx) {
+            let col_id = col.id;
+            refresh_collection_data(app, col_id);
         }
     }
 }
 
 fn load_collection_request(app: &mut AstraNovaApp, req_id: i32) {
-    let conn = &app.db_conn;
-    let all_reqs = match &app.collection_view.panel_state {
-        collection_view::PanelState::CollectionDetail(idx) => {
-            if let Some(col) = app.collection_view.collections.get(*idx) {
-                crate::services::collection_service::get_requests(conn, col.id, None)
-            } else {
-                return;
-            }
-        }
-        collection_view::PanelState::FolderDetail(_col_idx, _folder_id) => {
-            app.collection_view.requests.clone()
-        }
-        _ => return,
-    };
-
-    let req = match all_reqs.iter().find(|r| r.id == req_id) {
+    let req = match app.collection_view.requests.iter().find(|r| r.id == req_id) {
         Some(r) => r.clone(),
         None => return,
     };
@@ -485,15 +480,39 @@ fn load_collection_request(app: &mut AstraNovaApp, req_id: i32) {
 
 fn save_current_to_collection(app: &mut AstraNovaApp) {
     if let Some(view) = app.request_tabs.get(app.active_request_tab_index) {
-        let col_id = match app.collection_view.selected_collection_id {
-            Some(id) => id,
-            None => {
-                if let Some(col) = app.collection_view.collections.first() {
-                    col.id
-                } else {
-                    return;
-                }
+        let col_id = match &app.collection_view.selected_item {
+            Some(collection_view::TreeItemId::Collection(idx)) => {
+                app.collection_view.collections.get(*idx).map(|c| c.id)
             }
+            Some(collection_view::TreeItemId::Folder(folder_id)) => app
+                .collection_view
+                .folders
+                .iter()
+                .find(|f| f.id == *folder_id)
+                .map(|f| f.collection_id),
+            Some(collection_view::TreeItemId::Request(req_id)) => app
+                .collection_view
+                .requests
+                .iter()
+                .find(|r| r.id == *req_id)
+                .map(|r| r.collection_id),
+            None => app.collection_view.collections.first().map(|c| c.id),
+        };
+
+        let col_id = match col_id {
+            Some(id) => id,
+            None => return,
+        };
+
+        let folder_id = match &app.collection_view.selected_item {
+            Some(collection_view::TreeItemId::Folder(folder_id)) => Some(*folder_id),
+            Some(collection_view::TreeItemId::Request(req_id)) => app
+                .collection_view
+                .requests
+                .iter()
+                .find(|r| r.id == *req_id)
+                .and_then(|r| r.folder_id),
+            _ => None,
         };
 
         let request = match view.build_request() {
@@ -547,7 +566,7 @@ fn save_current_to_collection(app: &mut AstraNovaApp) {
         let _ = crate::services::collection_service::save_request(
             &app.db_conn,
             col_id,
-            None,
+            folder_id,
             &name,
             &request.method.to_string(),
             &request.url,
@@ -560,7 +579,6 @@ fn save_current_to_collection(app: &mut AstraNovaApp) {
             None,
         );
 
-        let reqs = crate::services::collection_service::get_requests(&app.db_conn, col_id, None);
-        app.collection_view.sync_requests(&reqs);
+        refresh_collection_data(app, col_id);
     }
 }

@@ -33,6 +33,7 @@ pub struct Collection {
     pub id: i32,
     pub name: String,
     pub description: Option<String>,
+    pub sort_order: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -41,6 +42,7 @@ pub struct CollectionFolder {
     pub collection_id: i32,
     pub name: String,
     pub parent_folder_id: Option<i32>,
+    pub sort_order: i32,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -230,6 +232,11 @@ pub fn init() -> std::result::Result<Connection, AppError> {
         [],
     )?;
     conn.execute(
+        "ALTER TABLE collections ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0",
+        [],
+    )
+    .ok();
+    conn.execute(
         "CREATE TABLE IF NOT EXISTS collection_folders (
             id INTEGER PRIMARY KEY,
             collection_id INTEGER NOT NULL,
@@ -240,6 +247,11 @@ pub fn init() -> std::result::Result<Connection, AppError> {
         )",
         [],
     )?;
+    conn.execute(
+        "ALTER TABLE collection_folders ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0",
+        [],
+    )
+    .ok();
     conn.execute(
         "CREATE TABLE IF NOT EXISTS collection_requests (
             id INTEGER PRIMARY KEY,
@@ -485,20 +497,31 @@ pub fn create_collection(
         params![name, description],
     )?;
     let id = conn.last_insert_rowid();
+    let max_order: i32 = conn
+        .query_row(
+            "SELECT COALESCE(MAX(sort_order), 0) FROM collections",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
     Ok(Collection {
         id: id as i32,
         name: name.to_string(),
         description: description.map(|s| s.to_string()),
+        sort_order: max_order + 1,
     })
 }
 
 pub fn get_collections(conn: &Connection) -> Result<Vec<Collection>> {
-    let mut stmt = conn.prepare("SELECT id, name, description FROM collections ORDER BY name")?;
+    let mut stmt = conn.prepare(
+        "SELECT id, name, description, sort_order FROM collections ORDER BY sort_order, name",
+    )?;
     let rows = stmt.query_map([], |row| {
         Ok(Collection {
             id: row.get(0)?,
             name: row.get(1)?,
             description: row.get(2)?,
+            sort_order: row.get(3)?,
         })
     })?;
     rows.collect()
@@ -523,9 +546,16 @@ pub fn create_folder(
     name: &str,
     parent_folder_id: Option<i32>,
 ) -> Result<CollectionFolder> {
+    let max_order: i32 = conn
+        .query_row(
+            "SELECT COALESCE(MAX(sort_order), 0) FROM collection_folders WHERE collection_id = ?1 AND parent_folder_id IS ?2",
+            params![collection_id, parent_folder_id],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
     conn.execute(
-        "INSERT INTO collection_folders (collection_id, name, parent_folder_id) VALUES (?1, ?2, ?3)",
-        params![collection_id, name, parent_folder_id],
+        "INSERT INTO collection_folders (collection_id, name, parent_folder_id, sort_order) VALUES (?1, ?2, ?3, ?4)",
+        params![collection_id, name, parent_folder_id, max_order + 1],
     )?;
     let id = conn.last_insert_rowid();
     Ok(CollectionFolder {
@@ -533,12 +563,13 @@ pub fn create_folder(
         collection_id,
         name: name.to_string(),
         parent_folder_id,
+        sort_order: max_order + 1,
     })
 }
 
 pub fn get_folders(conn: &Connection, collection_id: i32) -> Result<Vec<CollectionFolder>> {
     let mut stmt = conn.prepare(
-        "SELECT id, collection_id, name, parent_folder_id FROM collection_folders WHERE collection_id = ?1 ORDER BY name",
+        "SELECT id, collection_id, name, parent_folder_id, sort_order FROM collection_folders WHERE collection_id = ?1 ORDER BY sort_order, name",
     )?;
     let rows = stmt.query_map([collection_id], |row| {
         Ok(CollectionFolder {
@@ -546,6 +577,7 @@ pub fn get_folders(conn: &Connection, collection_id: i32) -> Result<Vec<Collecti
             collection_id: row.get(1)?,
             name: row.get(2)?,
             parent_folder_id: row.get(3)?,
+            sort_order: row.get(4)?,
         })
     })?;
     rows.collect()
@@ -723,7 +755,8 @@ mod tests {
             "CREATE TABLE IF NOT EXISTS collections (
                 id INTEGER PRIMARY KEY,
                 name TEXT NOT NULL,
-                description TEXT
+                description TEXT,
+                sort_order INTEGER NOT NULL DEFAULT 0
             )",
             [],
         )
@@ -733,7 +766,8 @@ mod tests {
                 id INTEGER PRIMARY KEY,
                 collection_id INTEGER NOT NULL,
                 name TEXT NOT NULL,
-                parent_folder_id INTEGER
+                parent_folder_id INTEGER,
+                sort_order INTEGER NOT NULL DEFAULT 0
             )",
             [],
         )

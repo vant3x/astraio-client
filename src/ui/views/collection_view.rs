@@ -4,59 +4,61 @@ use iced::{
     widget::{button, column, container, row, scrollable, text, text_input},
     Alignment, Color, Element, Length, Renderer, Theme,
 };
+use iced_aw::ContextMenu;
 use iced_fonts::lucide;
 
+const INDENT_SIZE: f32 = 16.0;
+
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub enum Message {
-    ToggleExpanded(usize),
-    SelectCollection(usize),
-    SelectFolder(i32),
-    LoadRequest(i32),
+    ToggleCollection(usize),
+    ToggleFolder(i32),
     NewCollectionNameChanged(String),
     CreateCollection,
     StartRenameCollection(usize),
     RenameCollectionValueChanged(String),
     ConfirmRenameCollection,
     CancelRenameCollection,
-    DeleteCollection(usize),
     RequestDeleteCollection(usize),
     ConfirmDeleteCollection(usize),
     CancelDeleteCollection,
+
+    ShowNewFolderInput(i32, Option<i32>),
+    HideNewFolderInput,
+    NewFolderNameChanged(String),
+    CreateFolder,
+
+    StartRenameFolder(i32),
+    RenameFolderValueChanged(String),
+    ConfirmRenameFolder,
+    CancelRenameFolder,
+    RequestDeleteFolder(i32),
+    ConfirmDeleteFolder(i32),
+    CancelDeleteFolder,
+
+    StartRenameRequest(i32),
+    RenameRequestValueChanged(String),
+    ConfirmRenameRequest,
+    CancelRenameRequest,
+    RequestDeleteRequest(i32),
+    ConfirmDeleteRequest(i32),
+    CancelDeleteRequest,
+    LoadRequest(i32),
+
     ImportCollection,
     ImportCollectionData(Option<String>),
     ImportOpenApi,
     ImportOpenApiData(Option<String>),
     ExportCollection(usize),
-    ExportCollectionData(String),
-    NewFolderNameChanged(i32, String),
-    CreateFolder(i32),
-    StartRenameFolder(i32),
-    RenameFolderValueChanged(String),
-    ConfirmRenameFolder,
-    CancelRenameFolder,
-    DeleteFolder(i32),
-    RequestDeleteFolder(i32),
-    ConfirmDeleteFolder(i32),
-    CancelDeleteFolder,
+    ExportCollectionData(()),
     SaveCurrentRequest,
-    StartRenameRequest(i32),
-    RenameRequestValueChanged(String),
-    ConfirmRenameRequest,
-    CancelRenameRequest,
-    DeleteRequest(i32),
-    RequestDeleteRequest(i32),
-    ConfirmDeleteRequest(i32),
-    CancelDeleteRequest,
-    Close,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub enum PanelState {
-    #[default]
-    Collections,
-    CollectionDetail(usize),
-    FolderDetail(usize, i32),
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TreeItemId {
+    Collection(usize),
+    Folder(i32),
+    Request(i32),
 }
 
 #[derive(Debug, Default)]
@@ -64,14 +66,14 @@ pub struct CollectionView {
     pub collections: Vec<Collection>,
     pub folders: Vec<CollectionFolder>,
     pub requests: Vec<CollectionRequest>,
-    pub panel_state: PanelState,
-    pub selected_collection_id: Option<i32>,
     pub expanded_collections: Vec<bool>,
     pub expanded_folders: Vec<bool>,
+    pub selected_item: Option<TreeItemId>,
+    pub hovered_item: Option<TreeItemId>,
     pub new_collection_name: String,
     pub new_folder_name: String,
-    pub new_request_name: String,
     pub new_folder_target: Option<i32>,
+    pub new_folder_parent: Option<i32>,
     pub renaming_collection: Option<usize>,
     pub rename_collection_value: String,
     pub renaming_folder: Option<i32>,
@@ -89,14 +91,14 @@ impl Clone for CollectionView {
             collections: self.collections.clone(),
             folders: self.folders.clone(),
             requests: self.requests.clone(),
-            panel_state: self.panel_state.clone(),
-            selected_collection_id: self.selected_collection_id,
             expanded_collections: self.expanded_collections.clone(),
             expanded_folders: self.expanded_folders.clone(),
+            selected_item: self.selected_item.clone(),
+            hovered_item: self.hovered_item.clone(),
             new_collection_name: self.new_collection_name.clone(),
             new_folder_name: self.new_folder_name.clone(),
-            new_request_name: self.new_request_name.clone(),
             new_folder_target: self.new_folder_target,
+            new_folder_parent: self.new_folder_parent,
             renaming_collection: self.renaming_collection,
             rename_collection_value: self.rename_collection_value.clone(),
             renaming_folder: self.renaming_folder,
@@ -117,28 +119,20 @@ impl CollectionView {
 
     pub fn update(&mut self, message: Message) -> Option<i32> {
         match message {
-            Message::ToggleExpanded(idx) => {
+            Message::ToggleCollection(idx) => {
                 if let Some(expanded) = self.expanded_collections.get_mut(idx) {
                     *expanded = !*expanded;
                 }
+                self.selected_item = Some(TreeItemId::Collection(idx));
                 None
             }
-            Message::SelectCollection(idx) => {
-                self.panel_state = PanelState::CollectionDetail(idx);
-                self.selected_collection_id = self.collections.get(idx).map(|c| c.id);
-                None
-            }
-            Message::SelectFolder(folder_id) => {
-                if let PanelState::CollectionDetail(col_idx) = self.panel_state {
-                    self.panel_state = PanelState::FolderDetail(col_idx, folder_id);
+            Message::ToggleFolder(folder_id) => {
+                if let Some(f_idx) = self.folders.iter().position(|f| f.id == folder_id) {
+                    if let Some(expanded) = self.expanded_folders.get_mut(f_idx) {
+                        *expanded = !*expanded;
+                    }
                 }
-                None
-            }
-            Message::Close => {
-                self.panel_state = PanelState::Collections;
-                self.renaming_collection = None;
-                self.renaming_folder = None;
-                self.renaming_request = None;
+                self.selected_item = Some(TreeItemId::Folder(folder_id));
                 None
             }
             Message::NewCollectionNameChanged(name) => {
@@ -146,24 +140,28 @@ impl CollectionView {
                 None
             }
             Message::CreateCollection => None,
-            Message::NewFolderNameChanged(_col_id, name) => {
+            Message::ShowNewFolderInput(col_id, parent_id) => {
+                self.new_folder_target = Some(col_id);
+                self.new_folder_parent = parent_id;
+                self.new_folder_name.clear();
+                None
+            }
+            Message::HideNewFolderInput => {
+                self.new_folder_target = None;
+                self.new_folder_parent = None;
+                self.new_folder_name.clear();
+                None
+            }
+            Message::NewFolderNameChanged(name) => {
                 self.new_folder_name = name;
                 None
             }
-            Message::CreateFolder(_col_id) => None,
-            Message::DeleteCollection(idx) => {
-                if idx < self.collections.len() {
-                    self.collections.remove(idx);
-                    self.expanded_collections.remove(idx);
-                }
-                self.pending_delete_collection = None;
-                None
-            }
+            Message::CreateFolder => None,
             Message::RequestDeleteCollection(idx) => {
                 self.pending_delete_collection = Some(idx);
                 None
             }
-            Message::ConfirmDeleteCollection(_idx) => {
+            Message::ConfirmDeleteCollection(_) => {
                 self.pending_delete_collection = None;
                 None
             }
@@ -171,21 +169,28 @@ impl CollectionView {
                 self.pending_delete_collection = None;
                 None
             }
-            Message::DeleteFolder(folder_id) => {
-                self.folders.retain(|f| f.id != folder_id);
-                self.pending_delete_folder = None;
-                None
-            }
             Message::RequestDeleteFolder(folder_id) => {
                 self.pending_delete_folder = Some(folder_id);
                 None
             }
-            Message::ConfirmDeleteFolder(_folder_id) => {
+            Message::ConfirmDeleteFolder(_) => {
                 self.pending_delete_folder = None;
                 None
             }
             Message::CancelDeleteFolder => {
                 self.pending_delete_folder = None;
+                None
+            }
+            Message::RequestDeleteRequest(req_id) => {
+                self.pending_delete_request = Some(req_id);
+                None
+            }
+            Message::ConfirmDeleteRequest(_) => {
+                self.pending_delete_request = None;
+                None
+            }
+            Message::CancelDeleteRequest => {
+                self.pending_delete_request = None;
                 None
             }
             Message::ImportCollection => None,
@@ -194,8 +199,11 @@ impl CollectionView {
             Message::ImportOpenApiData(_) => None,
             Message::ExportCollection(_) => None,
             Message::ExportCollectionData(_) => None,
-            Message::LoadRequest(req_id) => Some(req_id),
             Message::SaveCurrentRequest => None,
+            Message::LoadRequest(req_id) => {
+                self.selected_item = Some(TreeItemId::Request(req_id));
+                Some(req_id)
+            }
             Message::StartRenameCollection(idx) => {
                 if let Some(col) = self.collections.get(idx) {
                     self.renaming_collection = Some(idx);
@@ -253,546 +261,514 @@ impl CollectionView {
                 self.renaming_request = None;
                 None
             }
-            Message::DeleteRequest(_req_id) => {
-                self.pending_delete_request = None;
-                None
-            }
-            Message::RequestDeleteRequest(req_id) => {
-                self.pending_delete_request = Some(req_id);
-                None
-            }
-            Message::ConfirmDeleteRequest(_req_id) => {
-                self.pending_delete_request = None;
-                None
-            }
-            Message::CancelDeleteRequest => {
-                self.pending_delete_request = None;
-                None
-            }
         }
     }
 
     pub fn sync_collections(&mut self, collections: &[Collection]) {
-        let old_len = self.expanded_collections.len();
         self.collections = collections.to_vec();
         if self.expanded_collections.len() < collections.len() {
             self.expanded_collections.resize(collections.len(), false);
         } else {
             self.expanded_collections.truncate(collections.len());
         }
-        if old_len > collections.len() {
-            if let PanelState::CollectionDetail(idx) = self.panel_state {
-                if idx >= collections.len() {
-                    self.panel_state = PanelState::Collections;
-                }
-            }
-        }
     }
 
-    pub fn sync_folders(&mut self, folders: &[CollectionFolder]) {
-        self.folders = folders.to_vec();
-        self.expanded_folders.resize(folders.len(), false);
+    pub fn sync_folders_for_collection(&mut self, col_id: i32, folders: &[CollectionFolder]) {
+        self.folders.retain(|f| f.collection_id != col_id);
+        self.folders.extend_from_slice(folders);
+        self.folders.sort_by_key(|f| {
+            (
+                f.collection_id,
+                f.parent_folder_id.unwrap_or(0),
+                f.sort_order,
+            )
+        });
+        self.expanded_folders.resize(self.folders.len(), false);
     }
 
-    pub fn sync_requests(&mut self, requests: &[CollectionRequest]) {
-        self.requests = requests.to_vec();
+    pub fn sync_requests_for_collection(&mut self, col_id: i32, requests: &[CollectionRequest]) {
+        self.requests.retain(|r| r.collection_id != col_id);
+        self.requests.extend_from_slice(requests);
+        self.requests
+            .sort_by_key(|r| (r.collection_id, r.folder_id.unwrap_or(0), r.sort_order));
+    }
+
+    pub fn folder_index(&self, folder_id: i32) -> Option<usize> {
+        self.folders.iter().position(|f| f.id == folder_id)
     }
 
     pub fn view(&self) -> Element<'_, Message, Theme, Renderer> {
-        match &self.panel_state {
-            PanelState::Collections => self.collections_list_view(),
-            PanelState::CollectionDetail(idx) => self.collection_detail_view(*idx),
-            PanelState::FolderDetail(col_idx, folder_id) => {
-                self.folder_detail_view(*col_idx, *folder_id)
-            }
-        }
-    }
-
-    fn collections_list_view(&self) -> Element<'_, Message, Theme, Renderer> {
         let header = row![
-            text("Collections").size(16),
-            button(lucide::plus().size(14)).on_press(Message::CreateCollection),
-            button(row![lucide::upload().size(14), text(" Import")].spacing(4))
+            text("Collections").size(15),
+            button(lucide::plus().size(13)).on_press(Message::CreateCollection),
+            button(row![lucide::upload().size(13), text(" Import")].spacing(4))
                 .on_press(Message::ImportCollection),
-            button(row![lucide::file_code().size(14), text(" OpenAPI")].spacing(4))
+            button(row![lucide::file_code().size(13), text(" OpenAPI")].spacing(4))
                 .on_press(Message::ImportOpenApi),
         ]
-        .spacing(10)
+        .spacing(8)
         .align_y(Alignment::Center);
 
-        let new_collection_input = text_input("New collection name...", &self.new_collection_name)
+        let new_collection_input = text_input("New collection...", &self.new_collection_name)
             .on_input(Message::NewCollectionNameChanged)
-            .size(13)
-            .padding(5);
+            .size(12)
+            .padding(4);
 
         let save_button: Element<'_, Message, Theme, Renderer> = if self.collections.is_empty() {
-            button(row![lucide::save().size(14), text(" Save Current Request")].spacing(4)).into()
+            button(row![lucide::save().size(13), text(" Save Request").size(12)].spacing(4)).into()
         } else {
-            button(row![lucide::save().size(14), text(" Save Current Request")].spacing(4))
+            button(row![lucide::save().size(13), text(" Save Request").size(12)].spacing(4))
                 .on_press(Message::SaveCurrentRequest)
                 .into()
         };
 
-        let mut list = column![].spacing(4);
+        let mut tree = column![].spacing(1);
 
-        for (index, col) in self.collections.iter().enumerate() {
+        for (col_idx, col) in self.collections.iter().enumerate() {
             let is_expanded = self
                 .expanded_collections
-                .get(index)
+                .get(col_idx)
                 .copied()
                 .unwrap_or(false);
-
-            let is_renaming = self.renaming_collection == Some(index);
-
-            if is_renaming {
-                let rename_row = row![
-                    text_input("New name...", &self.rename_collection_value)
-                        .on_input(Message::RenameCollectionValueChanged)
-                        .size(13)
-                        .padding(5),
-                    button(lucide::check().size(12)).on_press(Message::ConfirmRenameCollection),
-                    button(lucide::x().size(12)).on_press(Message::CancelRenameCollection),
-                ]
-                .spacing(4)
-                .align_y(Alignment::Center);
-                list = list.push(rename_row);
-            } else {
-                let expand_icon: Element<'_, Message, Theme, Renderer> = if is_expanded {
-                    lucide::chevron_down().size(14).into()
-                } else {
-                    lucide::chevron_right().size(14).into()
-                };
-
-                let col_row = if self.pending_delete_collection == Some(index) {
-                    row![
-                        button(row![expand_icon, text(&col.name).size(13)].spacing(4))
-                            .on_press(Message::ToggleExpanded(index)),
-                        button(lucide::pencil().size(12))
-                            .on_press(Message::StartRenameCollection(index)),
-                        button(lucide::download().size(12))
-                            .on_press(Message::ExportCollection(index)),
-                        button(
-                            text("Delete?")
-                                .size(11)
-                                .color(Color::from_rgb(0.8, 0.2, 0.2))
-                        )
-                        .on_press(Message::ConfirmDeleteCollection(index)),
-                        button(lucide::x().size(11)).on_press(Message::CancelDeleteCollection),
-                    ]
-                    .spacing(4)
-                    .align_y(Alignment::Center)
-                } else {
-                    row![
-                        button(row![expand_icon, text(&col.name).size(13)].spacing(4))
-                            .on_press(Message::ToggleExpanded(index)),
-                        button(lucide::pencil().size(12))
-                            .on_press(Message::StartRenameCollection(index)),
-                        button(lucide::download().size(12))
-                            .on_press(Message::ExportCollection(index)),
-                        button(
-                            lucide::trash()
-                                .size(12)
-                                .color(Color::from_rgb(0.8, 0.2, 0.2))
-                        )
-                        .on_press(Message::RequestDeleteCollection(index)),
-                    ]
-                    .spacing(4)
-                    .align_y(Alignment::Center)
-                };
-
-                list = list.push(col_row);
-            }
-
-            if is_expanded {
-                let detail_button = button(
-                    text(format!("    {} requests", self.requests.len()))
-                        .size(11)
-                        .color(Color::from_rgb(0.5, 0.5, 0.5)),
-                )
-                .on_press(Message::SelectCollection(index));
-
-                list = list.push(detail_button);
-            }
+            tree = self.render_collection(tree, col_idx, col, is_expanded);
         }
 
         if self.collections.is_empty() {
-            list = list.push(
+            tree = tree.push(
                 text("No collections yet.")
-                    .size(13)
-                    .color(Color::from_rgb(0.5, 0.5, 0.5)),
-            );
-        }
-
-        container(
-            column![
-                header,
-                new_collection_input,
-                save_button,
-                scrollable(list).height(Length::Fill),
-            ]
-            .spacing(8)
-            .padding(10),
-        )
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .into()
-    }
-
-    fn collection_detail_view(&self, col_idx: usize) -> Element<'_, Message, Theme, Renderer> {
-        let col = match self.collections.get(col_idx) {
-            Some(c) => c,
-            None => return self.collections_list_view(),
-        };
-
-        let back_button = button(row![lucide::arrow_left().size(14), text(" Back")].spacing(4))
-            .on_press(Message::Close);
-
-        let header = row![back_button, text(&col.name).size(16),]
-            .spacing(10)
-            .align_y(Alignment::Center);
-
-        let new_folder_input = text_input("New folder name...", &self.new_folder_name)
-            .on_input(|s| Message::NewFolderNameChanged(col.id, s))
-            .size(13)
-            .padding(5);
-
-        let new_folder_button =
-            button(row![lucide::folder_plus().size(14), text(" Folder")].spacing(4))
-                .on_press(Message::CreateFolder(col.id));
-
-        let folder_controls = row![new_folder_input, new_folder_button].spacing(8);
-
-        let mut list = column![].spacing(4);
-
-        for (f_idx, folder) in self.folders.iter().enumerate() {
-            let is_expanded = self.expanded_folders.get(f_idx).copied().unwrap_or(false);
-
-            let is_renaming = self.renaming_folder == Some(folder.id);
-
-            if is_renaming {
-                let rename_row = row![
-                    text_input("New name...", &self.rename_folder_value)
-                        .on_input(Message::RenameFolderValueChanged)
-                        .size(13)
-                        .padding(5),
-                    button(lucide::check().size(12)).on_press(Message::ConfirmRenameFolder),
-                    button(lucide::x().size(12)).on_press(Message::CancelRenameFolder),
-                ]
-                .spacing(4)
-                .align_y(Alignment::Center);
-                list = list.push(rename_row);
-            } else {
-                let expand_icon: Element<'_, Message, Theme, Renderer> = if is_expanded {
-                    lucide::chevron_down().size(14).into()
-                } else {
-                    lucide::chevron_right().size(14).into()
-                };
-
-                let folder_row = if self.pending_delete_folder == Some(folder.id) {
-                    row![
-                        button(
-                            row![
-                                expand_icon,
-                                lucide::folder().size(14),
-                                text(&folder.name).size(13)
-                            ]
-                            .spacing(4)
-                        )
-                        .on_press(Message::ToggleExpanded(col_idx)),
-                        button(lucide::pencil().size(12))
-                            .on_press(Message::StartRenameFolder(folder.id)),
-                        button(
-                            text("Delete?")
-                                .size(11)
-                                .color(Color::from_rgb(0.8, 0.2, 0.2))
-                        )
-                        .on_press(Message::ConfirmDeleteFolder(folder.id)),
-                        button(lucide::x().size(11)).on_press(Message::CancelDeleteFolder),
-                    ]
-                    .spacing(4)
-                    .align_y(Alignment::Center)
-                } else {
-                    row![
-                        button(
-                            row![
-                                expand_icon,
-                                lucide::folder().size(14),
-                                text(&folder.name).size(13)
-                            ]
-                            .spacing(4)
-                        )
-                        .on_press(Message::ToggleExpanded(col_idx)),
-                        button(lucide::pencil().size(12))
-                            .on_press(Message::StartRenameFolder(folder.id)),
-                        button(
-                            lucide::trash()
-                                .size(12)
-                                .color(Color::from_rgb(0.8, 0.2, 0.2))
-                        )
-                        .on_press(Message::RequestDeleteFolder(folder.id)),
-                    ]
-                    .spacing(4)
-                    .align_y(Alignment::Center)
-                };
-
-                list = list.push(folder_row);
-            }
-
-            if is_expanded {
-                for req in &self.requests {
-                    if req.folder_id == Some(folder.id) {
-                        let method_color = theme::method_color(&req.method);
-                        let is_req_renaming = self.renaming_request == Some(req.id);
-
-                        if is_req_renaming {
-                            let rename_row = row![
-                                text_input("New name...", &self.rename_request_value)
-                                    .on_input(Message::RenameRequestValueChanged)
-                                    .size(11)
-                                    .padding(3),
-                                button(lucide::check().size(11))
-                                    .on_press(Message::ConfirmRenameRequest),
-                                button(lucide::x().size(11)).on_press(Message::CancelRenameRequest),
-                            ]
-                            .spacing(4)
-                            .align_y(Alignment::Center);
-                            list = list.push(rename_row);
-                        } else {
-                            let req_row = if self.pending_delete_request == Some(req.id) {
-                                row![
-                                    text(format!("    {}", req.method))
-                                        .size(11)
-                                        .color(method_color),
-                                    text(&req.name).size(11),
-                                    button(lucide::pencil().size(10))
-                                        .on_press(Message::StartRenameRequest(req.id)),
-                                    button(
-                                        text("Delete?")
-                                            .size(10)
-                                            .color(Color::from_rgb(0.8, 0.2, 0.2))
-                                    )
-                                    .on_press(Message::ConfirmDeleteRequest(req.id)),
-                                    button(lucide::x().size(10))
-                                        .on_press(Message::CancelDeleteRequest),
-                                ]
-                                .spacing(4)
-                                .align_y(Alignment::Center)
-                            } else {
-                                row![
-                                    text(format!("    {}", req.method))
-                                        .size(11)
-                                        .color(method_color),
-                                    text(&req.name).size(11),
-                                    button(lucide::pencil().size(10))
-                                        .on_press(Message::StartRenameRequest(req.id)),
-                                    button(
-                                        lucide::trash()
-                                            .size(10)
-                                            .color(Color::from_rgb(0.8, 0.2, 0.2))
-                                    )
-                                    .on_press(Message::RequestDeleteRequest(req.id)),
-                                ]
-                                .spacing(4)
-                                .align_y(Alignment::Center)
-                            };
-
-                            let req_button = button(req_row).on_press(Message::LoadRequest(req.id));
-                            list = list.push(req_button);
-                        }
-                    }
-                }
-
-                let load_folder =
-                    button(row![lucide::folder_open().size(12), text(" Open Folder")].spacing(4))
-                        .on_press(Message::SelectFolder(folder.id));
-                list = list.push(load_folder);
-            }
-        }
-
-        let root_requests: Vec<&CollectionRequest> = self
-            .requests
-            .iter()
-            .filter(|r| r.folder_id.is_none())
-            .collect();
-
-        if !root_requests.is_empty() {
-            list = list.push(
-                text("Requests:")
                     .size(12)
                     .color(Color::from_rgb(0.5, 0.5, 0.5)),
             );
         }
 
-        for req in &root_requests {
-            let method_color = theme::method_color(&req.method);
-            let is_req_renaming = self.renaming_request == Some(req.id);
+        let content = column![
+            header,
+            new_collection_input,
+            save_button,
+            scrollable(tree).height(Length::Fill),
+        ]
+        .spacing(6)
+        .padding(8);
 
-            if is_req_renaming {
-                let rename_row = row![
-                    text_input("New name...", &self.rename_request_value)
-                        .on_input(Message::RenameRequestValueChanged)
-                        .size(12)
-                        .padding(3),
-                    button(lucide::check().size(11)).on_press(Message::ConfirmRenameRequest),
-                    button(lucide::x().size(11)).on_press(Message::CancelRenameRequest),
-                ]
-                .spacing(4)
-                .align_y(Alignment::Center);
-                list = list.push(rename_row);
+        container(content)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into()
+    }
+
+    fn indent(depth: usize) -> Element<'static, Message, Theme, Renderer> {
+        container(text("").width(Length::Fixed((depth as f32) * INDENT_SIZE))).into()
+    }
+
+    fn render_collection<'a>(
+        &'a self,
+        mut tree: iced::widget::Column<'a, Message, Theme, Renderer>,
+        col_idx: usize,
+        col: &'a Collection,
+        is_expanded: bool,
+    ) -> iced::widget::Column<'a, Message, Theme, Renderer> {
+        let is_renaming = self.renaming_collection == Some(col_idx);
+        let is_pending_delete = self.pending_delete_collection == Some(col_idx);
+
+        if is_renaming {
+            let rename_row = row![
+                text_input("Rename...", &self.rename_collection_value)
+                    .on_input(Message::RenameCollectionValueChanged)
+                    .size(12)
+                    .padding(3),
+                button(lucide::check().size(11)).on_press(Message::ConfirmRenameCollection),
+                button(lucide::x().size(11)).on_press(Message::CancelRenameCollection),
+            ]
+            .spacing(4)
+            .align_y(Alignment::Center);
+            tree = tree.push(rename_row);
+        } else {
+            let expand_icon: Element<'_, Message, Theme, Renderer> = if is_expanded {
+                lucide::chevron_down().size(12).into()
             } else {
-                let url_short: String = req.url.chars().take(35).collect();
-                let req_row = if self.pending_delete_request == Some(req.id) {
-                    row![
-                        text(&req.method).size(12).color(method_color),
-                        text(url_short).size(12),
-                        button(lucide::pencil().size(10))
-                            .on_press(Message::StartRenameRequest(req.id)),
+                lucide::chevron_right().size(12).into()
+            };
+
+            let col_content = row![
+                expand_icon,
+                lucide::folder().size(12),
+                text(&col.name).size(12)
+            ]
+            .spacing(4)
+            .align_y(Alignment::Center);
+
+            let mut actions = row![].spacing(2);
+            if is_pending_delete {
+                actions = actions
+                    .push(
                         button(
                             text("Delete?")
                                 .size(10)
-                                .color(Color::from_rgb(0.8, 0.2, 0.2))
+                                .color(Color::from_rgb(0.8, 0.2, 0.2)),
                         )
-                        .on_press(Message::ConfirmDeleteRequest(req.id)),
-                        button(lucide::x().size(10)).on_press(Message::CancelDeleteRequest),
-                    ]
-                    .spacing(6)
-                    .align_y(Alignment::Center)
-                } else {
-                    row![
-                        text(&req.method).size(12).color(method_color),
-                        text(url_short).size(12),
+                        .on_press(Message::ConfirmDeleteCollection(col_idx)),
+                    )
+                    .push(button(lucide::x().size(10)).on_press(Message::CancelDeleteCollection));
+            } else {
+                actions = actions
+                    .push(
                         button(lucide::pencil().size(10))
-                            .on_press(Message::StartRenameRequest(req.id)),
+                            .on_press(Message::StartRenameCollection(col_idx)),
+                    )
+                    .push(
+                        button(lucide::download().size(10))
+                            .on_press(Message::ExportCollection(col_idx)),
+                    )
+                    .push(
                         button(
                             lucide::trash()
                                 .size(10)
-                                .color(Color::from_rgb(0.8, 0.2, 0.2))
+                                .color(Color::from_rgb(0.8, 0.2, 0.2)),
                         )
-                        .on_press(Message::RequestDeleteRequest(req.id)),
-                    ]
-                    .spacing(6)
-                    .align_y(Alignment::Center)
-                };
+                        .on_press(Message::RequestDeleteCollection(col_idx)),
+                    );
+            }
 
-                let req_button = button(req_row).on_press(Message::LoadRequest(req.id));
-                list = list.push(req_button);
+            let full_row = row![col_content, actions]
+                .spacing(4)
+                .align_y(Alignment::Center);
+
+            let row_button = button(full_row)
+                .width(Length::Fill)
+                .on_press(Message::ToggleCollection(col_idx));
+
+            let col_id = col.id;
+            let context_menu = ContextMenu::new(row_button, move || {
+                column![
+                    button(text("New Folder").size(11))
+                        .width(Length::Fill)
+                        .on_press(Message::ShowNewFolderInput(col_id, None)),
+                    button(text("Rename").size(11))
+                        .width(Length::Fill)
+                        .on_press(Message::StartRenameCollection(col_idx)),
+                    button(text("Export").size(11))
+                        .width(Length::Fill)
+                        .on_press(Message::ExportCollection(col_idx)),
+                    button(
+                        text("Delete")
+                            .size(11)
+                            .color(Color::from_rgb(0.8, 0.2, 0.2))
+                    )
+                    .width(Length::Fill)
+                    .on_press(Message::RequestDeleteCollection(col_idx)),
+                ]
+                .spacing(4)
+                .padding(8)
+                .into()
+            });
+
+            tree = tree.push(context_menu);
+        }
+
+        if is_expanded {
+            // Show new folder input if this collection is the target
+            if self.new_folder_target == Some(col.id) && self.new_folder_parent.is_none() {
+                let input_row = row![
+                    Self::indent(1),
+                    text_input("Folder name...", &self.new_folder_name)
+                        .on_input(Message::NewFolderNameChanged)
+                        .size(12)
+                        .padding(3)
+                        .width(Length::Fill),
+                    button(lucide::check().size(11)).on_press(Message::CreateFolder),
+                    button(lucide::x().size(11)).on_press(Message::HideNewFolderInput),
+                ]
+                .spacing(4)
+                .align_y(Alignment::Center);
+                tree = tree.push(input_row);
+            }
+
+            // Render root folders for this collection
+            let col_folders: Vec<(usize, &CollectionFolder)> = self
+                .folders
+                .iter()
+                .enumerate()
+                .filter(|(_, f)| f.collection_id == col.id && f.parent_folder_id.is_none())
+                .collect();
+
+            for (f_idx, folder) in col_folders {
+                tree = self.render_folder_recursive(tree, f_idx, folder, 1);
+            }
+
+            // Render root requests for this collection
+            let root_requests: Vec<&CollectionRequest> = self
+                .requests
+                .iter()
+                .filter(|r| r.collection_id == col.id && r.folder_id.is_none())
+                .collect();
+
+            for req in root_requests {
+                tree = self.render_request_item(tree, req, 1);
             }
         }
 
-        container(
-            column![
-                header,
-                folder_controls,
-                scrollable(list).height(Length::Fill),
-            ]
-            .spacing(8)
-            .padding(10),
-        )
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .into()
+        tree
     }
 
-    fn folder_detail_view(
-        &self,
-        _col_idx: usize,
-        folder_id: i32,
-    ) -> Element<'_, Message, Theme, Renderer> {
-        let folder_name = self
-            .folders
-            .iter()
-            .find(|f| f.id == folder_id)
-            .map(|f| f.name.as_str())
-            .unwrap_or("");
+    fn render_folder_recursive<'a>(
+        &'a self,
+        mut tree: iced::widget::Column<'a, Message, Theme, Renderer>,
+        f_idx: usize,
+        folder: &'a CollectionFolder,
+        depth: usize,
+    ) -> iced::widget::Column<'a, Message, Theme, Renderer> {
+        let is_expanded = self.expanded_folders.get(f_idx).copied().unwrap_or(false);
+        let is_renaming = self.renaming_folder == Some(folder.id);
+        let is_pending_delete = self.pending_delete_folder == Some(folder.id);
 
-        let back_button = button(row![lucide::arrow_left().size(14), text(" Back")].spacing(4))
-            .on_press(Message::Close);
+        if is_renaming {
+            let rename_row = row![
+                Self::indent(depth),
+                text_input("Rename...", &self.rename_folder_value)
+                    .on_input(Message::RenameFolderValueChanged)
+                    .size(12)
+                    .padding(3),
+                button(lucide::check().size(11)).on_press(Message::ConfirmRenameFolder),
+                button(lucide::x().size(11)).on_press(Message::CancelRenameFolder),
+            ]
+            .spacing(4)
+            .align_y(Alignment::Center);
+            tree = tree.push(rename_row);
+        } else {
+            let expand_icon: Element<'_, Message, Theme, Renderer> = if is_expanded {
+                lucide::chevron_down().size(11).into()
+            } else {
+                lucide::chevron_right().size(11).into()
+            };
 
-        let header = row![back_button, text(folder_name).size(16),]
-            .spacing(10)
+            let folder_content = row![
+                Self::indent(depth),
+                expand_icon,
+                lucide::folder_open().size(11),
+                text(&folder.name).size(12),
+            ]
+            .spacing(3)
             .align_y(Alignment::Center);
 
-        let mut list = column![].spacing(4);
+            let mut actions = row![].spacing(2);
+            if is_pending_delete {
+                actions = actions
+                    .push(
+                        button(
+                            text("Delete?")
+                                .size(10)
+                                .color(Color::from_rgb(0.8, 0.2, 0.2)),
+                        )
+                        .on_press(Message::ConfirmDeleteFolder(folder.id)),
+                    )
+                    .push(button(lucide::x().size(10)).on_press(Message::CancelDeleteFolder));
+            } else {
+                actions = actions
+                    .push(
+                        button(lucide::pencil().size(10))
+                            .on_press(Message::StartRenameFolder(folder.id)),
+                    )
+                    .push(
+                        button(
+                            lucide::trash()
+                                .size(10)
+                                .color(Color::from_rgb(0.8, 0.2, 0.2)),
+                        )
+                        .on_press(Message::RequestDeleteFolder(folder.id)),
+                    );
+            }
 
-        for req in &self.requests {
-            if req.folder_id == Some(folder_id) {
-                let method_color = theme::method_color(&req.method);
-                let is_req_renaming = self.renaming_request == Some(req.id);
+            let full_row = row![folder_content, actions]
+                .spacing(4)
+                .align_y(Alignment::Center);
 
-                if is_req_renaming {
-                    let rename_row = row![
-                        text_input("New name...", &self.rename_request_value)
-                            .on_input(Message::RenameRequestValueChanged)
-                            .size(12)
-                            .padding(3),
-                        button(lucide::check().size(11)).on_press(Message::ConfirmRenameRequest),
-                        button(lucide::x().size(11)).on_press(Message::CancelRenameRequest),
-                    ]
-                    .spacing(4)
-                    .align_y(Alignment::Center);
-                    list = list.push(rename_row);
-                } else {
-                    let url_short: String = req.url.chars().take(35).collect();
-                    let req_row = if self.pending_delete_request == Some(req.id) {
-                        row![
-                            text(&req.method).size(12).color(method_color),
-                            text(&req.name).size(12),
-                            text(url_short)
-                                .size(11)
-                                .color(Color::from_rgb(0.4, 0.4, 0.4)),
-                            button(lucide::pencil().size(10))
-                                .on_press(Message::StartRenameRequest(req.id)),
-                            button(
-                                text("Delete?")
-                                    .size(10)
-                                    .color(Color::from_rgb(0.8, 0.2, 0.2))
-                            )
-                            .on_press(Message::ConfirmDeleteRequest(req.id)),
-                            button(lucide::x().size(10)).on_press(Message::CancelDeleteRequest),
-                        ]
-                        .spacing(6)
-                        .align_y(Alignment::Center)
-                    } else {
-                        row![
-                            text(&req.method).size(12).color(method_color),
-                            text(&req.name).size(12),
-                            text(url_short)
-                                .size(11)
-                                .color(Color::from_rgb(0.4, 0.4, 0.4)),
-                            button(lucide::pencil().size(10))
-                                .on_press(Message::StartRenameRequest(req.id)),
-                            button(
-                                lucide::trash()
-                                    .size(10)
-                                    .color(Color::from_rgb(0.8, 0.2, 0.2))
-                            )
-                            .on_press(Message::RequestDeleteRequest(req.id)),
-                        ]
-                        .spacing(6)
-                        .align_y(Alignment::Center)
-                    };
+            let row_button = button(full_row)
+                .width(Length::Fill)
+                .on_press(Message::ToggleFolder(folder.id));
 
-                    let req_button = button(req_row).on_press(Message::LoadRequest(req.id));
-                    list = list.push(req_button);
-                }
+            let folder_id = folder.id;
+            let col_id = folder.collection_id;
+            let context_menu = ContextMenu::new(row_button, move || {
+                column![
+                    button(text("New Sub-folder").size(11))
+                        .width(Length::Fill)
+                        .on_press(Message::ShowNewFolderInput(col_id, Some(folder_id))),
+                    button(text("Rename").size(11))
+                        .width(Length::Fill)
+                        .on_press(Message::StartRenameFolder(folder_id)),
+                    button(
+                        text("Delete")
+                            .size(11)
+                            .color(Color::from_rgb(0.8, 0.2, 0.2))
+                    )
+                    .width(Length::Fill)
+                    .on_press(Message::RequestDeleteFolder(folder_id)),
+                ]
+                .spacing(4)
+                .padding(8)
+                .into()
+            });
+
+            tree = tree.push(context_menu);
+        }
+
+        if is_expanded {
+            // Show new sub-folder input if this folder is the target
+            if self.new_folder_target == Some(folder.collection_id)
+                && self.new_folder_parent == Some(folder.id)
+            {
+                let input_row = row![
+                    Self::indent(depth + 1),
+                    text_input("Sub-folder name...", &self.new_folder_name)
+                        .on_input(Message::NewFolderNameChanged)
+                        .size(12)
+                        .padding(3)
+                        .width(Length::Fill),
+                    button(lucide::check().size(11)).on_press(Message::CreateFolder),
+                    button(lucide::x().size(11)).on_press(Message::HideNewFolderInput),
+                ]
+                .spacing(4)
+                .align_y(Alignment::Center);
+                tree = tree.push(input_row);
+            }
+
+            // Render sub-folders
+            let sub_folders: Vec<(usize, &CollectionFolder)> = self
+                .folders
+                .iter()
+                .enumerate()
+                .filter(|(_, f)| f.parent_folder_id == Some(folder.id))
+                .collect();
+
+            for (sub_f_idx, sub_folder) in sub_folders {
+                tree = self.render_folder_recursive(tree, sub_f_idx, sub_folder, depth + 1);
+            }
+
+            // Render requests in this folder
+            let folder_requests: Vec<&CollectionRequest> = self
+                .requests
+                .iter()
+                .filter(|r| r.folder_id == Some(folder.id))
+                .collect();
+
+            for req in folder_requests {
+                tree = self.render_request_item(tree, req, depth + 1);
             }
         }
 
-        if self.requests.iter().all(|r| r.folder_id != Some(folder_id)) {
-            list = list.push(
-                text("No requests in this folder.")
-                    .size(13)
-                    .color(Color::from_rgb(0.5, 0.5, 0.5)),
-            );
+        tree
+    }
+
+    fn render_request_item<'a>(
+        &'a self,
+        mut tree: iced::widget::Column<'a, Message, Theme, Renderer>,
+        req: &'a CollectionRequest,
+        depth: usize,
+    ) -> iced::widget::Column<'a, Message, Theme, Renderer> {
+        let method_color = theme::method_color(&req.method);
+        let is_renaming = self.renaming_request == Some(req.id);
+        let is_pending_delete = self.pending_delete_request == Some(req.id);
+
+        if is_renaming {
+            let rename_row = row![
+                Self::indent(depth),
+                text_input("Rename...", &self.rename_request_value)
+                    .on_input(Message::RenameRequestValueChanged)
+                    .size(11)
+                    .padding(2),
+                button(lucide::check().size(10)).on_press(Message::ConfirmRenameRequest),
+                button(lucide::x().size(10)).on_press(Message::CancelRenameRequest),
+            ]
+            .spacing(4)
+            .align_y(Alignment::Center);
+            tree = tree.push(rename_row);
+        } else {
+            let req_content = row![
+                Self::indent(depth),
+                text(&req.method)
+                    .size(10)
+                    .color(method_color)
+                    .font(iced::font::Font {
+                        weight: iced::font::Weight::Bold,
+                        ..iced::font::Font::default()
+                    }),
+                text(&req.name)
+                    .size(11)
+                    .color(Color::from_rgb(0.6, 0.75, 1.0)),
+            ]
+            .spacing(4)
+            .align_y(Alignment::Center);
+
+            let mut actions = row![].spacing(2);
+            if is_pending_delete {
+                actions = actions
+                    .push(
+                        button(
+                            text("Delete?")
+                                .size(9)
+                                .color(Color::from_rgb(0.8, 0.2, 0.2)),
+                        )
+                        .style(|_theme, _status| button::Style {
+                            background: Some(iced::Background::Color(Color::from_rgb(
+                                0.12, 0.12, 0.16,
+                            ))),
+                            ..button::Style::default()
+                        })
+                        .on_press(Message::ConfirmDeleteRequest(req.id)),
+                    )
+                    .push(
+                        button(lucide::x().size(9))
+                            .style(|_theme, _status| button::Style {
+                                background: Some(iced::Background::Color(Color::from_rgb(
+                                    0.12, 0.12, 0.16,
+                                ))),
+                                ..button::Style::default()
+                            })
+                            .on_press(Message::CancelDeleteRequest),
+                    );
+            } else {
+                actions = actions
+                    .push(
+                        button(lucide::pencil().size(9))
+                            .style(|_theme, _status| button::Style {
+                                background: Some(iced::Background::Color(Color::from_rgb(
+                                    0.12, 0.12, 0.16,
+                                ))),
+                                ..button::Style::default()
+                            })
+                            .on_press(Message::StartRenameRequest(req.id)),
+                    )
+                    .push(
+                        button(
+                            lucide::trash()
+                                .size(9)
+                                .color(Color::from_rgb(0.8, 0.2, 0.2)),
+                        )
+                        .style(|_theme, _status| button::Style {
+                            background: Some(iced::Background::Color(Color::from_rgb(
+                                0.12, 0.12, 0.16,
+                            ))),
+                            ..button::Style::default()
+                        })
+                        .on_press(Message::RequestDeleteRequest(req.id)),
+                    );
+            }
+
+            let full_row = row![req_content, actions]
+                .spacing(4)
+                .align_y(Alignment::Center);
+
+            let row_button = button(full_row)
+                .width(Length::Fill)
+                .on_press(Message::LoadRequest(req.id))
+                .style(|_theme, _status| button::Style {
+                    background: Some(iced::Background::Color(Color::from_rgb(0.12, 0.12, 0.16))),
+                    ..button::Style::default()
+                });
+
+            tree = tree.push(row_button);
         }
 
-        container(
-            column![header, scrollable(list).height(Length::Fill)]
-                .spacing(8)
-                .padding(10),
-        )
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .into()
+        tree
     }
 }

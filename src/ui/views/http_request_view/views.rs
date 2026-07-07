@@ -363,15 +363,12 @@ impl HttpRequestView {
                 .width(Length::Fixed(100.0))
                 .height(Length::Fixed(100.0)),
             {
-                let send_btn =
-                    button(row![lucide::send().size(14), text(" Send")].spacing(4))
-                        .on_press(Message::SendRequest);
-                let cancel_btn =
-                    button(row![lucide::x().size(14), text(" Cancel")].spacing(4))
-                        .on_press(Message::CancelRequest);
-                let code_btn =
-                    button(row![lucide::code().size(14), text(" Code")].spacing(4))
-                        .on_press(Message::ShowSnippets);
+                let send_btn = button(row![lucide::send().size(14), text(" Send")].spacing(4))
+                    .on_press(Message::SendRequest);
+                let cancel_btn = button(row![lucide::x().size(14), text(" Cancel")].spacing(4))
+                    .on_press(Message::CancelRequest);
+                let code_btn = button(row![lucide::code().size(14), text(" Code")].spacing(4))
+                    .on_press(Message::ShowSnippets);
 
                 if matches!(self.request_status, RequestStatus::Loading) {
                     row![

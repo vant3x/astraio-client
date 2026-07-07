@@ -56,12 +56,13 @@ pub fn rename_folder(conn: &Connection, id: i32, new_name: &str) -> Result<(), A
     Ok(database::rename_folder(conn, id, new_name)?)
 }
 
-pub fn create_folder_and_refresh(
+pub fn create_folder_with_parent(
     conn: &Connection,
     collection_id: i32,
     name: &str,
+    parent_folder_id: Option<i32>,
 ) -> Result<Vec<CollectionFolder>, AppError> {
-    create_folder(conn, collection_id, name)?;
+    database::create_folder(conn, collection_id, name, parent_folder_id)?;
     Ok(get_folders(conn, collection_id))
 }
 
@@ -152,7 +153,8 @@ mod tests {
             "CREATE TABLE IF NOT EXISTS collections (
                 id INTEGER PRIMARY KEY,
                 name TEXT NOT NULL,
-                description TEXT
+                description TEXT,
+                sort_order INTEGER NOT NULL DEFAULT 0
             )",
             [],
         )
@@ -162,7 +164,8 @@ mod tests {
                 id INTEGER PRIMARY KEY,
                 collection_id INTEGER NOT NULL,
                 name TEXT NOT NULL,
-                parent_folder_id INTEGER
+                parent_folder_id INTEGER,
+                sort_order INTEGER NOT NULL DEFAULT 0
             )",
             [],
         )
@@ -359,10 +362,10 @@ mod tests {
     }
 
     #[test]
-    fn create_folder_and_refresh_returns_folders() {
+    fn create_folder_with_parent_returns_folders() {
         let conn = setup_test_db();
         let col = create(&conn, "API").unwrap();
-        let folders = create_folder_and_refresh(&conn, col.id, "Auth").unwrap();
+        let folders = create_folder_with_parent(&conn, col.id, "Auth", None).unwrap();
         assert_eq!(folders.len(), 1);
     }
 
