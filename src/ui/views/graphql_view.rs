@@ -3,6 +3,7 @@ use crate::data::auth::AuthType;
 use crate::data::auth_input::AuthInput;
 use crate::http_client::config::RequestConfig;
 use crate::protocols::graphql::{GraphQLRequest, GraphQLResponse};
+use crate::protocols::graphql_schema::{GraphQLSchema, SchemaType, TypeKind};
 use crate::ui::components::key_value_editor::{self, KeyValueEditor};
 use crate::ui::request_status::{status_color, RequestStatus};
 use crate::ui::theme::method_color;
@@ -23,6 +24,7 @@ pub enum TabId {
     Variables,
     Headers,
     Authorization,
+    Schema,
 }
 
 impl std::fmt::Display for TabId {
@@ -32,6 +34,7 @@ impl std::fmt::Display for TabId {
             TabId::Variables => write!(f, "Variables"),
             TabId::Headers => write!(f, "Headers"),
             TabId::Authorization => write!(f, "Authorization"),
+            TabId::Schema => write!(f, "Schema"),
         }
     }
 }
@@ -79,6 +82,15 @@ pub enum Message {
     ValidateQuery,
     #[allow(dead_code)]
     QueryValidated(Result<(), crate::error::AppError>),
+    IntrospectSchema,
+    SchemaReceived(Result<GraphQLSchema, crate::error::AppError>),
+    SchemaSearchChanged(String),
+    SchemaTypeSelected(String),
+    SaveToHistory,
+    SavedToHistory(Result<(), crate::error::AppError>),
+    SaveToCollection(i32, Option<i32>),
+    SavedToCollection(Result<(), crate::error::AppError>),
+    ToggleSaveMenu,
 }
 
 #[derive(Debug)]
@@ -102,6 +114,12 @@ pub struct GraphQLView {
     pub highlighter_theme: highlighter::Theme,
     pub word_wrap: bool,
     pub query_validation: Option<Result<(), crate::error::AppError>>,
+    pub schema: Option<GraphQLSchema>,
+    pub schema_loading: bool,
+    pub schema_search: String,
+    pub schema_selected_type: Option<String>,
+    pub show_save_menu: bool,
+    pub last_save_status: Option<String>,
 }
 
 impl Clone for GraphQLView {
@@ -128,6 +146,12 @@ impl Clone for GraphQLView {
             highlighter_theme: self.highlighter_theme,
             word_wrap: self.word_wrap,
             query_validation: self.query_validation.clone(),
+            schema: self.schema.clone(),
+            schema_loading: self.schema_loading,
+            schema_search: self.schema_search.clone(),
+            schema_selected_type: self.schema_selected_type.clone(),
+            show_save_menu: self.show_save_menu,
+            last_save_status: self.last_save_status.clone(),
         }
     }
 }
@@ -162,6 +186,12 @@ impl Default for GraphQLView {
             highlighter_theme: highlighter::Theme::SolarizedDark,
             word_wrap: false,
             query_validation: None,
+            schema: None,
+            schema_loading: false,
+            schema_search: String::new(),
+            schema_selected_type: None,
+            show_save_menu: false,
+            last_save_status: None,
         }
     }
 }
@@ -260,6 +290,8 @@ impl GraphQLView {
 
         headers.push(("Content-Type".to_string(), "application/json".to_string()));
 
+        let mut final_url = self.url_input.clone();
+
         match &self.auth {
             Auth::BearerToken(token) if !token.is_empty() => {
                 headers.push(("Authorization".to_string(), format!("Bearer {}", token)));
@@ -277,7 +309,14 @@ impl GraphQLView {
                     headers.push((key.clone(), value.clone()));
                 }
                 crate::data::auth::ApiKeyLocation::Query => {
-                    // API Key in query not typical for GraphQL, but supported
+                    let separator = if final_url.contains('?') { "&" } else { "?" };
+                    final_url = format!(
+                        "{}{}{}={}",
+                        final_url,
+                        separator,
+                        urlencoding::encode(key),
+                        urlencoding::encode(value)
+                    );
                 }
             },
             _ => {}
@@ -287,7 +326,65 @@ impl GraphQLView {
 
         crate::http_client::request::HttpRequest {
             method: crate::http_client::request::HttpMethod::Post,
-            url: self.url_input.clone(),
+            url: final_url,
+            headers,
+            body: Some(body),
+            config: self.request_config.clone(),
+            multipart_fields: vec![],
+            auth: Some(self.auth.clone()),
+        }
+    }
+
+    pub fn build_introspection_request(&self) -> crate::http_client::request::HttpRequest {
+        let graphql_request = GraphQLRequest::new(crate::protocols::graphql_schema::INTROSPECTION_QUERY);
+
+        let mut headers: Vec<(String, String)> = self
+            .headers_editor
+            .entries
+            .iter()
+            .filter(|h| !h.key.is_empty())
+            .map(|h| (h.key.clone(), h.value.clone()))
+            .collect();
+
+        headers.push(("Content-Type".to_string(), "application/json".to_string()));
+
+        let mut final_url = self.url_input.clone();
+
+        match &self.auth {
+            Auth::BearerToken(token) if !token.is_empty() => {
+                headers.push(("Authorization".to_string(), format!("Bearer {}", token)));
+            }
+            Auth::Basic { user, pass } if !user.is_empty() || !pass.is_empty() => {
+                let encoded = general_purpose::STANDARD.encode(format!("{}:{}", user, pass));
+                headers.push(("Authorization".to_string(), format!("Basic {}", encoded)));
+            }
+            Auth::ApiKey {
+                key,
+                value,
+                location,
+            } if !key.is_empty() => match location {
+                crate::data::auth::ApiKeyLocation::Header => {
+                    headers.push((key.clone(), value.clone()));
+                }
+                crate::data::auth::ApiKeyLocation::Query => {
+                    let separator = if final_url.contains('?') { "&" } else { "?" };
+                    final_url = format!(
+                        "{}{}{}={}",
+                        final_url,
+                        separator,
+                        urlencoding::encode(key),
+                        urlencoding::encode(value)
+                    );
+                }
+            },
+            _ => {}
+        }
+
+        let body = graphql_request.to_json().unwrap_or_default();
+
+        crate::http_client::request::HttpRequest {
+            method: crate::http_client::request::HttpMethod::Post,
+            url: final_url,
             headers,
             body: Some(body),
             config: self.request_config.clone(),
@@ -411,6 +508,55 @@ impl GraphQLView {
             Message::QueryValidated(result) => {
                 self.query_validation = Some(result);
             }
+            Message::IntrospectSchema => {
+                self.schema_loading = true;
+            }
+            Message::SchemaReceived(result) => {
+                self.schema_loading = false;
+                match result {
+                    Ok(schema) => {
+                        self.schema = Some(schema);
+                    }
+                    Err(e) => {
+                        self.last_save_status = Some(format!("Schema fetch failed: {}", e));
+                    }
+                }
+            }
+            Message::SchemaSearchChanged(search) => {
+                self.schema_search = search;
+            }
+            Message::SchemaTypeSelected(type_name) => {
+                self.schema_selected_type = Some(type_name);
+            }
+            Message::SaveToHistory => {
+                self.show_save_menu = false;
+            }
+            Message::SavedToHistory(result) => {
+                match result {
+                    Ok(()) => {
+                        self.last_save_status = Some("Saved to history".to_string());
+                    }
+                    Err(e) => {
+                        self.last_save_status = Some(format!("Failed to save: {}", e));
+                    }
+                }
+            }
+            Message::SaveToCollection(_, _) => {
+                self.show_save_menu = false;
+            }
+            Message::SavedToCollection(result) => {
+                match result {
+                    Ok(()) => {
+                        self.last_save_status = Some("Saved to collection".to_string());
+                    }
+                    Err(e) => {
+                        self.last_save_status = Some(format!("Failed to save: {}", e));
+                    }
+                }
+            }
+            Message::ToggleSaveMenu => {
+                self.show_save_menu = !self.show_save_menu;
+            }
         }
     }
 
@@ -422,6 +568,29 @@ impl GraphQLView {
                 .padding(10),
             button(row![lucide::send().size(14), text(" Send")].spacing(4))
                 .on_press(Message::SendRequest),
+            button(row![lucide::database().size(14), text(" Introspect")].spacing(4))
+                .on_press(Message::IntrospectSchema),
+            {
+                let save_button: Element<'_, Message, Theme, Renderer> = button(
+                    row![lucide::save().size(14), text(" Save")].spacing(4),
+                )
+                .on_press(Message::ToggleSaveMenu)
+                .into();
+                if self.show_save_menu {
+                    let menu: Element<'_, Message, Theme, Renderer> = column![
+                        button(text("Save to History").size(12))
+                            .on_press(Message::SaveToHistory),
+                        button(text("Save to Collection").size(12))
+                            .on_press(Message::SaveToCollection(0, None)),
+                    ]
+                    .padding(5)
+                    .spacing(2)
+                    .into();
+                    container(column![save_button, menu]).into()
+                } else {
+                    save_button
+                }
+            },
         ]
         .spacing(10)
         .padding(10)
@@ -482,6 +651,11 @@ impl GraphQLView {
                 TabId::Authorization,
                 TabLabel::Text("Authorization".to_string()),
                 auth_tab,
+            )
+            .push(
+                TabId::Schema,
+                TabLabel::Text("Schema".to_string()),
+                self.create_schema_tab(),
             )
             .set_active_tab(&self.active_tab)
             .width(Length::Fill)
@@ -582,6 +756,16 @@ impl GraphQLView {
             text(String::new()).size(14)
         };
 
+        let save_status: Element<'_, Message, Theme, Renderer> =
+            if let Some(msg) = &self.last_save_status {
+                text(msg.clone())
+                    .size(11)
+                    .color(Color::from_rgb(0.2, 0.7, 0.3))
+                    .into()
+            } else {
+                column![].into()
+            };
+
         let duration_text = text(format!(
             "{}ms",
             self.response_duration
@@ -679,14 +863,15 @@ impl GraphQLView {
             tabs,
             rule::horizontal(10),
             column![
-                row![
-                    method_label,
-                    status_text,
-                    duration_text,
-                    text(" | ").size(14),
-                    size_text,
-                    row![copy_button, wrap_toggle].align_y(Alignment::Center),
-                ]
+                    row![
+                        method_label,
+                        status_text,
+                        duration_text,
+                        text(" | ").size(14),
+                        size_text,
+                        save_status,
+                        row![copy_button, wrap_toggle].align_y(Alignment::Center),
+                    ]
                 .spacing(10)
                 .padding(10)
                 .align_y(Alignment::Center),
@@ -697,6 +882,282 @@ impl GraphQLView {
         .align_x(Alignment::Center);
 
         scrollable(main_column).into()
+    }
+
+    fn create_schema_tab(&self) -> Element<'_, Message, Theme, Renderer> {
+        let search_bar = text_input("Search types...", &self.schema_search)
+            .on_input(Message::SchemaSearchChanged)
+            .padding(8);
+
+        let introspect_button = if self.schema_loading {
+            button(text("Loading schema...").size(12))
+        } else {
+            button(row![lucide::refresh_cw().size(12), text(" Fetch Schema")].spacing(4))
+                .on_press(Message::IntrospectSchema)
+        };
+
+        let header = row![search_bar, introspect_button]
+            .spacing(10)
+            .align_y(Alignment::Center);
+
+        let content: Element<Message> = if self.schema_loading {
+            container(text("Loading schema...").size(14))
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .align_x(Alignment::Center)
+                .align_y(Alignment::Center)
+                .into()
+        } else if let Some(schema) = &self.schema {
+            let mut types_list = column![].spacing(2);
+
+            let filtered_types: Vec<&SchemaType> = if self.schema_search.is_empty() {
+                schema.types.iter().collect()
+            } else {
+                let search_lower = self.schema_search.to_lowercase();
+                schema
+                    .types
+                    .iter()
+                    .filter(|t| t.name.to_lowercase().contains(&search_lower))
+                    .collect()
+            };
+
+            for schema_type in &filtered_types {
+                let kind_color = match schema_type.kind {
+                    TypeKind::Object => Color::from_rgb(0.2, 0.6, 0.9),
+                    TypeKind::Interface => Color::from_rgb(0.5, 0.3, 0.8),
+                    TypeKind::Enum => Color::from_rgb(0.9, 0.6, 0.1),
+                    TypeKind::InputObject => Color::from_rgb(0.3, 0.7, 0.4),
+                    TypeKind::Scalar => Color::from_rgb(0.6, 0.6, 0.6),
+                    TypeKind::Union => Color::from_rgb(0.8, 0.4, 0.6),
+                    _ => Color::from_rgb(0.5, 0.5, 0.5),
+                };
+
+                let type_label = row![
+                    text(format!("[{}]", schema_type.kind)).size(11).color(kind_color),
+                    text(&schema_type.name).size(13),
+                ]
+                .spacing(5);
+
+                let is_selected = self
+                    .schema_selected_type
+                    .as_ref()
+                    .map(|s| s == &schema_type.name)
+                    .unwrap_or(false);
+
+                let item = if is_selected {
+                    button(type_label).on_press(Message::SchemaTypeSelected(String::new()))
+                } else {
+                    button(type_label)
+                        .on_press(Message::SchemaTypeSelected(schema_type.name.clone()))
+                };
+
+                types_list = types_list.push(item.padding(4));
+            }
+
+            let type_list_scroll = scrollable(types_list).height(Length::Fill);
+
+            let detail_panel: Element<Message> = if let Some(selected_name) =
+                &self.schema_selected_type
+            {
+                if let Some(selected_type) = schema.types.iter().find(|t| &t.name == selected_name)
+                {
+                    let mut detail = column![].spacing(5);
+
+                    detail = detail.push(
+                        row![
+                            text(format!("[{}]", selected_type.kind))
+                                .size(14)
+                                .color(Color::from_rgb(0.2, 0.6, 0.9)),
+                            text(&selected_type.name).size(16),
+                        ]
+                        .spacing(8),
+                    );
+
+                    if let Some(desc) = &selected_type.description {
+                        if !desc.is_empty() {
+                            detail = detail.push(text(desc.clone()).size(12).color(
+                                Color::from_rgb(0.6, 0.6, 0.6),
+                            ));
+                        }
+                    }
+
+                    if !selected_type.fields.is_empty() {
+                        detail = detail.push(rule::horizontal(5));
+                        detail = detail.push(text("Fields:").size(13).color(
+                            Color::from_rgb(0.5, 0.5, 0.5),
+                        ));
+                        for field in &selected_type.fields {
+                            let mut field_text = row![
+                                text(&field.name).size(12),
+                                text(": ").size(12).color(Color::from_rgb(0.5, 0.5, 0.5)),
+                                text(&field.return_type).size(12).color(Color::from_rgb(
+                                    0.2, 0.6, 0.9,
+                                )),
+                            ]
+                            .spacing(4);
+
+                            if field.is_deprecated {
+                                field_text = field_text.push(
+                                    text(" [deprecated]")
+                                        .size(10)
+                                        .color(Color::from_rgb(0.8, 0.4, 0.1)),
+                                );
+                            }
+
+                            if !field.args.is_empty() {
+                                let args_str: Vec<String> = field
+                                    .args
+                                    .iter()
+                                    .map(|a| format!("{}: {}", a.name, a.arg_type))
+                                    .collect();
+                                field_text = field_text.push(
+                                    text(format!("({})", args_str.join(", ")))
+                                        .size(10)
+                                        .color(Color::from_rgb(0.5, 0.5, 0.5)),
+                                );
+                            }
+
+                            detail = detail.push(field_text);
+                        }
+                    }
+
+                    if !selected_type.input_fields.is_empty() {
+                        detail = detail.push(rule::horizontal(5));
+                        detail = detail.push(text("Input Fields:").size(13).color(
+                            Color::from_rgb(0.5, 0.5, 0.5),
+                        ));
+                        for field in &selected_type.input_fields {
+                            detail = detail.push(
+                                row![
+                                    text(&field.name).size(12),
+                                    text(": ").size(12).color(Color::from_rgb(0.5, 0.5, 0.5)),
+                                    text(&field.field_type).size(12).color(Color::from_rgb(
+                                        0.2, 0.6, 0.9,
+                                    )),
+                                ]
+                                .spacing(4),
+                            );
+                        }
+                    }
+
+                    if !selected_type.enum_values.is_empty() {
+                        detail = detail.push(rule::horizontal(5));
+                        detail = detail.push(text("Enum Values:").size(13).color(
+                            Color::from_rgb(0.5, 0.5, 0.5),
+                        ));
+                        for val in &selected_type.enum_values {
+                            let mut val_text = row![text(&val.name).size(12)].spacing(4);
+                            if val.is_deprecated {
+                                val_text = val_text.push(
+                                    text(" [deprecated]")
+                                        .size(10)
+                                        .color(Color::from_rgb(0.8, 0.4, 0.1)),
+                                );
+                            }
+                            if let Some(desc) = &val.description {
+                                if !desc.is_empty() {
+                                    val_text = val_text.push(
+                                        text(format!("- {}", desc))
+                                            .size(10)
+                                            .color(Color::from_rgb(0.5, 0.5, 0.5)),
+                                    );
+                                }
+                            }
+                            detail = detail.push(val_text);
+                        }
+                    }
+
+                    if !selected_type.interfaces.is_empty() {
+                        detail = detail.push(rule::horizontal(5));
+                        detail = detail.push(
+                            text(format!("Implements: {}", selected_type.interfaces.join(", ")))
+                                .size(12),
+                        );
+                    }
+
+                    container(scrollable(detail))
+                        .padding(10)
+                        .width(Length::Fill)
+                        .height(Length::Fill)
+                        .into()
+                } else {
+                    container(text("Type not found"))
+                        .width(Length::Fill)
+                        .height(Length::Fill)
+                        .align_x(Alignment::Center)
+                        .align_y(Alignment::Center)
+                        .into()
+                }
+            } else if let Some(qt) = &schema.query_type {
+                container(
+                    column![
+                        text("Select a type from the list to view its details.").size(12),
+                        text(format!("Query root: {}", qt)).size(12).color(
+                            Color::from_rgb(0.2, 0.6, 0.9),
+                        ),
+                        {
+                            let mut info = column![].spacing(2);
+                            if let Some(mt) = &schema.mutation_type {
+                                info = info.push(
+                                    text(format!("Mutation root: {}", mt)).size(12).color(
+                                        Color::from_rgb(0.2, 0.6, 0.9),
+                                    ),
+                                );
+                            }
+                            if let Some(st) = &schema.subscription_type {
+                                info = info.push(
+                                    text(format!("Subscription root: {}", st)).size(12).color(
+                                        Color::from_rgb(0.2, 0.6, 0.9),
+                                    ),
+                                );
+                            }
+                            info
+                        },
+                    ]
+                    .spacing(5),
+                )
+                .padding(10)
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .into()
+            } else {
+                container(text("Schema loaded but no query type found."))
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .align_x(Alignment::Center)
+                    .align_y(Alignment::Center)
+                    .into()
+            };
+
+            row![
+                container(type_list_scroll).width(Length::FillPortion(1)).height(Length::Fill),
+                detail_panel
+            ]
+                .spacing(10)
+                .into()
+        } else {
+            container(
+                column![
+                    text("No schema loaded.").size(14),
+                    text("Click 'Fetch Schema' to introspect the GraphQL endpoint.")
+                        .size(12)
+                        .color(Color::from_rgb(0.5, 0.5, 0.5)),
+                ]
+                .spacing(5)
+                .align_x(Alignment::Center),
+            )
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .align_x(Alignment::Center)
+            .align_y(Alignment::Center)
+            .into()
+        };
+
+        container(column![header, rule::horizontal(5), content].spacing(5))
+            .padding(10)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into()
     }
 
     fn create_auth_tab_content(&self) -> Element<'_, Message, Theme, Renderer> {

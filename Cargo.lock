@@ -250,6 +250,7 @@ dependencies = [
  "image",
  "log",
  "md5",
+ "native-tls",
  "open",
  "rand 0.8.5",
  "reqwest",

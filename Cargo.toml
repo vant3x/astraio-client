@@ -32,6 +32,7 @@ rusqlite = { version = "0.31.0", features = ["serde_json", "bundled"] }
 directories = "5.0.1"
 rfd = "0.4.1"
 tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
+native-tls = "0.2"
 futures-util = "0.3"
 futures = { version = "0.3", features = ["alloc"] }
 chrono = "0.4"

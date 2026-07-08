@@ -439,26 +439,29 @@ impl CollectionView {
 
             let col_id = col.id;
             let context_menu = ContextMenu::new(row_button, move || {
-                column![
-                    button(text("New Folder").size(11))
+                container(
+                    column![
+                        button(text("New Folder").size(11))
+                            .width(Length::Fill)
+                            .on_press(Message::ShowNewFolderInput(col_id, None)),
+                        button(text("Rename").size(11))
+                            .width(Length::Fill)
+                            .on_press(Message::StartRenameCollection(col_idx)),
+                        button(text("Export").size(11))
+                            .width(Length::Fill)
+                            .on_press(Message::ExportCollection(col_idx)),
+                        button(
+                            text("Delete")
+                                .size(11)
+                                .color(Color::from_rgb(0.8, 0.2, 0.2))
+                        )
                         .width(Length::Fill)
-                        .on_press(Message::ShowNewFolderInput(col_id, None)),
-                    button(text("Rename").size(11))
-                        .width(Length::Fill)
-                        .on_press(Message::StartRenameCollection(col_idx)),
-                    button(text("Export").size(11))
-                        .width(Length::Fill)
-                        .on_press(Message::ExportCollection(col_idx)),
-                    button(
-                        text("Delete")
-                            .size(11)
-                            .color(Color::from_rgb(0.8, 0.2, 0.2))
-                    )
-                    .width(Length::Fill)
-                    .on_press(Message::RequestDeleteCollection(col_idx)),
-                ]
-                .spacing(4)
-                .padding(8)
+                        .on_press(Message::RequestDeleteCollection(col_idx)),
+                    ]
+                    .spacing(4)
+                    .padding(8),
+                )
+                .width(Length::Fixed(180.0))
                 .into()
             });
 
@@ -589,23 +592,26 @@ impl CollectionView {
             let folder_id = folder.id;
             let col_id = folder.collection_id;
             let context_menu = ContextMenu::new(row_button, move || {
-                column![
-                    button(text("New Sub-folder").size(11))
+                container(
+                    column![
+                        button(text("New Sub-folder").size(11))
+                            .width(Length::Fill)
+                            .on_press(Message::ShowNewFolderInput(col_id, Some(folder_id))),
+                        button(text("Rename").size(11))
+                            .width(Length::Fill)
+                            .on_press(Message::StartRenameFolder(folder_id)),
+                        button(
+                            text("Delete")
+                                .size(11)
+                                .color(Color::from_rgb(0.8, 0.2, 0.2))
+                        )
                         .width(Length::Fill)
-                        .on_press(Message::ShowNewFolderInput(col_id, Some(folder_id))),
-                    button(text("Rename").size(11))
-                        .width(Length::Fill)
-                        .on_press(Message::StartRenameFolder(folder_id)),
-                    button(
-                        text("Delete")
-                            .size(11)
-                            .color(Color::from_rgb(0.8, 0.2, 0.2))
-                    )
-                    .width(Length::Fill)
-                    .on_press(Message::RequestDeleteFolder(folder_id)),
-                ]
-                .spacing(4)
-                .padding(8)
+                        .on_press(Message::RequestDeleteFolder(folder_id)),
+                    ]
+                    .spacing(4)
+                    .padding(8),
+                )
+                .width(Length::Fixed(180.0))
                 .into()
             });
 
@@ -729,7 +735,7 @@ impl CollectionView {
             } else {
                 actions = actions
                     .push(
-                        button(lucide::pencil().size(9))
+                        button(lucide::pencil().size(9).color(Color::from_rgb(0.6, 0.75, 1.0)))
                             .style(|_theme, _status| button::Style {
                                 background: Some(iced::Background::Color(Color::from_rgb(
                                     0.12, 0.12, 0.16,

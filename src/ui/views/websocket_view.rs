@@ -1,4 +1,4 @@
-use crate::protocols::websocket::{WsMessage, WsMessageType, WsSender, WsStatus};
+use crate::protocols::websocket::{WsMessage, WsMessageType, WsSender, WsStats, WsStatus};
 
 use iced::{
     widget::{button, column, container, row, scrollable, text, text_input},
@@ -33,6 +33,11 @@ pub enum Message {
     SearchChanged(String),
     SubprotocolChanged(String),
     ClearMessages,
+    ConnectTimeoutChanged(String),
+    PingIntervalChanged(String),
+    ToggleSkipVerify,
+    ToggleShowTls,
+    ToggleShowAdvanced,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -77,6 +82,10 @@ pub struct WebSocketView {
     pub ws_sender: Option<WsSender>,
     pub search_query: String,
     pub subprotocol: String,
+    pub config: crate::protocols::websocket::WsConfig,
+    pub stats: WsStats,
+    pub show_tls: bool,
+    pub show_advanced: bool,
 }
 
 impl Clone for WebSocketView {
@@ -99,6 +108,10 @@ impl Clone for WebSocketView {
             ws_sender: self.ws_sender.clone(),
             search_query: self.search_query.clone(),
             subprotocol: self.subprotocol.clone(),
+            config: self.config.clone(),
+            stats: self.stats.clone(),
+            show_tls: self.show_tls,
+            show_advanced: self.show_advanced,
         }
     }
 }
@@ -123,6 +136,10 @@ impl Default for WebSocketView {
             ws_sender: None,
             search_query: String::new(),
             subprotocol: String::new(),
+            config: crate::protocols::websocket::WsConfig::default(),
+            stats: WsStats::default(),
+            show_tls: false,
+            show_advanced: false,
         }
     }
 }
@@ -178,6 +195,21 @@ impl WebSocketView {
         let auto_reconnect_toggle =
             button(text(auto_reconnect_label).size(12)).on_press(Message::ToggleAutoReconnect);
 
+        let advanced_toggle_label = if self.show_advanced {
+            "[-] Advanced"
+        } else {
+            "[+] Advanced"
+        };
+        let advanced_toggle =
+            button(text(advanced_toggle_label).size(12)).on_press(Message::ToggleShowAdvanced);
+
+        let tls_toggle_label = if self.show_tls {
+            "[-] TLS"
+        } else {
+            "[+] TLS"
+        };
+        let tls_toggle = button(text(tls_toggle_label).size(12)).on_press(Message::ToggleShowTls);
+
         let reconnect_config = if self.auto_reconnect {
             let delay_input = text_input("Delay (ms)", &self.reconnect_delay_ms.to_string())
                 .on_input(Message::ReconnectDelayChanged)
@@ -211,6 +243,71 @@ impl WebSocketView {
             .align_y(Alignment::Center)
         } else {
             row![]
+        };
+
+        let advanced_section = if self.show_advanced {
+            let timeout_input = text_input(
+                "Connect timeout (ms)",
+                &self.config.connect_timeout_ms.to_string(),
+            )
+            .on_input(Message::ConnectTimeoutChanged)
+            .padding(5)
+            .width(Length::Fixed(150.0));
+
+            let ping_input = text_input(
+                "Ping interval (ms)",
+                &self.config.ping_interval_ms.to_string(),
+            )
+            .on_input(Message::PingIntervalChanged)
+            .padding(5)
+            .width(Length::Fixed(150.0));
+
+            column![
+                row![
+                    text("Connect timeout:").size(12),
+                    timeout_input,
+                    text("Ping interval:").size(12),
+                    ping_input,
+                ]
+                .spacing(6)
+                .align_y(Alignment::Center),
+            ]
+            .spacing(4)
+        } else {
+            column![]
+        };
+
+        let tls_section = if self.show_tls {
+            let skip_verify_label = if self.config.tls.skip_verify {
+                "[x] Skip certificate verification"
+            } else {
+                "[ ] Skip certificate verification"
+            };
+            let skip_verify_btn =
+                button(text(skip_verify_label).size(12)).on_press(Message::ToggleSkipVerify);
+
+            let status_info = match &self.status {
+                WsStatus::Connected => {
+                    let dur = self.stats.format_duration();
+                    let sent = WsStats::format_bytes(self.stats.bytes_sent);
+                    let recv = WsStats::format_bytes(self.stats.bytes_received);
+                    text(format!(
+                        "Duration: {} | Sent: {} | Recv: {} | Msgs: {}/{}",
+                        dur,
+                        sent,
+                        recv,
+                        self.stats.messages_sent,
+                        self.stats.messages_received
+                    ))
+                    .size(11)
+                    .color(Color::from_rgb(0.4, 0.4, 0.4))
+                }
+                _ => text("").size(11),
+            };
+
+            column![skip_verify_btn, status_info,].spacing(4)
+        } else {
+            column![]
         };
 
         let header_toggle = button(
@@ -262,6 +359,26 @@ impl WebSocketView {
         };
 
         let is_connected = matches!(self.status, WsStatus::Connected);
+
+        let stats_row = if is_connected {
+            let dur = self.stats.format_duration();
+            let sent = WsStats::format_bytes(self.stats.bytes_sent);
+            let recv = WsStats::format_bytes(self.stats.bytes_received);
+            row![
+                text(format!(
+                    "Connected {} | Sent: {} ({}) | Recv: {} ({})",
+                    dur,
+                    sent,
+                    self.stats.messages_sent,
+                    recv,
+                    self.stats.messages_received,
+                ))
+                .size(11)
+                .color(Color::from_rgb(0.4, 0.4, 0.4)),
+            ]
+        } else {
+            row![]
+        };
 
         let filter_buttons = row![
             self.filter_button(MessageTypeFilter::All),
@@ -455,12 +572,16 @@ impl WebSocketView {
             row![
                 text("WebSocket").size(16),
                 auto_reconnect_toggle,
+                advanced_toggle,
+                tls_toggle,
                 header_toggle,
                 clear_button,
             ]
             .spacing(10)
             .align_y(Alignment::Center),
             reconnect_config,
+            advanced_section,
+            tls_section,
         ]
         .spacing(4);
 
@@ -469,6 +590,7 @@ impl WebSocketView {
                 header,
                 url_row,
                 headers_section,
+                stats_row,
                 search_row,
                 message_stats,
                 scrollable(message_list).height(Length::Fill),

@@ -1,4 +1,4 @@
-use crate::protocols::websocket::{connect_ws, WsRequest, WsStatus};
+use crate::protocols::websocket::{connect_ws, WsRequest, WsStats, WsStatus};
 use crate::ui::app::{AstraNovaApp, Message};
 use crate::ui::views::websocket_view;
 use iced::Task;
@@ -40,7 +40,10 @@ pub fn handle_message(app: &mut AstraNovaApp, message: websocket_view::Message) 
         websocket_view::Message::SendMessage(text) => {
             if let Some(sender) = &app.websocket_view.ws_sender {
                 if !text.is_empty() {
+                    let bytes = text.len() as u64;
                     let _ = sender.send(&text);
+                    app.websocket_view.stats.messages_sent += 1;
+                    app.websocket_view.stats.bytes_sent += bytes;
                     app.websocket_view
                         .messages
                         .push(crate::protocols::websocket::WsMessage::outgoing(text));
@@ -57,7 +60,10 @@ pub fn handle_message(app: &mut AstraNovaApp, message: websocket_view::Message) 
                         .filter_map(|s| u8::from_str_radix(s, 16).ok())
                         .collect();
                     if !bytes.is_empty() {
+                        let byte_len = bytes.len() as u64;
                         let _ = sender.send_binary(bytes.clone());
+                        app.websocket_view.stats.messages_sent += 1;
+                        app.websocket_view.stats.bytes_sent += byte_len;
                         let hex_display = bytes
                             .iter()
                             .map(|b| format!("{:02X}", b))
@@ -79,25 +85,34 @@ pub fn handle_message(app: &mut AstraNovaApp, message: websocket_view::Message) 
         }
         websocket_view::Message::SendPing => {
             if let Some(sender) = &app.websocket_view.ws_sender {
-                let _ = sender.send("ping");
+                let ping_data = b"ping".to_vec();
+                let _ = sender.send_ping(ping_data);
+                app.websocket_view.stats.messages_sent += 1;
                 app.websocket_view
                     .messages
                     .push(crate::protocols::websocket::WsMessage::incoming(
                         crate::protocols::websocket::WsMessageType::Ping,
-                        "ping".to_string(),
+                        "manual ping".to_string(),
                     ));
             }
             Task::none()
         }
         websocket_view::Message::SendClose(reason) => {
-            if let Some(_sender) = &app.websocket_view.ws_sender {
-                let _reason = if reason.is_empty() {
+            if let Some(sender) = &app.websocket_view.ws_sender {
+                let close_reason = if reason.is_empty() {
                     "Goodbye".to_string()
                 } else {
                     reason
                 };
-                let _ = handle_disconnect(app);
+                let _ = sender.send_close(&close_reason);
+                app.websocket_view
+                    .messages
+                    .push(crate::protocols::websocket::WsMessage::incoming(
+                        crate::protocols::websocket::WsMessageType::Close,
+                        format!("Close sent: {}", close_reason),
+                    ));
             }
+            let _ = handle_disconnect(app);
             Task::none()
         }
         websocket_view::Message::InputChanged(input) => {
@@ -149,6 +164,30 @@ pub fn handle_message(app: &mut AstraNovaApp, message: websocket_view::Message) 
             app.websocket_view.messages.clear();
             Task::none()
         }
+        websocket_view::Message::ConnectTimeoutChanged(timeout) => {
+            if let Ok(t) = timeout.parse::<u64>() {
+                app.websocket_view.config.connect_timeout_ms = t;
+            }
+            Task::none()
+        }
+        websocket_view::Message::PingIntervalChanged(interval) => {
+            if let Ok(i) = interval.parse::<u64>() {
+                app.websocket_view.config.ping_interval_ms = i;
+            }
+            Task::none()
+        }
+        websocket_view::Message::ToggleSkipVerify => {
+            app.websocket_view.config.tls.skip_verify = !app.websocket_view.config.tls.skip_verify;
+            Task::none()
+        }
+        websocket_view::Message::ToggleShowTls => {
+            app.websocket_view.show_tls = !app.websocket_view.show_tls;
+            Task::none()
+        }
+        websocket_view::Message::ToggleShowAdvanced => {
+            app.websocket_view.show_advanced = !app.websocket_view.show_advanced;
+            Task::none()
+        }
         websocket_view::Message::ConnectedWithSender(_) => Task::none(),
     }
 }
@@ -161,6 +200,7 @@ fn handle_connect(app: &mut AstraNovaApp) -> Task<Message> {
     } else {
         Some(app.websocket_view.subprotocol.clone())
     };
+    let config = app.websocket_view.config.clone();
 
     if url.is_empty() {
         app.websocket_view.status = WsStatus::Error("URL is required".to_string());
@@ -169,6 +209,7 @@ fn handle_connect(app: &mut AstraNovaApp) -> Task<Message> {
 
     app.websocket_view.status = WsStatus::Connecting;
     app.websocket_view.current_retries = 0;
+    app.websocket_view.stats = WsStats::default();
 
     log::info!("Connecting to WebSocket: {}", url);
 
@@ -178,6 +219,7 @@ fn handle_connect(app: &mut AstraNovaApp) -> Task<Message> {
                 url,
                 headers,
                 subprotocol,
+                config,
             };
             connect_ws(&request).await
         },
@@ -238,6 +280,7 @@ fn handle_disconnected(app: &mut AstraNovaApp, reason: String) -> Task<Message> 
         } else {
             Some(app.websocket_view.subprotocol.clone())
         };
+        let config = app.websocket_view.config.clone();
 
         return Task::perform(
             async move {
@@ -246,6 +289,7 @@ fn handle_disconnected(app: &mut AstraNovaApp, reason: String) -> Task<Message> 
                     url,
                     headers,
                     subprotocol,
+                    config,
                 };
                 connect_ws(&request).await
             },
@@ -278,12 +322,13 @@ pub fn handle_ws_event(
 ) -> Task<Message> {
     match event {
         crate::protocols::websocket::WsEvent::Message(msg) => {
+            let is_incoming = msg.direction == "<";
+            let byte_len = msg.data.len() as u64;
+            if is_incoming {
+                app.websocket_view.stats.messages_received += 1;
+                app.websocket_view.stats.bytes_received += byte_len;
+            }
             app.websocket_view.messages.push(msg);
-            Task::none()
-        }
-        crate::protocols::websocket::WsEvent::Connected => {
-            log::info!("WebSocket connected");
-            app.websocket_view.status = WsStatus::Connected;
             Task::none()
         }
         crate::protocols::websocket::WsEvent::Disconnected(reason) => {
@@ -314,5 +359,6 @@ pub fn handle_ws_connected(
     app.ws_read_handle = Some(read_handle);
     app.websocket_view.status = WsStatus::Connected;
     app.websocket_view.current_retries = 0;
+    app.websocket_view.stats.connected_at = Some(std::time::Instant::now());
     log::info!("WebSocket connection established");
 }
