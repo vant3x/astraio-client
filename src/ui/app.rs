@@ -166,6 +166,7 @@ pub(crate) struct AstraNovaApp {
     pub(crate) ws_connection_id: u64,
     pub(crate) toast_manager: ToastManager,
     pub(crate) dark_mode: bool,
+    pub(crate) secret_store: crate::services::secret_store::SecretStore,
 }
 
 #[derive(Debug)]
@@ -224,6 +225,8 @@ pub enum Message {
     OAuth2AutoPollToggle(usize, bool),
     ToggleResponseSearch,
     WsSendFromKeyboard,
+    ClearKeychainSecrets,
+    KeychainCleared(Result<u32, crate::error::AppError>),
 }
 
 impl Clone for Message {
@@ -270,6 +273,8 @@ impl Clone for Message {
             Self::OAuth2AutoPollToggle(i, b) => Self::OAuth2AutoPollToggle(*i, *b),
             Self::ToggleResponseSearch => Self::ToggleResponseSearch,
             Self::WsSendFromKeyboard => Self::WsSendFromKeyboard,
+            Self::ClearKeychainSecrets => Self::ClearKeychainSecrets,
+            Self::KeychainCleared(r) => Self::KeychainCleared(r.clone()),
         }
     }
 }
@@ -345,6 +350,13 @@ impl AstraNovaApp {
                     )",
                     [],
                 );
+                let _ = conn.execute(
+                    "CREATE TABLE IF NOT EXISTS app_settings (
+                        key TEXT PRIMARY KEY,
+                        value TEXT NOT NULL
+                    )",
+                    [],
+                );
                 (conn, Vec::new())
             }
         };
@@ -354,6 +366,13 @@ impl AstraNovaApp {
 
         let mut cv = CollectionView::new();
         cv.sync_collections(&collections);
+
+        let secret_store = crate::services::secret_store::SecretStore::new();
+        match crate::services::secret_store::migrate_plaintext_tokens_to_keyring(&secret_store, &db_conn) {
+            Ok(0) => {}
+            Ok(n) => log::info!("Migrated {} plaintext tokens to OS keyring", n),
+            Err(e) => log::warn!("Keyring migration skipped: {}", e),
+        }
 
         let app = Self {
             request_tabs: vec![HttpRequestView::default()],
@@ -385,6 +404,7 @@ impl AstraNovaApp {
             ws_connection_id: 0,
             toast_manager: ToastManager::new(),
             dark_mode: true,
+            secret_store,
         };
         (app, Task::none())
     }
@@ -559,6 +579,58 @@ impl AstraNovaApp {
                                 .push(crate::protocols::websocket::WsMessage::outgoing(input));
                             self.websocket_view.input.clear();
                         }
+                    }
+                }
+                Task::none()
+            }
+            Message::ClearKeychainSecrets => {
+                let store = self.secret_store.clone();
+                let conn = &self.db_conn;
+                let mut identifiers = Vec::new();
+
+                if let Ok(mut stmt) = conn.prepare(
+                    "SELECT id, collection_id FROM collection_requests WHERE auth_type = 'oauth2'"
+                ) {
+                    if let Ok(rows) = stmt.query_map([], |row| Ok((row.get::<_, i32>(0)?, row.get::<_, i32>(1)?))) {
+                        for row in rows.flatten() {
+                            identifiers.push(format!("col_{}_{}", row.1, row.0));
+                        }
+                    }
+                }
+
+                if let Ok(mut stmt) = conn.prepare(
+                    "SELECT id FROM request_history WHERE request_data LIKE '%OAuth2%'"
+                ) {
+                    if let Ok(rows) = stmt.query_map([], |row| row.get::<_, i32>(0)) {
+                        for row in rows.flatten() {
+                            identifiers.push(format!("hist_{}", row));
+                        }
+                    }
+                }
+
+                Task::perform(
+                    async move {
+                        let mut total = 0u32;
+                        for identifier in &identifiers {
+                            let _ = store.delete_oauth2_tokens(identifier);
+                            total += 1;
+                        }
+                        total
+                    },
+                    |count| Message::KeychainCleared(Ok(count)),
+                )
+            }
+            Message::KeychainCleared(result) => {
+                match result {
+                    Ok(count) => {
+                        self.toast_manager.success(format!(
+                            "Cleared {} keychain entries",
+                            count
+                        ));
+                    }
+                    Err(e) => {
+                        self.toast_manager
+                            .error(format!("Failed to clear keychain: {}", e));
                     }
                 }
                 Task::none()

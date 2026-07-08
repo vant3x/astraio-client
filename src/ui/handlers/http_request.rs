@@ -252,6 +252,15 @@ pub fn handle_http_request_msg(
             }
             Task::none()
         }
+        http_request_view::Message::ClearKeychainSecrets => {
+            if let Some(view) = app.request_tabs.get_mut(index) {
+                view.update(http_request_view::Message::ClearKeychainSecrets);
+            }
+            Task::perform(
+                async { Ok::<(), crate::error::AppError>(()) },
+                |_| Message::ClearKeychainSecrets,
+            )
+        }
         other => {
             if let Some(view) = app.request_tabs.get_mut(index) {
                 view.update(other);

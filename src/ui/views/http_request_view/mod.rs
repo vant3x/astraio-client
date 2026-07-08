@@ -163,6 +163,7 @@ pub enum Message {
     ToggleImagePreview,
     CancelRequest,
     SetIdle,
+    ClearKeychainSecrets,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -755,6 +756,9 @@ impl HttpRequestView {
             Message::CancelRequest => {
                 // Handled in app.rs via handle_http_request_msg:
                 // aborts the in-flight Task and resets status to Idle.
+            }
+            Message::ClearKeychainSecrets => {
+                // Handled at app level - no view state change needed.
             }
         }
     }

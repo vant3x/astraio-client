@@ -1029,6 +1029,19 @@ impl HttpRequestView {
                     .spacing(10)
                     .align_y(Alignment::Center),
                 rule::horizontal(10),
+                text("Security").size(16),
+                text("Stored secrets (OAuth2 tokens, passwords, API keys) are kept in the OS keychain.")
+                    .size(12)
+                    .color(iced::Color::from_rgb(0.5, 0.5, 0.5)),
+                button(
+                    row![
+                        lucide::trash().size(14),
+                        text(" Clear All Keychain Secrets").size(13),
+                    ]
+                    .spacing(4),
+                )
+                .on_press(Message::ClearKeychainSecrets),
+                rule::horizontal(10),
                 button(row![lucide::rotate_ccw().size(14), text(" Reset to Defaults")].spacing(4))
                     .on_press(Message::ResetSettings),
             ]

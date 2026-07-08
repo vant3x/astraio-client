@@ -16,6 +16,13 @@ pub fn handle_start_auth(app: &mut AstraNovaApp, index: usize) -> Task<Message> 
             let pkce_verifier = pkce.as_ref().map(|p| p.verifier.clone());
             config.pkce_verifier = pkce_verifier.clone();
 
+            if let Some(ref verifier) = pkce_verifier {
+                let identifier = format!("{}_{}", index, config.client_id);
+                if let Err(e) = app.secret_store.store_pkce_verifier(&identifier, verifier) {
+                    log::warn!("Failed to store PKCE verifier in keyring: {}", e);
+                }
+            }
+
             let auth_url = config.auth_url.clone();
             let client_id = config.client_id.clone();
             let scopes = config.scopes.clone();
@@ -100,9 +107,9 @@ pub fn handle_token_received(
         if let Auth::OAuth2(config) = &mut view.auth {
             match result {
                 Ok(token_response) => {
-                    config.access_token = token_response.access_token;
-                    if let Some(refresh) = token_response.refresh_token {
-                        config.refresh_token = refresh;
+                    config.access_token = token_response.access_token.clone();
+                    if let Some(refresh) = &token_response.refresh_token {
+                        config.refresh_token = refresh.clone();
                     }
                     if let Some(expiry) = token_response.expires_in {
                         let expiry_time =
@@ -110,6 +117,17 @@ pub fn handle_token_received(
                         config.token_expiry =
                             Some(expiry_time.format("%Y-%m-%dT%H:%M:%SZ").to_string());
                     }
+
+                    let identifier = format!("{}_{}", index, config.client_id);
+                    if let Err(e) = app.secret_store.store_oauth2_tokens(
+                        &identifier,
+                        &token_response.access_token,
+                        token_response.refresh_token.as_deref().unwrap_or(""),
+                        &config.client_secret,
+                    ) {
+                        log::warn!("Failed to store OAuth2 tokens in keyring: {}", e);
+                    }
+
                     app.toast_manager
                         .success("OAuth2 token received successfully".to_string());
                 }
@@ -248,7 +266,7 @@ pub fn handle_device_token_poll(
             match result {
                 Ok(device_token) => {
                     if let Some(access_token) = device_token.access_token {
-                        config.access_token = access_token;
+                        config.access_token = access_token.clone();
                         if let Some(refresh) = device_token.refresh_token {
                             config.refresh_token = refresh;
                         }
@@ -256,6 +274,17 @@ pub fn handle_device_token_poll(
                         config.user_code.clear();
                         config.verification_uri.clear();
                         config.auto_polling = false;
+
+                        let identifier = format!("{}_{}", index, config.client_id);
+                        if let Err(e) = app.secret_store.store_oauth2_tokens(
+                            &identifier,
+                            &access_token,
+                            &config.refresh_token,
+                            &config.client_secret,
+                        ) {
+                            log::warn!("Failed to store OAuth2 tokens in keyring: {}", e);
+                        }
+
                         log::info!("Device token received successfully");
                     } else if let Some(error) = device_token.error {
                         if error == "authorization_pending" {
