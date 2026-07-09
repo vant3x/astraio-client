@@ -1,13 +1,11 @@
-use crate::http_client::client::build_client;
+use crate::error::AppError;
 use crate::http_client::config::RequestConfig;
 use crate::http_client::request::{HttpMethod, HttpRequest};
-use crate::http_client::response::HttpResponse;
 use crate::persistence::database::{self, CollectionRequest, Environment};
 use clap::{Parser, Subcommand};
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::time::Duration;
 
 #[derive(Parser)]
@@ -166,9 +164,10 @@ pub struct ResponseInfo {
     pub size: usize,
 }
 
-pub fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(cli: Cli) -> Result<(), AppError> {
     let db_path = expand_tilde(&cli.database.unwrap_or_else(|| "~/.astranova/data.db".to_string()));
-    let conn = Connection::open(&db_path)?;
+    let conn = Connection::open(&db_path)
+        .map_err(|e| AppError::Database(format!("Failed to open database: {}", e)))?;
 
     // Run keyring migration if needed
     let _ = crate::services::secret_store::migrate_plaintext_tokens_to_keyring(&conn);
@@ -224,9 +223,9 @@ fn run_single_request(
     body: Option<String>,
     headers: Option<Vec<String>>,
     cli: &Cli,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), AppError> {
     let entry = database::get_collection_request_by_id(conn, id)?
-        .ok_or_else(|| format!("Request with ID {} not found", id))?;
+        .ok_or_else(|| AppError::Parse(format!("Request with ID {} not found", id)))?;
 
     let mut request = build_request_from_entry(&entry)?;
 
@@ -235,7 +234,7 @@ fn run_single_request(
         request.url = u;
     }
     if let Some(m) = method {
-        request.method = m.parse().map_err(|_| format!("Invalid HTTP method: {}", m))?;
+        request.method = m.parse().map_err(|_| AppError::Parse(format!("Invalid HTTP method: {}", m)))?;
     }
     if let Some(b) = body {
         request.body = Some(b);
@@ -270,15 +269,15 @@ fn run_collection(
     stop_on_failure: bool,
     delay: u64,
     cli: &Cli,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), AppError> {
     let collection_id = if let Some(id) = id {
         id
     } else if let Some(name) = &name {
         database::get_collection_by_name(conn, name)?
-            .ok_or_else(|| format!("Collection '{}' not found", name))?
+            .ok_or_else(|| AppError::Parse(format!("Collection '{}' not found", name)))?
             .id
     } else {
-        return Err("Either --id or --name must be provided".into());
+        return Err(AppError::Validation("Either --id or --name must be provided".to_string()));
     };
 
     let requests = database::get_collection_requests(conn, collection_id)?;
@@ -362,9 +361,9 @@ fn run_quick_request(
     body: Option<String>,
     headers: Option<Vec<String>>,
     cli: &Cli,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), AppError> {
     let mut request = HttpRequest {
-        method: method.parse().map_err(|_| format!("Invalid HTTP method: {}", method))?,
+        method: method.parse().map_err(|_| AppError::Parse(format!("Invalid HTTP method: {}", method)))?,
         url: url.to_string(),
         headers: Vec::new(),
         body,
@@ -393,7 +392,7 @@ fn list_items(
     conn: &Connection,
     r#type: &str,
     collection_id: Option<i32>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), AppError> {
     match r#type {
         "collections" => {
             let collections = database::get_collections(conn)?;
@@ -403,7 +402,7 @@ fn list_items(
             }
         }
         "requests" => {
-            let cid = collection_id.ok_or("--collection required for listing requests")?;
+            let cid = collection_id.ok_or_else(|| AppError::Validation("--collection required for listing requests".to_string()))?;
             let requests = database::get_collection_requests(conn, cid)?;
             println!("Requests in collection {} ({}):\n", cid, requests.len());
             for r in &requests {
@@ -417,7 +416,7 @@ fn list_items(
                 println!("  [{}] {}", e.id, e.name);
             }
         }
-        _ => return Err(format!("Unknown list type: {}", r#type).into()),
+        _ => return Err(AppError::Parse(format!("Unknown list type: {}", r#type))),
     }
     Ok(())
 }
@@ -426,9 +425,9 @@ fn export_collection(
     conn: &Connection,
     id: i32,
     output: Option<String>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), AppError> {
     let collection = database::get_collection_by_id(conn, id)?
-        .ok_or_else(|| format!("Collection {} not found", id))?;
+        .ok_or_else(|| AppError::Parse(format!("Collection {} not found", id)))?;
     let requests = database::get_collection_requests(conn, id)?;
 
     let export_data = serde_json::json!({
@@ -452,8 +451,9 @@ fn import_collection(
     conn: &Connection,
     file: PathBuf,
     name: Option<String>,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let content = std::fs::read_to_string(&file)?;
+) -> Result<(), AppError> {
+    let content = std::fs::read_to_string(&file)
+        .map_err(|e| AppError::Io(format!("Failed to read file {}: {}", file.display(), e)))?;
     let data: serde_json::Value = serde_json::from_str(&content)?;
 
     let collection_name = name.unwrap_or_else(|| {
@@ -496,7 +496,7 @@ fn import_collection(
     Ok(())
 }
 
-fn build_request_from_entry(entry: &CollectionRequest) -> Result<HttpRequest, Box<dyn std::error::Error>> {
+fn build_request_from_entry(entry: &CollectionRequest) -> Result<HttpRequest, AppError> {
     let mut headers = entry.headers.clone();
 
     // Add content type for body
@@ -515,7 +515,7 @@ fn build_request_from_entry(entry: &CollectionRequest) -> Result<HttpRequest, Bo
         headers.push(("Content-Type".to_string(), content_type.to_string()));
     }
 
-    let method = entry.method.parse().map_err(|_| format!("Invalid HTTP method in collection: {}", entry.method))?;
+    let method = entry.method.parse().map_err(|_| AppError::Parse(format!("Invalid HTTP method in collection: {}", entry.method)))?;
 
     Ok(HttpRequest {
         method,
@@ -576,7 +576,7 @@ fn execute_request(
     request: &HttpRequest,
     timeout: u64,
     insecure: bool,
-) -> Result<CliResult, Box<dyn std::error::Error>> {
+) -> Result<CliResult, AppError> {
     let start = std::time::Instant::now();
 
     let client = reqwest::Client::builder()

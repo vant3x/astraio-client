@@ -380,6 +380,7 @@ impl HttpRequestView {
                         .padding(10),
                         iced::widget::text_input("URL or paste cURL command", &self.url_input)
                             .on_input(Message::UrlInputChanged)
+                            .on_submit(Message::SendRequest)
                             .padding(10),
                         cancel_btn,
                         code_btn,
@@ -394,6 +395,7 @@ impl HttpRequestView {
                         .padding(10),
                         iced::widget::text_input("URL or paste cURL command", &self.url_input)
                             .on_input(Message::UrlInputChanged)
+                            .on_submit(Message::SendRequest)
                             .padding(10),
                         send_btn,
                         code_btn,

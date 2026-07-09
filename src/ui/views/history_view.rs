@@ -126,32 +126,37 @@ impl HistoryView {
             .padding(8)
             .width(Length::Fill);
 
-        let methods = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
-        let mut filter_buttons = row![].spacing(4);
+        let methods = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPT"];
+        let mut filter_buttons = row![].spacing(3);
         for method in methods {
-            let is_active = self.filter_method == method;
+            let is_active = self.filter_method == method
+                || (method == "OPT" && self.filter_method == "OPTIONS");
+            let label = if method == "OPT" { "OPT" } else { method };
+            let actual_method = if method == "OPT" { "OPTIONS" } else { method };
             let btn = if is_active {
-                button(text(method).size(11))
+                button(text(label).size(10))
                     .style(button::secondary)
-                    .on_press(Message::FilterMethod(method.to_string()))
+                    .on_press(Message::FilterMethod(actual_method.to_string()))
             } else {
-                button(text(method).size(11)).on_press(Message::FilterMethod(method.to_string()))
+                button(text(label).size(10)).on_press(Message::FilterMethod(actual_method.to_string()))
             };
             filter_buttons = filter_buttons.push(btn);
         }
 
+        let count_text = text(format!(
+            "{}/{}",
+            self.filtered_entries().len(),
+            self.entries.len()
+        ))
+        .size(10)
+        .color(Color::from_rgb(0.5, 0.5, 0.5));
+
         let filter_row = row![
-            text("Filter:").size(12),
-            filter_buttons,
-            text(format!(
-                "({}/{})",
-                self.filtered_entries().len(),
-                self.entries.len()
-            ))
-            .size(11)
-            .color(Color::from_rgb(0.5, 0.5, 0.5)),
+            text("Filter:").size(11),
+            filter_buttons.width(Length::Fill),
+            count_text,
         ]
-        .spacing(8)
+        .spacing(6)
         .align_y(Alignment::Center);
 
         if self.entries.is_empty() {

@@ -584,56 +584,54 @@ impl AstraNovaApp {
             Subscription::none()
         };
 
-        let keyboard_subscription = iced::keyboard::listen().map(|event| match event {
-            iced::keyboard::Event::KeyPressed { key, modifiers, .. } => {
+        let keyboard_subscription = iced::event::listen_with(|event, _status, _window| {
+            if let iced::event::Event::Keyboard(iced::keyboard::Event::KeyPressed { key, modifiers, .. }) = event {
                 if modifiers.control() || modifiers.command() {
                     match key {
                         iced::keyboard::Key::Character(ref c) if c.as_ref() == "n" => {
-                            Message::AddRequestTab
+                            Some(Message::AddRequestTab)
                         }
                         iced::keyboard::Key::Character(ref c) if c.as_ref() == "w" => {
-                            Message::CloseActiveRequestTab
+                            Some(Message::CloseActiveRequestTab)
                         }
                         iced::keyboard::Key::Character(ref c) if c.as_ref() == "t" => {
-                            Message::AddRequestTab
+                            Some(Message::AddRequestTab)
                         }
                         iced::keyboard::Key::Character(ref c) if c.as_ref() == "d" => {
-                            Message::ToggleTheme
+                            Some(Message::ToggleTheme)
                         }
                         iced::keyboard::Key::Named(iced::keyboard::key::Named::ArrowLeft) => {
-                            Message::PrevRequestTab
+                            Some(Message::PrevRequestTab)
                         }
                         iced::keyboard::Key::Named(iced::keyboard::key::Named::ArrowRight) => {
-                            Message::NextRequestTab
+                            Some(Message::NextRequestTab)
                         }
                         iced::keyboard::Key::Character(ref c) if c.as_ref() == "1" => {
-                            Message::SelectRequestTab(0)
+                            Some(Message::SelectRequestTab(0))
                         }
                         iced::keyboard::Key::Character(ref c) if c.as_ref() == "2" => {
-                            Message::SelectRequestTab(1)
+                            Some(Message::SelectRequestTab(1))
                         }
                         iced::keyboard::Key::Character(ref c) if c.as_ref() == "3" => {
-                            Message::SelectRequestTab(2)
+                            Some(Message::SelectRequestTab(2))
                         }
                         iced::keyboard::Key::Character(ref c) if c.as_ref() == "4" => {
-                            Message::SelectRequestTab(3)
+                            Some(Message::SelectRequestTab(3))
                         }
                         iced::keyboard::Key::Character(ref c) if c.as_ref() == "5" => {
-                            Message::SelectRequestTab(4)
+                            Some(Message::SelectRequestTab(4))
                         }
                         iced::keyboard::Key::Character(ref c) if c.as_ref() == "f" => {
-                            Message::ToggleResponseSearch
+                            Some(Message::ToggleResponseSearch)
                         }
-                        iced::keyboard::Key::Named(iced::keyboard::key::Named::Enter) => {
-                            Message::WsSendFromKeyboard
-                        }
-                        _ => Message::NoOp,
+                        _ => None,
                     }
                 } else {
-                    Message::NoOp
+                    None
                 }
+            } else {
+                None
             }
-            _ => Message::NoOp,
         });
 
         let device_poll_subscription = self.device_poll_subscription();

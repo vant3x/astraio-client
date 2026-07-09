@@ -56,3 +56,9 @@ impl From<url::ParseError> for AppError {
         AppError::Parse(err.to_string())
     }
 }
+
+impl From<std::io::Error> for AppError {
+    fn from(err: std::io::Error) -> Self {
+        AppError::Io(err.to_string())
+    }
+}
