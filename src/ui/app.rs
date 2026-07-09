@@ -290,73 +290,9 @@ impl AstraNovaApp {
                 log::error!("Failed to initialize database: {}", e);
                 let conn = rusqlite::Connection::open_in_memory()
                     .expect("In-memory DB should always work");
-                let _ = conn.execute(
-                    "CREATE TABLE IF NOT EXISTS environments (
-                        id INTEGER PRIMARY KEY,
-                        name TEXT NOT NULL UNIQUE,
-                        variables TEXT NOT NULL,
-                        default_endpoint TEXT
-                    )",
-                    [],
-                );
-                let _ = conn.execute(
-                    "CREATE TABLE IF NOT EXISTS request_history (
-                        id INTEGER PRIMARY KEY,
-                        method TEXT NOT NULL,
-                        url TEXT NOT NULL,
-                        status INTEGER,
-                        duration_ms INTEGER,
-                        timestamp TEXT NOT NULL,
-                        request_data TEXT,
-                        response_data TEXT
-                    )",
-                    [],
-                );
-                let _ = conn.execute(
-                    "CREATE TABLE IF NOT EXISTS collections (
-                        id INTEGER PRIMARY KEY,
-                        name TEXT NOT NULL,
-                        description TEXT
-                    )",
-                    [],
-                );
-                let _ = conn.execute(
-                    "CREATE TABLE IF NOT EXISTS collection_folders (
-                        id INTEGER PRIMARY KEY,
-                        collection_id INTEGER NOT NULL,
-                        name TEXT NOT NULL,
-                        parent_folder_id INTEGER,
-                        FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE CASCADE,
-                        FOREIGN KEY (parent_folder_id) REFERENCES collection_folders(id) ON DELETE CASCADE
-                    )",
-                    [],
-                );
-                let _ = conn.execute(
-                    "CREATE TABLE IF NOT EXISTS collection_requests (
-                        id INTEGER PRIMARY KEY,
-                        collection_id INTEGER NOT NULL,
-                        folder_id INTEGER,
-                        name TEXT NOT NULL,
-                        method TEXT NOT NULL,
-                        url TEXT NOT NULL,
-                        headers TEXT NOT NULL DEFAULT '[]',
-                        body TEXT,
-                        body_type TEXT NOT NULL DEFAULT 'text',
-                        auth_type TEXT NOT NULL DEFAULT 'none',
-                        auth_data TEXT,
-                        params TEXT NOT NULL DEFAULT '[]',
-                        FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE CASCADE,
-                        FOREIGN KEY (folder_id) REFERENCES collection_folders(id) ON DELETE CASCADE
-                    )",
-                    [],
-                );
-                let _ = conn.execute(
-                    "CREATE TABLE IF NOT EXISTS app_settings (
-                        key TEXT PRIMARY KEY,
-                        value TEXT NOT NULL
-                    )",
-                    [],
-                );
+                if let Err(schema_err) = database::init_schema(&conn) {
+                    log::error!("Failed to init in-memory schema: {}", schema_err);
+                }
                 (conn, Vec::new())
             }
         };

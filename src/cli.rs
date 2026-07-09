@@ -31,6 +31,10 @@ pub struct Cli {
     #[arg(short, long, default_value = "30")]
     pub timeout: u64,
 
+    /// Allow insecure TLS connections (skip certificate verification)
+    #[arg(long)]
+    pub insecure: bool,
+
     #[command(subcommand)]
     pub command: Commands,
 }
@@ -202,6 +206,16 @@ fn expand_tilde(path: &str) -> String {
     path.to_string()
 }
 
+fn parse_header(raw: &str) -> Option<(String, String)> {
+    let (key, value) = raw.split_once(':')?;
+    let key = key.trim().to_string();
+    let value = value.trim().to_string();
+    if key.is_empty() {
+        return None;
+    }
+    Some((key, value))
+}
+
 fn run_single_request(
     conn: &Connection,
     id: i32,
@@ -214,23 +228,24 @@ fn run_single_request(
     let entry = database::get_collection_request_by_id(conn, id)?
         .ok_or_else(|| format!("Request with ID {} not found", id))?;
 
-    let mut request = build_request_from_entry(&entry);
+    let mut request = build_request_from_entry(&entry)?;
 
     // Apply overrides
     if let Some(u) = url {
         request.url = u;
     }
     if let Some(m) = method {
-        request.method = m.parse().unwrap_or(HttpMethod::Get);
+        request.method = m.parse().map_err(|_| format!("Invalid HTTP method: {}", m))?;
     }
     if let Some(b) = body {
         request.body = Some(b);
     }
     if let Some(h) = headers {
         for header in h {
-            let parts: Vec<&str> = header.splitn(2, ':').collect();
-            if parts.len() == 2 {
-                request.headers.push((parts[0].trim().to_string(), parts[1].trim().to_string()));
+            if let Some((key, value)) = parse_header(&header) {
+                request.headers.push((key, value));
+            } else {
+                eprintln!("Warning: skipping malformed header: {}", header);
             }
         }
     }
@@ -242,7 +257,7 @@ fn run_single_request(
         }
     }
 
-    let result = execute_request(&request, cli.timeout)?;
+    let result = execute_request(&request, cli.timeout, cli.insecure)?;
     print_result(&result, &cli.format);
 
     Ok(())
@@ -276,14 +291,22 @@ fn run_collection(
     for (i, entry) in requests.iter().enumerate() {
         print!("[{}/{}] {} {} ... ", i + 1, requests.len(), entry.method, entry.name);
 
-        let request = build_request_from_entry(entry);
-        match execute_request(&request, cli.timeout) {
+        let request = build_request_from_entry(entry)?;
+        match execute_request(&request, cli.timeout, cli.insecure) {
             Ok(result) => {
-                if result.response.as_ref().map_or(false, |r| r.status >= 200 && r.status < 300) {
-                    println!("✓ {} ({}ms)", result.response.as_ref().unwrap().status, result.duration_ms);
-                    passed += 1;
+                if let Some(status) = result.response.as_ref().map(|r| r.status) {
+                    if result.success {
+                        println!("✓ {} ({}ms)", status, result.duration_ms);
+                        passed += 1;
+                    } else {
+                        println!("✗ {} ({}ms)", status, result.duration_ms);
+                        failed += 1;
+                        if stop_on_failure {
+                            break;
+                        }
+                    }
                 } else {
-                    println!("✗ {} ({}ms)", result.response.as_ref().map_or(0, |r| r.status), result.duration_ms);
+                    println!("✗ ERROR: {}", result.error.as_deref().unwrap_or("unknown error"));
                     failed += 1;
                     if stop_on_failure {
                         break;
@@ -341,7 +364,7 @@ fn run_quick_request(
     cli: &Cli,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut request = HttpRequest {
-        method: method.parse().unwrap_or(HttpMethod::Get),
+        method: method.parse().map_err(|_| format!("Invalid HTTP method: {}", method))?,
         url: url.to_string(),
         headers: Vec::new(),
         body,
@@ -352,14 +375,15 @@ fn run_quick_request(
 
     if let Some(h) = headers {
         for header in h {
-            let parts: Vec<&str> = header.splitn(2, ':').collect();
-            if parts.len() == 2 {
-                request.headers.push((parts[0].trim().to_string(), parts[1].trim().to_string()));
+            if let Some((key, value)) = parse_header(&header) {
+                request.headers.push((key, value));
+            } else {
+                eprintln!("Warning: skipping malformed header: {}", header);
             }
         }
     }
 
-    let result = execute_request(&request, cli.timeout)?;
+    let result = execute_request(&request, cli.timeout, cli.insecure)?;
     print_result(&result, &cli.format);
 
     Ok(())
@@ -472,7 +496,7 @@ fn import_collection(
     Ok(())
 }
 
-fn build_request_from_entry(entry: &CollectionRequest) -> HttpRequest {
+fn build_request_from_entry(entry: &CollectionRequest) -> Result<HttpRequest, Box<dyn std::error::Error>> {
     let mut headers = entry.headers.clone();
 
     // Add content type for body
@@ -491,15 +515,17 @@ fn build_request_from_entry(entry: &CollectionRequest) -> HttpRequest {
         headers.push(("Content-Type".to_string(), content_type.to_string()));
     }
 
-    HttpRequest {
-        method: entry.method.parse().unwrap_or(HttpMethod::Get),
+    let method = entry.method.parse().map_err(|_| format!("Invalid HTTP method in collection: {}", entry.method))?;
+
+    Ok(HttpRequest {
+        method,
         url: entry.url.clone(),
         headers,
         body: entry.body.clone(),
         config: RequestConfig::default(),
         multipart_fields: Vec::new(),
         auth: None,
-    }
+    })
 }
 
 fn apply_environment_to_request(request: &mut HttpRequest, env: &Environment) {
@@ -549,12 +575,13 @@ fn get_environment_by_name(conn: &Connection, name: &str) -> Option<Environment>
 fn execute_request(
     request: &HttpRequest,
     timeout: u64,
+    insecure: bool,
 ) -> Result<CliResult, Box<dyn std::error::Error>> {
     let start = std::time::Instant::now();
 
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(timeout))
-        .danger_accept_invalid_certs(true)
+        .danger_accept_invalid_certs(insecure)
         .build()?;
 
     let method = match request.method {

@@ -179,9 +179,7 @@ fn get_db_path() -> std::result::Result<PathBuf, AppError> {
     Ok(data_dir.join("astranova.db"))
 }
 
-pub fn init() -> std::result::Result<Connection, AppError> {
-    let db_path = get_db_path()?;
-    let conn = Connection::open(db_path)?;
+pub fn init_schema(conn: &Connection) -> std::result::Result<(), AppError> {
     conn.execute(
         "CREATE TABLE IF NOT EXISTS environments (
             id INTEGER PRIMARY KEY,
@@ -280,6 +278,13 @@ pub fn init() -> std::result::Result<Connection, AppError> {
         )",
         [],
     )?;
+    Ok(())
+}
+
+pub fn init() -> std::result::Result<Connection, AppError> {
+    let db_path = get_db_path()?;
+    let conn = Connection::open(db_path)?;
+    init_schema(&conn)?;
     Ok(conn)
 }
 
