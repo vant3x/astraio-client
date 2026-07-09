@@ -419,6 +419,11 @@ pub fn delete_request_history(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+pub fn delete_request_history_by_id(conn: &Connection, id: i32) -> Result<()> {
+    conn.execute("DELETE FROM request_history WHERE id = ?1", [id])?;
+    Ok(())
+}
+
 pub const DEFAULT_HISTORY_LIMIT: usize = 500;
 
 pub fn trim_request_history(conn: &Connection, max_entries: usize) -> Result<()> {
@@ -457,8 +462,8 @@ pub fn search_request_history(
     let has_method = !method_filter.is_empty();
 
     let sql = match (has_query, has_method) {
-        (true, true) => "SELECT id, method, url, status, duration_ms, timestamp, request_data, response_data FROM request_history WHERE (url LIKE ?1 OR method LIKE ?1 OR request_data LIKE ?1) AND method LIKE ?2 ORDER BY id DESC LIMIT ?3",
-        (true, false) => "SELECT id, method, url, status, duration_ms, timestamp, request_data, response_data FROM request_history WHERE (url LIKE ?1 OR method LIKE ?1 OR request_data LIKE ?1) ORDER BY id DESC LIMIT ?2",
+        (true, true) => "SELECT id, method, url, status, duration_ms, timestamp, request_data, response_data FROM request_history WHERE (url LIKE ?1 OR method LIKE ?1 OR request_data LIKE ?1 OR response_data LIKE ?1) AND method LIKE ?2 ORDER BY id DESC LIMIT ?3",
+        (true, false) => "SELECT id, method, url, status, duration_ms, timestamp, request_data, response_data FROM request_history WHERE (url LIKE ?1 OR method LIKE ?1 OR request_data LIKE ?1 OR response_data LIKE ?1) ORDER BY id DESC LIMIT ?2",
         (false, true) => "SELECT id, method, url, status, duration_ms, timestamp, request_data, response_data FROM request_history WHERE method LIKE ?1 ORDER BY id DESC LIMIT ?2",
         (false, false) => "SELECT id, method, url, status, duration_ms, timestamp, request_data, response_data FROM request_history ORDER BY id DESC LIMIT ?1",
     };

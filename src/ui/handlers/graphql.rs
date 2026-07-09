@@ -146,35 +146,27 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: graphql_view::Message) -> Tas
                 serde_json::to_string(r).ok()
             });
 
-            let conn = &app.db_conn;
-            let method = "GRAPHQL";
-            let status = view.status_code.map(|s| s as i64);
-            let duration_ms = view
-                .response_duration
-                .map(|d| d.as_millis() as i64);
-
-            let result = conn.execute(
-                "INSERT INTO request_history (method, url, status, duration_ms, timestamp, request_data, response_data) VALUES (?1, ?2, ?3, ?4, datetime('now'), ?5, ?6)",
-                rusqlite::params![
-                    method,
-                    url,
-                    status,
-                    duration_ms,
-                    request_data,
-                    response_data,
-                ],
+            let result = crate::services::history_service::save_raw(
+                &app.db_conn,
+                "GRAPHQL",
+                &url,
+                view.status_code,
+                view.response_duration.map(|d| d.as_millis() as u64),
+                request_data.as_deref(),
+                response_data.as_deref(),
             );
 
             match result {
                 Ok(_) => {
                     app.graphql_view
                         .update(graphql_view::Message::SavedToHistory(Ok(())));
+                    crate::services::history_service::trim(&app.db_conn, 500);
                     let entries = crate::services::history_service::get_all(&app.db_conn, 200);
                     app.history_view.entries = entries;
                 }
                 Err(e) => {
                     app.graphql_view.update(graphql_view::Message::SavedToHistory(
-                        Err(crate::error::AppError::Database(e.to_string())),
+                        Err(e),
                     ));
                 }
             }

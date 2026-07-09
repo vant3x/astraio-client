@@ -20,6 +20,10 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: history_view::Message) -> Tas
             }
             app.history_view.update(msg);
         }
+        history_view::Message::DeleteEntry(entry_id) => {
+            let _ = crate::services::history_service::delete_entry(&app.db_conn, entry_id);
+            app.history_view.update(msg);
+        }
         history_view::Message::SearchChanged(_) => {
             app.history_view.update(msg);
             refresh_history_entries(app);
@@ -84,8 +88,10 @@ fn export_json(entries: &[crate::persistence::database::RequestHistoryEntry]) ->
 
 fn export_csv(entries: &[crate::persistence::database::RequestHistoryEntry]) -> String {
     let mut wtr = csv::Writer::from_writer(vec![]);
-    let _ = wtr.write_record(["id", "method", "url", "status", "duration_ms", "timestamp"]);
+    let _ = wtr.write_record(["id", "method", "url", "status", "duration_ms", "timestamp", "request_data", "response_data"]);
     for e in entries {
+        let request_data = e.request_data.clone().unwrap_or_default();
+        let response_data = e.response_data.clone().unwrap_or_default();
         let _ = wtr.write_record([
             &e.id.to_string(),
             &e.method,
@@ -93,6 +99,8 @@ fn export_csv(entries: &[crate::persistence::database::RequestHistoryEntry]) -> 
             &e.status.map(|s| s.to_string()).unwrap_or_default(),
             &e.duration_ms.map(|d| d.to_string()).unwrap_or_default(),
             &e.timestamp,
+            &request_data,
+            &response_data,
         ]);
     }
     String::from_utf8(wtr.into_inner().unwrap_or_default()).unwrap_or_default()

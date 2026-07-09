@@ -66,6 +66,10 @@ pub fn clear(conn: &Connection) {
     let _ = database::delete_request_history(conn);
 }
 
+pub fn delete_entry(conn: &Connection, id: i32) -> Result<(), AppError> {
+    Ok(database::delete_request_history_by_id(conn, id)?)
+}
+
 pub fn trim(conn: &Connection, max_entries: usize) {
     let _ = database::trim_request_history(conn, max_entries);
 }

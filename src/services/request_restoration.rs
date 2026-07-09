@@ -134,6 +134,17 @@ fn apply_request_to_view(view: &mut HttpRequestView, request: &HttpRequest) {
         view.body_input = iced::widget::text_editor::Content::with_text(body);
     }
 
+    for (key, value) in &request.headers {
+        if key.eq_ignore_ascii_case("content-type") {
+            view.request_content_type = match value.to_lowercase().as_str() {
+                "application/json" => crate::ui::views::http_request_view::ContentType::Json,
+                "text/html" => crate::ui::views::http_request_view::ContentType::Html,
+                "application/xml" | "text/xml" => crate::ui::views::http_request_view::ContentType::Xml,
+                _ => crate::ui::views::http_request_view::ContentType::Text,
+            };
+        }
+    }
+
     view.headers_editor.entries = request
         .headers
         .iter()

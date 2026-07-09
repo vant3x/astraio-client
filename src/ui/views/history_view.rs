@@ -9,6 +9,7 @@ use iced_fonts::lucide;
 #[derive(Debug, Clone)]
 pub enum Message {
     ResendEntry(i32),
+    DeleteEntry(i32),
     ClearHistory,
     SearchChanged(String),
     FilterMethod(String),
@@ -53,6 +54,10 @@ impl HistoryView {
                             .as_ref()
                             .map(|d| d.to_lowercase().contains(&q))
                             .unwrap_or(false)
+                        || e.response_data
+                            .as_ref()
+                            .map(|d| d.to_lowercase().contains(&q))
+                            .unwrap_or(false)
                 };
                 let matches_method = if self.filter_method.is_empty() {
                     true
@@ -67,6 +72,11 @@ impl HistoryView {
     pub fn update(&mut self, message: Message) -> Option<i32> {
         match message {
             Message::ResendEntry(entry_id) => Some(entry_id),
+            Message::DeleteEntry(entry_id) => {
+                self.entries.retain(|e| e.id != entry_id);
+                self.selected_index = None;
+                None
+            }
             Message::ClearHistory => {
                 self.entries.clear();
                 self.selected_index = None;
@@ -184,6 +194,8 @@ impl HistoryView {
                 url_display
             };
 
+            let timestamp_display = entry.timestamp.chars().take(19).collect::<String>();
+
             let has_body = entry
                 .request_data
                 .as_ref()
@@ -222,13 +234,27 @@ impl HistoryView {
                 text(duration_text)
                     .size(12)
                     .color(Color::from_rgb(0.5, 0.5, 0.5)),
+                text(timestamp_display)
+                    .size(10)
+                    .color(Color::from_rgb(0.4, 0.4, 0.4)),
             ]
             .spacing(8)
             .align_y(Alignment::Center);
 
-            let entry_button: Element<'_, Message, Theme, Renderer> = button(entry_row)
-                .on_press(Message::ResendEntry(entry.id))
-                .into();
+            let delete_btn: Element<'_, Message, Theme, Renderer> = button(
+                lucide::x().size(12),
+            )
+            .on_press(Message::DeleteEntry(entry.id))
+            .into();
+
+            let entry_row_with_delete = row![entry_row, delete_btn]
+                .spacing(4)
+                .align_y(Alignment::Center);
+
+            let entry_button: Element<'_, Message, Theme, Renderer> =
+                button(entry_row_with_delete)
+                    .on_press(Message::ResendEntry(entry.id))
+                    .into();
 
             list = list.push(entry_button);
         }
