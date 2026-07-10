@@ -3,7 +3,8 @@ use crate::data::auth::Auth;
 use crate::data::auth_input::AuthInput;
 use crate::http_client::snippets::SnippetFormat;
 use crate::ui::components::auth_panel;
-use crate::ui::request_status::{status_color, RequestStatus};
+use crate::ui::request_status::RequestStatus;
+use crate::ui::theme::status_color;
 use iced::widget::text_editor;
 use iced::{
     widget::{button, column, container, pick_list, row, rule, scrollable, text, text_input},
@@ -949,7 +950,7 @@ impl HttpRequestView {
             .on_input(Message::ProxyAuthPasswordChanged)
             .padding(10);
 
-        let verify_ssl = self.request_config.verify_ssl;
+        let verify_ssl = self.request_config.tls.verify_ssl;
         let ssl_toggle = button(if verify_ssl {
             "Verify SSL: ON"
         } else {

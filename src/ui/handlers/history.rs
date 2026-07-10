@@ -5,11 +5,14 @@ use iced::Task;
 pub fn handle_message(app: &mut AstraNovaApp, msg: history_view::Message) -> Task<Message> {
     match msg.clone() {
         history_view::Message::ClearHistory => {
-            crate::services::history_service::clear(&app.db_conn);
+            if let Err(e) = crate::services::history_service::clear(&app.db_conn) {
+                log::error!("Failed to clear history: {}", e);
+            }
             app.history_view.update(msg);
         }
         history_view::Message::ResendEntry(entry_id) => {
-            if let Some(entry) = crate::services::history_service::get_by_id(&app.db_conn, entry_id)
+            if let Ok(Some(entry)) =
+                crate::services::history_service::get_by_id(&app.db_conn, entry_id)
             {
                 if let Some(new_view) =
                     crate::services::request_restoration::build_view_from_history(&entry)
@@ -31,6 +34,9 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: history_view::Message) -> Tas
         history_view::Message::FilterMethod(_) => {
             app.history_view.update(msg);
             refresh_history_entries(app);
+        }
+        history_view::Message::ViewResponse(_) | history_view::Message::CloseResponse => {
+            app.history_view.update(msg);
         }
         history_view::Message::ExportHistory => {
             let entries: Vec<crate::persistence::database::RequestHistoryEntry> =
@@ -78,8 +84,16 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: history_view::Message) -> Tas
 fn refresh_history_entries(app: &mut AstraNovaApp) {
     let query = app.history_view.search_query.clone();
     let method = app.history_view.filter_method.clone();
-    app.history_view.entries =
-        crate::services::history_service::search(&app.db_conn, &query, &method, 500);
+    app.history_view.entries = crate::services::history_service::search(
+        &app.db_conn,
+        &query,
+        &method,
+        500,
+    )
+    .unwrap_or_else(|e| {
+        log::error!("Failed to search history: {}", e);
+        Vec::new()
+    });
 }
 
 fn export_json(entries: &[crate::persistence::database::RequestHistoryEntry]) -> String {

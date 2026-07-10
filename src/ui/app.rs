@@ -283,7 +283,11 @@ impl AstraNovaApp {
     fn new() -> (Self, Task<Message>) {
         let (db_conn, environments) = match database::init() {
             Ok(conn) => {
-                let envs = database::get_environments(&conn).unwrap_or_default();
+                let envs = crate::services::environment_service::get_all(&conn)
+                    .unwrap_or_else(|e| {
+                        log::error!("Failed to load environments: {}", e);
+                        Vec::new()
+                    });
                 (conn, envs)
             }
             Err(e) => {
@@ -297,8 +301,16 @@ impl AstraNovaApp {
             }
         };
 
-        let history = crate::services::history_service::get_all(&db_conn, 200);
-        let collections = crate::services::collection_service::get_all(&db_conn);
+        let history = crate::services::history_service::get_all(&db_conn, 200)
+            .unwrap_or_else(|e| {
+                log::error!("Failed to load history: {}", e);
+                Vec::new()
+            });
+        let collections = crate::services::collection_service::get_all(&db_conn)
+            .unwrap_or_else(|e| {
+                log::error!("Failed to load collections: {}", e);
+                Vec::new()
+            });
 
         let mut cv = CollectionView::new();
         cv.sync_collections(&collections);
@@ -429,7 +441,11 @@ impl AstraNovaApp {
             Message::ToggleCollections => {
                 self.show_collections = !self.show_collections;
                 if self.show_collections {
-                    let cols = crate::services::collection_service::get_all(&self.db_conn);
+                    let cols = crate::services::collection_service::get_all(&self.db_conn)
+                        .unwrap_or_else(|e| {
+                            log::error!("Failed to refresh collections: {}", e);
+                            Vec::new()
+                        });
                     self.collection_view.sync_collections(&cols);
                 }
                 Task::none()

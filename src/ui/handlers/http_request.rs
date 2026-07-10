@@ -31,11 +31,11 @@ pub fn handle_http_request_msg(
             view.pending_request_data = serde_json::to_string(&request).ok();
             view.update(http_request_view::Message::SetLoading);
 
-            let http_client = if request.config.proxy_url.is_some() || !request.config.verify_ssl {
+            let http_client = if request.config.proxy_url.is_some() || !request.config.tls.verify_ssl {
                 let cache_key = format!(
                     "{}|{}",
                     request.config.proxy_url.as_deref().unwrap_or(""),
-                    request.config.verify_ssl
+                    request.config.tls.verify_ssl
                 );
                 if let Some(cached) = app.custom_clients.get(&cache_key) {
                     Arc::clone(cached)
@@ -86,12 +86,12 @@ pub fn handle_http_request_msg(
                         request_data.as_deref(),
                         response_data.as_deref(),
                     );
-                    crate::services::history_service::trim(
+                    let _ = crate::services::history_service::trim(
                         &app.db_conn,
                         crate::persistence::database::DEFAULT_HISTORY_LIMIT,
                     );
                     app.history_view.entries =
-                        crate::services::history_service::get_all(&app.db_conn, 200);
+                        crate::services::history_service::get_all(&app.db_conn, 200).unwrap_or_default();
 
                     if response.status >= 400 {
                         app.toast_manager

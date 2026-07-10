@@ -43,14 +43,12 @@ pub fn save_raw(
     )?)
 }
 
-pub fn get_all(conn: &Connection, limit: usize) -> Vec<RequestHistoryEntry> {
-    database::get_request_history(conn, limit).unwrap_or_default()
+pub fn get_all(conn: &Connection, limit: usize) -> Result<Vec<RequestHistoryEntry>, AppError> {
+    Ok(database::get_request_history(conn, limit)?)
 }
 
-pub fn get_by_id(conn: &Connection, id: i32) -> Option<RequestHistoryEntry> {
-    database::get_request_history_entry_by_id(conn, id)
-        .ok()
-        .flatten()
+pub fn get_by_id(conn: &Connection, id: i32) -> Result<Option<RequestHistoryEntry>, AppError> {
+    Ok(database::get_request_history_entry_by_id(conn, id)?)
 }
 
 pub fn search(
@@ -58,20 +56,20 @@ pub fn search(
     query: &str,
     method_filter: &str,
     limit: usize,
-) -> Vec<RequestHistoryEntry> {
-    database::search_request_history(conn, query, method_filter, limit).unwrap_or_default()
+) -> Result<Vec<RequestHistoryEntry>, AppError> {
+    Ok(database::search_request_history(conn, query, method_filter, limit)?)
 }
 
-pub fn clear(conn: &Connection) {
-    let _ = database::delete_request_history(conn);
+pub fn clear(conn: &Connection) -> Result<(), AppError> {
+    Ok(database::delete_request_history(conn)?)
 }
 
 pub fn delete_entry(conn: &Connection, id: i32) -> Result<(), AppError> {
     Ok(database::delete_request_history_by_id(conn, id)?)
 }
 
-pub fn trim(conn: &Connection, max_entries: usize) {
-    let _ = database::trim_request_history(conn, max_entries);
+pub fn trim(conn: &Connection, max_entries: usize) -> Result<(), AppError> {
+    Ok(database::trim_request_history(conn, max_entries)?)
 }
 
 #[allow(dead_code)]
@@ -143,7 +141,7 @@ mod tests {
 
         save(&conn, &req, &resp).unwrap();
 
-        let entries = get_all(&conn, 10);
+        let entries = get_all(&conn, 10).unwrap();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].method, "GET");
         assert!(entries[0].request_data.is_some());
@@ -161,7 +159,7 @@ mod tests {
 
         save(&conn, &req, &resp).unwrap();
 
-        let entries = get_all(&conn, 10);
+        let entries = get_all(&conn, 10).unwrap();
         let restored = restore_request(&entries[0]).unwrap();
         assert_eq!(restored.method, HttpMethod::Post);
         assert_eq!(restored.url, "https://api.example.com");
@@ -176,8 +174,8 @@ mod tests {
         let resp = make_response("GET", "https://example.com", 200);
         save(&conn, &req, &resp).unwrap();
 
-        clear(&conn);
-        let entries = get_all(&conn, 10);
+        clear(&conn).unwrap();
+        let entries = get_all(&conn, 10).unwrap();
         assert!(entries.is_empty());
     }
 }

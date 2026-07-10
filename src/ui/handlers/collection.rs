@@ -159,18 +159,16 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: collection_view::Message) -> 
                                             for req in &folder.requests {
                                                 let _ = crate::services::collection_service::save_request(
                                                     &app.db_conn,
-                                                    new_col.id,
-                                                    Some(created_folder.id),
-                                                    &req.name,
-                                                    &req.method,
-                                                    &req.url,
-                                                    &req.headers,
-                                                    req.body.as_deref(),
-                                                    &crate::persistence::database::CollectionBodyType::Text,
-                                                    &crate::persistence::database::CollectionAuthType::None,
-                                                    None,
-                                                    &req.params,
-                                                    None,
+                                                    &crate::persistence::database::SaveRequestParams::imported(
+                                                        new_col.id,
+                                                        Some(created_folder.id),
+                                                        &req.name,
+                                                        &req.method,
+                                                        &req.url,
+                                                        &req.headers,
+                                                        req.body.as_deref(),
+                                                        &req.params,
+                                                    ),
                                                 );
                                             }
                                         }
@@ -180,18 +178,16 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: collection_view::Message) -> 
                                 for req in &imported.requests {
                                     let _ = crate::services::collection_service::save_request(
                                         &app.db_conn,
-                                        new_col.id,
-                                        None,
-                                        &req.name,
-                                        &req.method,
-                                        &req.url,
-                                        &req.headers,
-                                        req.body.as_deref(),
-                                        &crate::persistence::database::CollectionBodyType::Text,
-                                        &crate::persistence::database::CollectionAuthType::None,
-                                        None,
-                                        &req.params,
-                                        None,
+                                        &crate::persistence::database::SaveRequestParams::imported(
+                                            new_col.id,
+                                            None,
+                                            &req.name,
+                                            &req.method,
+                                            &req.url,
+                                            &req.headers,
+                                            req.body.as_deref(),
+                                            &req.params,
+                                        ),
                                     );
                                 }
                                 refresh_all_data(app);
@@ -261,18 +257,20 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: collection_view::Message) -> 
                                             for req in &generated.requests {
                                                 let _ = crate::services::collection_service::save_request(
                                                     &app.db_conn,
-                                                    new_col.id,
-                                                    Some(created_folder.id),
-                                                    &req.name,
-                                                    &req.method,
-                                                    &req.url,
-                                                    &req.headers,
-                                                    req.body.as_deref(),
-                                                    &crate::persistence::database::CollectionBodyType::Text,
-                                                    &crate::persistence::database::CollectionAuthType::None,
-                                                    None,
-                                                    &req.params,
-                                                    None,
+                                                    &crate::persistence::database::SaveRequestParams {
+                                                        collection_id: new_col.id,
+                                                        folder_id: Some(created_folder.id),
+                                                        name: req.name.clone(),
+                                                        method: req.method.clone(),
+                                                        url: req.url.clone(),
+                                                        headers: req.headers.clone(),
+                                                        body: req.body.clone(),
+                                                        body_type: crate::persistence::database::CollectionBodyType::Text,
+                                                        auth_type: crate::persistence::database::CollectionAuthType::None,
+                                                        auth_data: None,
+                                                        params: req.params.clone(),
+                                                        config_json: None,
+                                                    },
                                                 );
                                             }
                                         }
@@ -282,18 +280,20 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: collection_view::Message) -> 
                                 for req in &generated.requests {
                                     let _ = crate::services::collection_service::save_request(
                                         &app.db_conn,
-                                        new_col.id,
-                                        None,
-                                        &req.name,
-                                        &req.method,
-                                        &req.url,
-                                        &req.headers,
-                                        req.body.as_deref(),
-                                        &crate::persistence::database::CollectionBodyType::Text,
-                                        &crate::persistence::database::CollectionAuthType::None,
-                                        None,
-                                        &req.params,
-                                        None,
+                                        &crate::persistence::database::SaveRequestParams {
+                                            collection_id: new_col.id,
+                                            folder_id: None,
+                                            name: req.name.clone(),
+                                            method: req.method.clone(),
+                                            url: req.url.clone(),
+                                            headers: req.headers.clone(),
+                                            body: req.body.clone(),
+                                            body_type: crate::persistence::database::CollectionBodyType::Text,
+                                            auth_type: crate::persistence::database::CollectionAuthType::None,
+                                            auth_data: None,
+                                            params: req.params.clone(),
+                                            config_json: None,
+                                        },
                                     );
                                 }
                                 refresh_all_data(app);
@@ -320,9 +320,9 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: collection_view::Message) -> 
         collection_view::Message::ExportCollection(idx) => {
             if let Some(col) = app.collection_view.collections.get(idx) {
                 let folders =
-                    crate::services::collection_service::get_folders(&app.db_conn, col.id);
+                    crate::services::collection_service::get_folders(&app.db_conn, col.id).unwrap_or_default();
                 let requests =
-                    crate::services::collection_service::get_requests(&app.db_conn, col.id, None);
+                    crate::services::collection_service::get_requests(&app.db_conn, col.id, None).unwrap_or_default();
                 match crate::export::postman::export_collection(col, &folders, &requests) {
                     Ok(json) => {
                         let col_name = col.name.clone();
@@ -439,16 +439,16 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: collection_view::Message) -> 
 }
 
 fn refresh_collection_data(app: &mut AstraNovaApp, col_id: i32) {
-    let folders = crate::services::collection_service::get_folders(&app.db_conn, col_id);
+    let folders = crate::services::collection_service::get_folders(&app.db_conn, col_id).unwrap_or_default();
     app.collection_view
         .sync_folders_for_collection(col_id, &folders);
-    let reqs = crate::services::collection_service::get_requests(&app.db_conn, col_id, None);
+    let reqs = crate::services::collection_service::get_requests(&app.db_conn, col_id, None).unwrap_or_default();
     app.collection_view
         .sync_requests_for_collection(col_id, &reqs);
 }
 
 fn refresh_all_data(app: &mut AstraNovaApp) {
-    let cols = crate::services::collection_service::get_all(&app.db_conn);
+    let cols = crate::services::collection_service::get_all(&app.db_conn).unwrap_or_default();
     app.collection_view.sync_collections(&cols);
 
     let expanded_indices: Vec<usize> = app
@@ -565,18 +565,20 @@ fn save_current_to_collection(app: &mut AstraNovaApp) {
 
         let _ = crate::services::collection_service::save_request(
             &app.db_conn,
-            col_id,
-            folder_id,
-            &name,
-            &request.method.to_string(),
-            &request.url,
-            &request.headers,
-            request.body.as_deref(),
-            &body_type,
-            &auth_type,
-            auth_data.as_deref(),
-            &params,
-            None,
+            &crate::persistence::database::SaveRequestParams {
+                collection_id: col_id,
+                folder_id,
+                name,
+                method: request.method.to_string(),
+                url: request.url,
+                headers: request.headers,
+                body: request.body,
+                body_type,
+                auth_type,
+                auth_data,
+                params,
+                config_json: None,
+            },
         );
 
         refresh_collection_data(app, col_id);

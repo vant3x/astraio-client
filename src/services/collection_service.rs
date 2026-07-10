@@ -1,11 +1,11 @@
 use crate::error::AppError;
 use crate::persistence::database::{
-    self, Collection, CollectionAuthType, CollectionBodyType, CollectionFolder, CollectionRequest,
+    self, Collection, CollectionFolder, CollectionRequest, SaveRequestParams,
 };
 use rusqlite::Connection;
 
-pub fn get_all(conn: &Connection) -> Vec<Collection> {
-    database::get_collections(conn).unwrap_or_default()
+pub fn get_all(conn: &Connection) -> Result<Vec<Collection>, AppError> {
+    Ok(database::get_collections(conn)?)
 }
 
 pub fn create(conn: &Connection, name: &str) -> Result<Collection, AppError> {
@@ -22,12 +22,12 @@ pub fn delete(conn: &Connection, id: i32) -> Result<(), AppError> {
 
 pub fn create_and_refresh(conn: &Connection, name: &str) -> Result<Vec<Collection>, AppError> {
     create(conn, name)?;
-    Ok(get_all(conn))
+    get_all(conn)
 }
 
 pub fn delete_and_refresh(conn: &Connection, id: i32) -> Result<Vec<Collection>, AppError> {
     delete(conn, id)?;
-    Ok(get_all(conn))
+    get_all(conn)
 }
 
 pub fn rename(conn: &Connection, collection: &Collection, new_name: &str) -> Result<(), AppError> {
@@ -36,8 +36,8 @@ pub fn rename(conn: &Connection, collection: &Collection, new_name: &str) -> Res
     update(conn, &updated)
 }
 
-pub fn get_folders(conn: &Connection, collection_id: i32) -> Vec<CollectionFolder> {
-    database::get_folders(conn, collection_id).unwrap_or_default()
+pub fn get_folders(conn: &Connection, collection_id: i32) -> Result<Vec<CollectionFolder>, AppError> {
+    Ok(database::get_folders(conn, collection_id)?)
 }
 
 pub fn create_folder(
@@ -63,7 +63,7 @@ pub fn create_folder_with_parent(
     parent_folder_id: Option<i32>,
 ) -> Result<Vec<CollectionFolder>, AppError> {
     database::create_folder(conn, collection_id, name, parent_folder_id)?;
-    Ok(get_folders(conn, collection_id))
+    get_folders(conn, collection_id)
 }
 
 pub fn delete_folder_and_refresh(
@@ -72,48 +72,22 @@ pub fn delete_folder_and_refresh(
     folder_id: i32,
 ) -> Result<Vec<CollectionFolder>, AppError> {
     delete_folder(conn, folder_id)?;
-    Ok(get_folders(conn, collection_id))
+    get_folders(conn, collection_id)
 }
 
 pub fn get_requests(
     conn: &Connection,
     collection_id: i32,
     folder_id: Option<i32>,
-) -> Vec<CollectionRequest> {
-    database::get_collection_requests(conn, collection_id, folder_id).unwrap_or_default()
+) -> Result<Vec<CollectionRequest>, AppError> {
+    Ok(database::get_collection_requests(conn, collection_id, folder_id)?)
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn save_request(
     conn: &Connection,
-    collection_id: i32,
-    folder_id: Option<i32>,
-    name: &str,
-    method: &str,
-    url: &str,
-    headers: &[(String, String)],
-    body: Option<&str>,
-    body_type: &CollectionBodyType,
-    auth_type: &CollectionAuthType,
-    auth_data: Option<&str>,
-    params: &[(String, String)],
-    config_json: Option<&str>,
+    params: &SaveRequestParams,
 ) -> Result<CollectionRequest, AppError> {
-    Ok(database::save_collection_request(
-        conn,
-        collection_id,
-        folder_id,
-        name,
-        method,
-        url,
-        headers,
-        body,
-        body_type,
-        auth_type,
-        auth_data,
-        params,
-        config_json,
-    )?)
+    Ok(database::save_collection_request(conn, params)?)
 }
 
 pub fn rename_request(conn: &Connection, id: i32, new_name: &str) -> Result<(), AppError> {
@@ -140,7 +114,7 @@ pub fn delete_request_and_refresh(
     request_id: i32,
 ) -> Result<Vec<CollectionRequest>, AppError> {
     delete_request(conn, request_id)?;
-    Ok(get_requests(conn, collection_id, folder_id))
+    get_requests(conn, collection_id, folder_id)
 }
 
 #[cfg(test)]
@@ -199,7 +173,7 @@ mod tests {
         let col = create(&conn, "My API").unwrap();
         assert_eq!(col.name, "My API");
 
-        let cols = get_all(&conn);
+        let cols = get_all(&conn).unwrap();
         assert_eq!(cols.len(), 1);
     }
 
@@ -210,7 +184,7 @@ mod tests {
         let folder = create_folder(&conn, col.id, "Auth").unwrap();
         assert_eq!(folder.name, "Auth");
 
-        let folders = get_folders(&conn, col.id);
+        let folders = get_folders(&conn, col.id).unwrap();
         assert_eq!(folders.len(), 1);
     }
 
@@ -220,23 +194,12 @@ mod tests {
         let col = create(&conn, "API").unwrap();
         let req = save_request(
             &conn,
-            col.id,
-            None,
-            "Get Todos",
-            "GET",
-            "https://api.example.com/todos",
-            &[],
-            None,
-            &CollectionBodyType::Text,
-            &CollectionAuthType::None,
-            None,
-            &[],
-            None,
+            &SaveRequestParams::new(col.id, "Get Todos", "GET", "https://api.example.com/todos"),
         )
         .unwrap();
         assert_eq!(req.name, "Get Todos");
 
-        let reqs = get_requests(&conn, col.id, None);
+        let reqs = get_requests(&conn, col.id, None).unwrap();
         assert_eq!(reqs.len(), 1);
     }
 
@@ -246,7 +209,7 @@ mod tests {
         let col = create(&conn, "Old").unwrap();
         rename(&conn, &col, "New").unwrap();
 
-        let cols = get_all(&conn);
+        let cols = get_all(&conn).unwrap();
         assert_eq!(cols[0].name, "New");
     }
 
@@ -257,7 +220,7 @@ mod tests {
         let folder = create_folder(&conn, col.id, "Old").unwrap();
         rename_folder(&conn, folder.id, "New").unwrap();
 
-        let folders = get_folders(&conn, col.id);
+        let folders = get_folders(&conn, col.id).unwrap();
         assert_eq!(folders[0].name, "New");
     }
 
@@ -267,23 +230,12 @@ mod tests {
         let col = create(&conn, "API").unwrap();
         let req = save_request(
             &conn,
-            col.id,
-            None,
-            "Old",
-            "GET",
-            "https://example.com",
-            &[],
-            None,
-            &CollectionBodyType::Text,
-            &CollectionAuthType::None,
-            None,
-            &[],
-            None,
+            &SaveRequestParams::new(col.id, "Old", "GET", "https://example.com"),
         )
         .unwrap();
         rename_request(&conn, req.id, "New").unwrap();
 
-        let reqs = get_requests(&conn, col.id, None);
+        let reqs = get_requests(&conn, col.id, None).unwrap();
         assert_eq!(reqs[0].name, "New");
     }
 
@@ -293,23 +245,12 @@ mod tests {
         let col = create(&conn, "API").unwrap();
         let req = save_request(
             &conn,
-            col.id,
-            None,
-            "To Delete",
-            "DELETE",
-            "https://example.com/1",
-            &[],
-            None,
-            &CollectionBodyType::Text,
-            &CollectionAuthType::None,
-            None,
-            &[],
-            None,
+            &SaveRequestParams::new(col.id, "To Delete", "DELETE", "https://example.com/1"),
         )
         .unwrap();
 
         delete_request(&conn, req.id).unwrap();
-        let reqs = get_requests(&conn, col.id, None);
+        let reqs = get_requests(&conn, col.id, None).unwrap();
         assert!(reqs.is_empty());
     }
 
@@ -320,25 +261,14 @@ mod tests {
         let folder = create_folder(&conn, col.id, "Auth").unwrap();
         let req = save_request(
             &conn,
-            col.id,
-            None,
-            "Login",
-            "POST",
-            "https://api.example.com/login",
-            &[],
-            None,
-            &CollectionBodyType::Text,
-            &CollectionAuthType::None,
-            None,
-            &[],
-            None,
+            &SaveRequestParams::new(col.id, "Login", "POST", "https://api.example.com/login"),
         )
         .unwrap();
 
         move_request(&conn, req.id, Some(folder.id)).unwrap();
-        let root_reqs = get_requests(&conn, col.id, None);
+        let root_reqs = get_requests(&conn, col.id, None).unwrap();
         assert!(root_reqs.is_empty());
-        let folder_reqs = get_requests(&conn, col.id, Some(folder.id));
+        let folder_reqs = get_requests(&conn, col.id, Some(folder.id)).unwrap();
         assert_eq!(folder_reqs.len(), 1);
     }
 
@@ -384,18 +314,7 @@ mod tests {
         let col = create(&conn, "API").unwrap();
         let req = save_request(
             &conn,
-            col.id,
-            None,
-            "To Delete",
-            "DELETE",
-            "https://example.com/1",
-            &[],
-            None,
-            &CollectionBodyType::Text,
-            &CollectionAuthType::None,
-            None,
-            &[],
-            None,
+            &SaveRequestParams::new(col.id, "To Delete", "DELETE", "https://example.com/1"),
         )
         .unwrap();
         let reqs = delete_request_and_refresh(&conn, col.id, None, req.id).unwrap();

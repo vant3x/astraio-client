@@ -344,7 +344,7 @@ impl HttpRequestView {
                             self.auth = Auth::Basic { user, pass };
                         }
                         if parsed.insecure {
-                            self.request_config.verify_ssl = false;
+                            self.request_config.tls.verify_ssl = false;
                         }
                         if !parsed.form_fields.is_empty() {
                             self.body_type = BodyType::Multipart;
@@ -595,7 +595,6 @@ impl HttpRequestView {
                 });
             }
             Message::VerifySslToggled(verify) => {
-                self.request_config.verify_ssl = verify;
                 self.request_config.tls.verify_ssl = verify;
             }
             Message::CaCertPathChanged(path) => {

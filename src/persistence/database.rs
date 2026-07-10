@@ -630,70 +630,120 @@ pub fn rename_folder(conn: &Connection, id: i32, new_name: &str) -> Result<()> {
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
+#[derive(Debug, Clone)]
+pub struct SaveRequestParams {
+    pub collection_id: i32,
+    pub folder_id: Option<i32>,
+    pub name: String,
+    pub method: String,
+    pub url: String,
+    pub headers: Vec<(String, String)>,
+    pub body: Option<String>,
+    pub body_type: CollectionBodyType,
+    pub auth_type: CollectionAuthType,
+    pub auth_data: Option<String>,
+    pub params: Vec<(String, String)>,
+    pub config_json: Option<String>,
+}
+
+impl SaveRequestParams {
+    #[allow(dead_code)]
+    pub fn new(collection_id: i32, name: &str, method: &str, url: &str) -> Self {
+        Self {
+            collection_id,
+            folder_id: None,
+            name: name.to_string(),
+            method: method.to_string(),
+            url: url.to_string(),
+            headers: Vec::new(),
+            body: None,
+            body_type: CollectionBodyType::default(),
+            auth_type: CollectionAuthType::default(),
+            auth_data: None,
+            params: Vec::new(),
+            config_json: None,
+        }
+    }
+
+    pub fn imported(
+        collection_id: i32,
+        folder_id: Option<i32>,
+        name: &str,
+        method: &str,
+        url: &str,
+        headers: &[(String, String)],
+        body: Option<&str>,
+        params: &[(String, String)],
+    ) -> Self {
+        Self {
+            collection_id,
+            folder_id,
+            name: name.to_string(),
+            method: method.to_string(),
+            url: url.to_string(),
+            headers: headers.to_vec(),
+            body: body.map(str::to_string),
+            body_type: CollectionBodyType::Text,
+            auth_type: CollectionAuthType::None,
+            auth_data: None,
+            params: params.to_vec(),
+            config_json: None,
+        }
+    }
+}
+
 pub fn save_collection_request(
     conn: &Connection,
-    collection_id: i32,
-    folder_id: Option<i32>,
-    name: &str,
-    method: &str,
-    url: &str,
-    headers: &[(String, String)],
-    body: Option<&str>,
-    body_type: &CollectionBodyType,
-    auth_type: &CollectionAuthType,
-    auth_data: Option<&str>,
-    params: &[(String, String)],
-    config_json: Option<&str>,
+    params: &SaveRequestParams,
 ) -> Result<CollectionRequest> {
-    let headers_json = serde_json::to_string(headers)
+    let headers_json = serde_json::to_string(&params.headers)
         .map_err(|e| rusqlite::Error::InvalidParameterName(e.to_string()))?;
-    let params_json = serde_json::to_string(params)
+    let params_json = serde_json::to_string(&params.params)
         .map_err(|e| rusqlite::Error::InvalidParameterName(e.to_string()))?;
     let max_order: i32 = conn
         .query_row(
             "SELECT COALESCE(MAX(sort_order), 0) FROM collection_requests WHERE collection_id = ?1",
-            [collection_id],
+            [params.collection_id],
             |row| row.get(0),
         )
         .unwrap_or(0);
 
-    let body_type_str = body_type.to_string();
-    let auth_type_str = auth_type.to_string();
+    let body_type_str = params.body_type.to_string();
+    let auth_type_str = params.auth_type.to_string();
 
     conn.execute(
         "INSERT INTO collection_requests (collection_id, folder_id, name, method, url, headers, body, body_type, auth_type, auth_data, params, config_json, sort_order) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
         params![
-            collection_id,
-            folder_id,
-            name,
-            method,
-            url,
+            params.collection_id,
+            params.folder_id,
+            params.name,
+            params.method,
+            params.url,
             headers_json,
-            body,
+            params.body,
             body_type_str,
             auth_type_str,
-            auth_data,
+            params.auth_data,
             params_json,
-            config_json,
+            params.config_json,
             max_order + 1,
         ],
     )?;
     let id = conn.last_insert_rowid();
     Ok(CollectionRequest {
         id: id as i32,
-        collection_id,
-        folder_id,
-        name: name.to_string(),
-        method: method.to_string(),
-        url: url.to_string(),
-        headers: headers.to_vec(),
-        body: body.map(|s| s.to_string()),
-        body_type: body_type.clone(),
-        auth_type: auth_type.clone(),
-        auth_data: auth_data.map(|s| s.to_string()),
-        params: params.to_vec(),
-        config_json: config_json.map(|s| s.to_string()),
+        collection_id: params.collection_id,
+        folder_id: params.folder_id,
+        name: params.name.clone(),
+        method: params.method.clone(),
+        url: params.url.clone(),
+        headers: params.headers.clone(),
+        body: params.body.clone(),
+        body_type: params.body_type.clone(),
+        auth_type: params.auth_type.clone(),
+        auth_data: params.auth_data.clone(),
+        params: params.params.clone(),
+        config_json: params.config_json.clone(),
         sort_order: max_order + 1,
     })
 }
@@ -743,6 +793,7 @@ pub fn rename_collection_request(conn: &Connection, id: i32, new_name: &str) -> 
     Ok(())
 }
 
+#[allow(dead_code)]
 pub fn move_collection_request(
     conn: &Connection,
     id: i32,
@@ -1152,34 +1203,38 @@ mod tests {
 
         save_collection_request(
             &conn,
-            col.id,
-            None,
-            "Get Todos",
-            "GET",
-            "https://jsonplaceholder.typicode.com/todos",
-            &headers,
-            None,
-            &CollectionBodyType::Text,
-            &CollectionAuthType::None,
-            None,
-            &params,
-            None,
+            &SaveRequestParams {
+                collection_id: col.id,
+                folder_id: None,
+                name: "Get Todos".to_string(),
+                method: "GET".to_string(),
+                url: "https://jsonplaceholder.typicode.com/todos".to_string(),
+                headers: headers.clone(),
+                body: None,
+                body_type: CollectionBodyType::Text,
+                auth_type: CollectionAuthType::None,
+                auth_data: None,
+                params: params.clone(),
+                config_json: None,
+            },
         )
         .unwrap();
         save_collection_request(
             &conn,
-            col.id,
-            None,
-            "Create Todo",
-            "POST",
-            "https://jsonplaceholder.typicode.com/todos",
-            &headers,
-            Some(r#"{"title":"test"}"#),
-            &CollectionBodyType::Text,
-            &CollectionAuthType::Bearer,
-            Some("token123"),
-            &[],
-            None,
+            &SaveRequestParams {
+                collection_id: col.id,
+                folder_id: None,
+                name: "Create Todo".to_string(),
+                method: "POST".to_string(),
+                url: "https://jsonplaceholder.typicode.com/todos".to_string(),
+                headers,
+                body: Some(r#"{"title":"test"}"#.to_string()),
+                body_type: CollectionBodyType::Text,
+                auth_type: CollectionAuthType::Bearer,
+                auth_data: Some("token123".to_string()),
+                params: vec![],
+                config_json: None,
+            },
         )
         .unwrap();
 
@@ -1200,18 +1255,20 @@ mod tests {
 
         save_collection_request(
             &conn,
-            col.id,
-            Some(folder.id),
-            "Login",
-            "POST",
-            "https://api.example.com/login",
-            &[],
-            Some(r#"{"user":"admin"}"#),
-            &CollectionBodyType::Text,
-            &CollectionAuthType::None,
-            None,
-            &[],
-            None,
+            &SaveRequestParams {
+                collection_id: col.id,
+                folder_id: Some(folder.id),
+                name: "Login".to_string(),
+                method: "POST".to_string(),
+                url: "https://api.example.com/login".to_string(),
+                headers: vec![],
+                body: Some(r#"{"user":"admin"}"#.to_string()),
+                body_type: CollectionBodyType::Text,
+                auth_type: CollectionAuthType::None,
+                auth_data: None,
+                params: vec![],
+                config_json: None,
+            },
         )
         .unwrap();
 
@@ -1231,18 +1288,7 @@ mod tests {
 
         let req = save_collection_request(
             &conn,
-            col.id,
-            None,
-            "Old Name",
-            "GET",
-            "https://example.com",
-            &[],
-            None,
-            &CollectionBodyType::Text,
-            &CollectionAuthType::None,
-            None,
-            &[],
-            None,
+            &SaveRequestParams::new(col.id, "Old Name", "GET", "https://example.com"),
         )
         .unwrap();
 
@@ -1262,18 +1308,7 @@ mod tests {
         let col = create_collection(&conn, "API", None).unwrap();
         let req = save_collection_request(
             &conn,
-            col.id,
-            None,
-            "To Delete",
-            "DELETE",
-            "https://example.com/1",
-            &[],
-            None,
-            &CollectionBodyType::Text,
-            &CollectionAuthType::None,
-            None,
-            &[],
-            None,
+            &SaveRequestParams::new(col.id, "To Delete", "DELETE", "https://example.com/1"),
         )
         .unwrap();
 

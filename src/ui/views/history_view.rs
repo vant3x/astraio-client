@@ -14,6 +14,8 @@ pub enum Message {
     SearchChanged(String),
     FilterMethod(String),
     ExportHistory,
+    ViewResponse(i32),
+    CloseResponse,
 }
 
 #[derive(Debug, Default)]
@@ -22,6 +24,7 @@ pub struct HistoryView {
     pub selected_index: Option<usize>,
     pub search_query: String,
     pub filter_method: String,
+    pub viewing_response: Option<RequestHistoryEntry>,
 }
 
 impl Clone for HistoryView {
@@ -31,6 +34,7 @@ impl Clone for HistoryView {
             selected_index: self.selected_index,
             search_query: self.search_query.clone(),
             filter_method: self.filter_method.clone(),
+            viewing_response: self.viewing_response.clone(),
         }
     }
 }
@@ -75,6 +79,14 @@ impl HistoryView {
             Message::DeleteEntry(entry_id) => {
                 self.entries.retain(|e| e.id != entry_id);
                 self.selected_index = None;
+                if self
+                    .viewing_response
+                    .as_ref()
+                    .map(|e| e.id == entry_id)
+                    .unwrap_or(false)
+                {
+                    self.viewing_response = None;
+                }
                 None
             }
             Message::ClearHistory => {
@@ -82,6 +94,7 @@ impl HistoryView {
                 self.selected_index = None;
                 self.search_query.clear();
                 self.filter_method.clear();
+                self.viewing_response = None;
                 None
             }
             Message::SearchChanged(query) => {
@@ -97,7 +110,111 @@ impl HistoryView {
                 None
             }
             Message::ExportHistory => None,
+            Message::ViewResponse(entry_id) => {
+                self.viewing_response = self
+                    .entries
+                    .iter()
+                    .find(|e| e.id == entry_id)
+                    .cloned();
+                None
+            }
+            Message::CloseResponse => {
+                self.viewing_response = None;
+                None
+            }
         }
+    }
+
+    fn build_response_panel(entry: &RequestHistoryEntry) -> Element<'_, Message, Theme, Renderer> {
+        let status_color = theme::status_color(entry.status.unwrap_or(0));
+        let status_text = match entry.status {
+            Some(s) => format!("{}", s),
+            None => "N/A".to_string(),
+        };
+        let duration_text = match entry.duration_ms {
+            Some(d) => format!("{}ms", d),
+            None => "N/A".to_string(),
+        };
+
+        let header = row![
+            text("Response Details").size(14).color(status_color),
+            text(format!("  {}  {}", status_text, duration_text)).size(12),
+            button(text("Close").size(11))
+                .padding([2, 8])
+                .on_press(Message::CloseResponse),
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center);
+
+        let mut response_content = column![header].spacing(6);
+
+        if let Some(response_data) = &entry.response_data {
+            if let Ok(resp) =
+                serde_json::from_str::<crate::http_client::response::HttpResponse>(response_data)
+            {
+                let headers = resp.headers.clone();
+                let body = resp.body.clone();
+                let size = resp.size;
+
+                if !headers.is_empty() {
+                    let mut headers_col = column![].spacing(2);
+                    for (k, v) in headers {
+                        headers_col = headers_col.push(
+                            row![
+                                text(format!("{}:", k)).size(11).color(Color::from_rgb(0.5, 0.7, 0.9)),
+                                text(v).size(11),
+                            ]
+                            .spacing(4),
+                        );
+                    }
+                    response_content = response_content
+                        .push(text("Headers").size(12).color(Color::from_rgb(0.6, 0.6, 0.6)))
+                        .push(
+                            container(scrollable(headers_col).height(Length::Fixed(120.0)))
+                                .padding(6)
+                                .style(container::secondary),
+                        );
+                }
+
+                let body_display: String = body.chars().take(2000).collect();
+                let body_truncated = if body.len() > 2000 {
+                    format!("{}...", body_display)
+                } else {
+                    body_display
+                };
+                response_content = response_content
+                    .push(
+                        text(format!("Body ({} bytes)", size))
+                            .size(12)
+                            .color(Color::from_rgb(0.6, 0.6, 0.6)),
+                    )
+                    .push(
+                        container(scrollable(text(body_truncated).size(11)))
+                            .height(Length::Fixed(200.0))
+                            .padding(6)
+                            .style(container::secondary),
+                    );
+            } else {
+                response_content = response_content
+                    .push(text("Response data (raw):").size(12))
+                    .push(
+                        container(scrollable(text(response_data).size(11)))
+                            .height(Length::Fixed(200.0))
+                            .padding(6)
+                            .style(container::secondary),
+                    );
+            }
+        } else {
+            response_content = response_content.push(
+                text("No response data stored").size(12).color(Color::from_rgb(0.5, 0.5, 0.5)),
+            );
+        }
+
+        container(response_content)
+            .padding(10)
+            .style(container::secondary)
+            .width(Length::Fill)
+            .into()
     }
 
     pub fn view(&self) -> Element<'_, Message, Theme, Renderer> {
@@ -126,19 +243,19 @@ impl HistoryView {
             .padding(8)
             .width(Length::Fill);
 
-        let methods = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPT"];
+        let methods = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
         let mut filter_buttons = row![].spacing(3);
         for method in methods {
-            let is_active = self.filter_method == method
-                || (method == "OPT" && self.filter_method == "OPTIONS");
-            let label = if method == "OPT" { "OPT" } else { method };
-            let actual_method = if method == "OPT" { "OPTIONS" } else { method };
+            let is_active = self.filter_method.eq_ignore_ascii_case(method);
             let btn = if is_active {
-                button(text(label).size(10))
+                button(text(method).size(10))
+                    .padding([2, 6])
                     .style(button::secondary)
-                    .on_press(Message::FilterMethod(actual_method.to_string()))
+                    .on_press(Message::FilterMethod(method.to_string()))
             } else {
-                button(text(label).size(10)).on_press(Message::FilterMethod(actual_method.to_string()))
+                button(text(method).size(10))
+                    .padding([2, 6])
+                    .on_press(Message::FilterMethod(method.to_string()))
             };
             filter_buttons = filter_buttons.push(btn);
         }
@@ -151,13 +268,13 @@ impl HistoryView {
         .size(10)
         .color(Color::from_rgb(0.5, 0.5, 0.5));
 
-        let filter_row = row![
-            text("Filter:").size(11),
-            filter_buttons.width(Length::Fill),
-            count_text,
+        let filter_row = column![
+            row![text("Filter:").size(11), filter_buttons,]
+                .spacing(6)
+                .align_y(Alignment::Center),
+            count_text.align_x(Alignment::End),
         ]
-        .spacing(6)
-        .align_y(Alignment::Center);
+        .spacing(2);
 
         if self.entries.is_empty() {
             return container(
@@ -246,22 +363,25 @@ impl HistoryView {
             .spacing(8)
             .align_y(Alignment::Center);
 
-            let delete_btn: Element<'_, Message, Theme, Renderer> = button(
-                lucide::x().size(12),
-            )
-            .on_press(Message::DeleteEntry(entry.id))
-            .into();
-
-            let entry_row_with_delete = row![entry_row, delete_btn]
-                .spacing(4)
-                .align_y(Alignment::Center);
-
             let entry_button: Element<'_, Message, Theme, Renderer> =
-                button(entry_row_with_delete)
+                button(entry_row)
                     .on_press(Message::ResendEntry(entry.id))
                     .into();
 
-            list = list.push(entry_button);
+            let view_btn: Element<'_, Message, Theme, Renderer> = button(lucide::eye().size(12))
+                .on_press(Message::ViewResponse(entry.id))
+                .into();
+
+            let delete_btn: Element<'_, Message, Theme, Renderer> =
+                button(lucide::x().size(12))
+                    .on_press(Message::DeleteEntry(entry.id))
+                    .into();
+
+            let full_row = row![entry_button, view_btn, delete_btn]
+                .spacing(4)
+                .align_y(Alignment::Center);
+
+            list = list.push(full_row);
         }
 
         if filtered.is_empty() && !self.search_query.is_empty() {
@@ -272,13 +392,24 @@ impl HistoryView {
             );
         }
 
-        container(
-            column![header, search_input, filter_row, scrollable(list)]
-                .spacing(8)
-                .padding(10),
-        )
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .into()
+        let mut content = column![header, search_input, filter_row].spacing(8);
+
+        if let Some(ref entry) = self.viewing_response {
+            content = content
+                .push(
+                    container(text(""))
+                        .height(1)
+                        .width(Length::Fill)
+                        .style(container::secondary),
+                )
+                .push(Self::build_response_panel(entry));
+        }
+
+        content = content.push(scrollable(list));
+
+        container(content.padding(10))
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into()
     }
 }

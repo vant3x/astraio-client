@@ -12,7 +12,6 @@ pub struct RequestConfig {
     pub redirect_policy: RedirectPolicy,
     pub retry: RetryConfig,
     pub proxy_url: Option<String>,
-    pub verify_ssl: bool,
     #[serde(default)]
     pub proxy: Option<ProxyConfig>,
     #[serde(default)]
@@ -27,7 +26,6 @@ impl Default for RequestConfig {
             redirect_policy: RedirectPolicy::Follow,
             retry: RetryConfig::default(),
             proxy_url: None,
-            verify_ssl: true,
             proxy: None,
             tls: TlsConfig::default(),
         }
@@ -135,7 +133,6 @@ mod tests {
         assert_eq!(config.redirect_policy, RedirectPolicy::Follow);
         assert_eq!(config.max_redirects, 10);
         assert_eq!(config.retry.max_retries, 0);
-        assert!(config.verify_ssl);
         assert!(config.proxy_url.is_none());
         assert!(config.proxy.is_none());
         assert_eq!(config.tls, TlsConfig::default());

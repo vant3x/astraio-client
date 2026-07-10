@@ -1,5 +1,5 @@
 use super::config::RequestConfig;
-use super::request::{HttpRequest, MultipartValue};
+use super::request::{HttpRequest, MultipartField, MultipartValue};
 use super::response::{BodyEncoding, HttpResponse};
 use crate::data::auth::Auth;
 use crate::error::AppError;
@@ -73,7 +73,7 @@ pub fn build_client(config: &RequestConfig) -> Result<reqwest::Client, AppError>
     }
 
     // TLS configuration
-    let verify = config.tls.verify_ssl && config.verify_ssl;
+    let verify = config.tls.verify_ssl;
     if !verify {
         builder = builder.danger_accept_invalid_certs(true);
     }
@@ -115,6 +115,102 @@ pub fn build_client(config: &RequestConfig) -> Result<reqwest::Client, AppError>
         .map_err(|e| AppError::Http(e.to_string()))
 }
 
+async fn build_multipart_form(
+    fields: &[MultipartField],
+) -> Result<reqwest::multipart::Form, AppError> {
+    let mut form = reqwest::multipart::Form::new();
+    for field in fields {
+        match &field.value {
+            MultipartValue::Text(text) => {
+                form = form.text(field.name.clone(), text.clone());
+            }
+            MultipartValue::File { path, filename } => {
+                let file_path = std::path::Path::new(path);
+                let file_name = filename
+                    .as_deref()
+                    .or_else(|| {
+                        file_path.file_name().map(|f| f.to_str().unwrap_or("file"))
+                    })
+                    .unwrap_or("file")
+                    .to_string();
+
+                let file_bytes = tokio::fs::read(file_path).await?;
+                let part = reqwest::multipart::Part::bytes(file_bytes).file_name(file_name);
+                form = form.part(field.name.clone(), part);
+            }
+        }
+    }
+    Ok(form)
+}
+
+async fn build_request_builder(
+    client: &reqwest::Client,
+    request: &HttpRequest,
+    current_url: &str,
+) -> Result<reqwest::RequestBuilder, AppError> {
+    let method: reqwest::Method = request.method.to_string().parse()?;
+    let mut req_builder = client.request(method, current_url.to_string());
+
+    req_builder = req_builder.timeout(request.config.timeout);
+
+    for (key, value) in &request.headers {
+        req_builder = req_builder.header(key, value);
+    }
+
+    if !request.multipart_fields.is_empty() {
+        let form = build_multipart_form(&request.multipart_fields).await?;
+        req_builder = req_builder.multipart(form);
+    } else if let Some(body) = &request.body {
+        req_builder = req_builder.body(body.clone());
+    }
+
+    Ok(req_builder)
+}
+
+async fn attempt_digest_auth(
+    client: &reqwest::Client,
+    request: &HttpRequest,
+    current_url: &str,
+    www_auth: &str,
+    user: &str,
+    pass: &str,
+) -> Result<Option<(u16, Vec<(String, String)>, String, BodyEncoding, u64)>, AppError> {
+    if let Some(digest_header) = compute_digest_auth(
+        www_auth,
+        user,
+        pass,
+        &request.method.to_string(),
+        current_url,
+    ) {
+        let mut retry_builder = client.request(
+            request.method.to_string().parse()?,
+            current_url.to_string(),
+        );
+        retry_builder = retry_builder.timeout(request.config.timeout);
+        for (key, value) in &request.headers {
+            retry_builder = retry_builder.header(key, value);
+        }
+        retry_builder = retry_builder.header("Authorization", digest_header);
+        match retry_builder.send().await {
+            Ok(retry_res) => {
+                let response_status = retry_res.status().as_u16();
+                let response_headers = retry_res
+                    .headers()
+                    .iter()
+                    .map(|(name, value)| {
+                        (name.to_string(), value.to_str().unwrap_or("").to_string())
+                    })
+                    .collect();
+                let (body, encoding, size) = read_response_body(retry_res).await?;
+                Ok(Some((response_status, response_headers, body, encoding, size)))
+            }
+            Err(e) => Err(AppError::from(e)),
+        }
+    } else {
+        Ok(None)
+    }
+}
+
 pub async fn send_request(
     client: &reqwest::Client,
     request: HttpRequest,
@@ -148,50 +244,13 @@ pub async fn send_request(
         let total_start = Instant::now();
 
         loop {
-            let method: reqwest::Method = request.method.to_string().parse()?;
-            let mut req_builder = client.request(method, current_url.clone());
-
-            req_builder = req_builder.timeout(request.config.timeout);
-
-            for (key, value) in &request.headers {
-                req_builder = req_builder.header(key, value);
-            }
-
-            if !request.multipart_fields.is_empty() {
-                let mut form = reqwest::multipart::Form::new();
-                for field in &request.multipart_fields {
-                    match &field.value {
-                        MultipartValue::Text(text) => {
-                            form = form.text(field.name.clone(), text.clone());
-                        }
-                        MultipartValue::File { path, filename } => {
-                            let file_path = std::path::Path::new(path);
-                            let file_name = filename
-                                .as_deref()
-                                .or_else(|| {
-                                    file_path.file_name().map(|f| f.to_str().unwrap_or("file"))
-                                })
-                                .unwrap_or("file")
-                                .to_string();
-
-                            let file_bytes = match tokio::fs::read(file_path).await {
-                                Ok(b) => b,
-                                Err(e) => {
-                                    last_error = format!("Failed to read file {}: {}", path, e);
-                                    log::warn!("{}", last_error);
-                                    continue;
-                                }
-                            };
-                            let part =
-                                reqwest::multipart::Part::bytes(file_bytes).file_name(file_name);
-                            form = form.part(field.name.clone(), part);
-                        }
-                    }
+            let req_builder = match build_request_builder(client, &request, &current_url).await {
+                Ok(b) => b,
+                Err(e) => {
+                    last_error = e.to_string();
+                    break;
                 }
-                req_builder = req_builder.multipart(form);
-            } else if let Some(body) = &request.body {
-                req_builder = req_builder.body(body.clone());
-            }
+            };
 
             log::info!(
                 "Sending {} request to: {} (attempt {}/{})",
@@ -220,51 +279,28 @@ pub async fn send_request(
                                 .and_then(|v| v.to_str().ok())
                             {
                                 if www_auth.starts_with("Digest ") {
-                                    if let Some(digest_header) = compute_digest_auth(
+                                    match attempt_digest_auth(
+                                        client,
+                                        &request,
+                                        &current_url,
                                         www_auth,
                                         user,
                                         pass,
-                                        &request.method.to_string(),
-                                        &current_url,
-                                    ) {
-                                        let mut retry_builder = client.request(
-                                            request.method.to_string().parse()?,
-                                            current_url.clone(),
-                                        );
-                                        retry_builder =
-                                            retry_builder.timeout(request.config.timeout);
-                                        for (key, value) in &request.headers {
-                                            retry_builder = retry_builder.header(key, value);
+                                    )
+                                    .await
+                                    {
+                                        Ok(Some((status, headers, body, encoding, size))) => {
+                                            response_status = status;
+                                            response_headers = headers;
+                                            response_body = body;
+                                            response_body_encoding = encoding;
+                                            response_size = size;
+                                            break;
                                         }
-                                        retry_builder =
-                                            retry_builder.header("Authorization", digest_header);
-                                        match retry_builder.send().await {
-                                            Ok(retry_res) => {
-                                                response_status = retry_res.status().as_u16();
-                                                response_headers = retry_res
-                                                    .headers()
-                                                    .iter()
-                                                    .map(|(name, value)| {
-                                                        (
-                                                            name.to_string(),
-                                                            value
-                                                                .to_str()
-                                                                .unwrap_or("")
-                                                                .to_string(),
-                                                        )
-                                                    })
-                                                    .collect();
-                                                let (body, encoding, size) =
-                                                    read_response_body(retry_res).await?;
-                                                response_body = body;
-                                                response_body_encoding = encoding;
-                                                response_size = size;
-                                                break;
-                                            }
-                                            Err(e) => {
-                                                last_error = e.to_string();
-                                                break;
-                                            }
+                                        Ok(None) => {}
+                                        Err(e) => {
+                                            last_error = e.to_string();
+                                            break;
                                         }
                                     }
                                 }

@@ -305,7 +305,7 @@ fn run_collection(
                         }
                     }
                 } else {
-                    println!("✗ ERROR: {}", result.error.as_deref().unwrap_or("unknown error"));
+                    eprintln!("✗ ERROR: {}", result.error.as_deref().unwrap_or("unknown error"));
                     failed += 1;
                     if stop_on_failure {
                         break;
@@ -314,7 +314,7 @@ fn run_collection(
                 results.push(result);
             }
             Err(e) => {
-                println!("✗ ERROR: {}", e);
+                eprintln!("✗ ERROR: {}", e);
                 failed += 1;
                 results.push(CliResult {
                     success: false,
@@ -464,7 +464,7 @@ fn import_collection(
             .to_string()
     });
 
-    let collection = database::create_collection(conn, &collection_name)?;
+    let collection = database::create_collection(conn, &collection_name, None)?;
     println!("Created collection: [{}] {}", collection.id, collection.name);
 
     if let Some(requests) = data.get("requests").and_then(|r| r.as_array()) {
@@ -475,18 +475,7 @@ fn import_collection(
 
             database::save_collection_request(
                 conn,
-                collection.id,
-                None,
-                name,
-                method,
-                url,
-                &Vec::new(),
-                None,
-                &crate::persistence::database::CollectionBodyType::Text,
-                &crate::persistence::database::CollectionAuthType::None,
-                None,
-                &Vec::new(),
-                None,
+                &database::SaveRequestParams::new(collection.id, name, method, url),
             )?;
             println!("  Imported: {} {} {}", method, name, url);
         }
@@ -646,7 +635,7 @@ fn print_result(result: &CliResult, format: &OutputFormat) {
                 println!("{},{},{}", resp.status, resp.size, result.duration_ms);
                 println!("\n{}", resp.body);
             } else if let Some(err) = &result.error {
-                println!("error: {}", err);
+                eprintln!("error: {}", err);
             }
         }
         OutputFormat::Text => {
@@ -661,7 +650,7 @@ fn print_result(result: &CliResult, format: &OutputFormat) {
                 println!("\nBody:");
                 println!("{}", resp.body);
             } else if let Some(err) = &result.error {
-                println!("Error: {}", err);
+                eprintln!("Error: {}", err);
             }
         }
     }

@@ -16,7 +16,7 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: graphql_view::Message) -> Tas
                     app.graphql_view.update(graphql_view::Message::SetLoading);
 
                     let http_client = if http_request.config.proxy_url.is_some()
-                        || !http_request.config.verify_ssl
+                        || !http_request.config.tls.verify_ssl
                     {
                         match crate::http_client::client::build_client(&http_request.config) {
                             Ok(c) => std::sync::Arc::new(c),
@@ -85,7 +85,7 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: graphql_view::Message) -> Tas
             let http_request = temp_view.build_introspection_request();
 
             let http_client = if http_request.config.proxy_url.is_some()
-                || !http_request.config.verify_ssl
+                || !http_request.config.tls.verify_ssl
             {
                 match crate::http_client::client::build_client(&http_request.config) {
                     Ok(c) => std::sync::Arc::new(c),
@@ -106,7 +106,7 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: graphql_view::Message) -> Tas
 
                     let introspection: crate::protocols::graphql_schema::IntrospectionResponse =
                         serde_json::from_str(&response.body).map_err(|e| {
-                            crate::error::AppError::Serialization(format!(
+                            crate::error::AppError::Parse(format!(
                                 "Failed to parse introspection response: {}",
                                 e
                             ))
@@ -160,8 +160,8 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: graphql_view::Message) -> Tas
                 Ok(_) => {
                     app.graphql_view
                         .update(graphql_view::Message::SavedToHistory(Ok(())));
-                    crate::services::history_service::trim(&app.db_conn, 500);
-                    let entries = crate::services::history_service::get_all(&app.db_conn, 200);
+                    let _ = crate::services::history_service::trim(&app.db_conn, 500);
+                    let entries = crate::services::history_service::get_all(&app.db_conn, 200).unwrap_or_default();
                     app.history_view.entries = entries;
                 }
                 Err(e) => {
@@ -207,18 +207,20 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: graphql_view::Message) -> Tas
 
             let result = crate::services::collection_service::save_request(
                 &app.db_conn,
-                collection_id,
-                folder_id,
-                &format!("GraphQL Request - {}", url.chars().take(50).collect::<String>()),
-                "POST",
-                &url,
-                &headers,
-                graphql_body.as_deref(),
-                &crate::persistence::database::CollectionBodyType::Graphql,
-                &crate::persistence::database::CollectionAuthType::None,
-                auth_json.as_deref(),
-                &[],
-                None,
+                &crate::persistence::database::SaveRequestParams {
+                    collection_id,
+                    folder_id,
+                    name: format!("GraphQL Request - {}", url.chars().take(50).collect::<String>()),
+                    method: "POST".to_string(),
+                    url: url.clone(),
+                    headers: headers.clone(),
+                    body: graphql_body,
+                    body_type: crate::persistence::database::CollectionBodyType::Graphql,
+                    auth_type: crate::persistence::database::CollectionAuthType::None,
+                    auth_data: auth_json,
+                    params: Vec::new(),
+                    config_json: None,
+                },
             );
 
             match result {
@@ -226,7 +228,7 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: graphql_view::Message) -> Tas
                     app.graphql_view.update(
                         graphql_view::Message::SavedToCollection(Ok(())),
                     );
-                    let cols = crate::services::collection_service::get_all(&app.db_conn);
+                    let cols = crate::services::collection_service::get_all(&app.db_conn).unwrap_or_default();
                     app.collection_view.sync_collections(&cols);
                 }
                 Err(e) => {

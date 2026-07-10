@@ -274,7 +274,9 @@ mod tests {
                 "redirect_policy": "Follow",
                 "retry": {"max_retries": 0, "backoff_ms": 1000},
                 "proxy_url": null,
-                "verify_ssl": true
+                "tls": {
+                    "verify_ssl": true
+                }
             },
             "multipart_fields": []
         }"#;

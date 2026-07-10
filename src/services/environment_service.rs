@@ -2,8 +2,8 @@ use crate::error::AppError;
 use crate::persistence::database::{self, Environment};
 use rusqlite::Connection;
 
-pub fn get_all(conn: &Connection) -> Vec<Environment> {
-    database::get_environments(conn).unwrap_or_default()
+pub fn get_all(conn: &Connection) -> Result<Vec<Environment>, AppError> {
+    Ok(database::get_environments(conn)?)
 }
 
 pub fn create(conn: &Connection, name: &str) -> Result<Environment, AppError> {
@@ -20,7 +20,7 @@ pub fn delete(conn: &Connection, id: i32) -> Result<(), AppError> {
 
 pub fn create_and_refresh(conn: &Connection, name: &str) -> Result<Vec<Environment>, AppError> {
     create(conn, name)?;
-    Ok(get_all(conn))
+    get_all(conn)
 }
 
 pub fn save_and_refresh(
@@ -28,12 +28,12 @@ pub fn save_and_refresh(
     env: &Environment,
 ) -> Result<Vec<Environment>, AppError> {
     update(conn, env)?;
-    Ok(get_all(conn))
+    get_all(conn)
 }
 
 pub fn delete_and_refresh(conn: &Connection, id: i32) -> Result<Vec<Environment>, AppError> {
     delete(conn, id)?;
-    Ok(get_all(conn))
+    get_all(conn)
 }
 
 #[cfg(test)]
@@ -70,7 +70,7 @@ mod tests {
         let env = create(&conn, "dev").unwrap();
         assert_eq!(env.name, "dev");
 
-        let envs = get_all(&conn);
+        let envs = get_all(&conn).unwrap();
         assert_eq!(envs.len(), 1);
     }
 
@@ -81,7 +81,7 @@ mod tests {
         env.variables = vec![("URL".to_string(), "http://localhost".to_string())];
         update(&conn, &env).unwrap();
 
-        let envs = get_all(&conn);
+        let envs = get_all(&conn).unwrap();
         assert_eq!(envs[0].variables.len(), 1);
     }
 
@@ -91,7 +91,7 @@ mod tests {
         let env = create(&conn, "dev").unwrap();
         delete(&conn, env.id).unwrap();
 
-        let envs = get_all(&conn);
+        let envs = get_all(&conn).unwrap();
         assert!(envs.is_empty());
     }
 
