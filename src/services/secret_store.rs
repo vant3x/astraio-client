@@ -253,21 +253,18 @@ pub fn migrate_plaintext_tokens_to_keyring(
                 .collect();
 
             for (id, collection_id, _name, _auth_type, auth_data) in rows {
-                if let Ok(auth) = serde_json::from_str::<crate::data::auth::Auth>(&auth_data) {
-                    if let crate::data::auth::Auth::OAuth2(config) = &auth {
-                        let identifier = format!("col_{}_{}", collection_id, id);
+                if let Ok(crate::data::auth::Auth::OAuth2(config)) = serde_json::from_str::<crate::data::auth::Auth>(&auth_data) {
+                    let identifier = format!("col_{}_{}", collection_id, id);
 
-                        if !config.access_token.is_empty() {
-                            if store.store_secret("oauth2", &identifier, "access_token", &config.access_token).is_ok() {
-                                migrated += 1;
-                            }
-                        }
-                        if !config.refresh_token.is_empty() {
-                            let _ = store.store_secret("oauth2", &identifier, "refresh_token", &config.refresh_token);
-                        }
-                        if !config.client_secret.is_empty() {
-                            let _ = store.store_secret("oauth2", &identifier, "client_secret", &config.client_secret);
-                        }
+                    if !config.access_token.is_empty()
+                        && store.store_secret("oauth2", &identifier, "access_token", &config.access_token).is_ok() {
+                        migrated += 1;
+                    }
+                    if !config.refresh_token.is_empty() {
+                        let _ = store.store_secret("oauth2", &identifier, "refresh_token", &config.refresh_token);
+                    }
+                    if !config.client_secret.is_empty() {
+                        let _ = store.store_secret("oauth2", &identifier, "client_secret", &config.client_secret);
                     }
                 }
             }
@@ -299,10 +296,9 @@ pub fn migrate_plaintext_tokens_to_keyring(
                     if let Some(crate::data::auth::Auth::OAuth2(config)) = &request.auth {
                         let identifier = format!("hist_{}", id);
 
-                        if !config.access_token.is_empty() {
-                            if store.store_secret("oauth2", &identifier, "access_token", &config.access_token).is_ok() {
-                                migrated += 1;
-                            }
+                        if !config.access_token.is_empty()
+                            && store.store_secret("oauth2", &identifier, "access_token", &config.access_token).is_ok() {
+                            migrated += 1;
                         }
                         if !config.refresh_token.is_empty() {
                             let _ = store.store_secret("oauth2", &identifier, "refresh_token", &config.refresh_token);

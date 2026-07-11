@@ -439,7 +439,7 @@ pub fn get_type_by_name<'a>(schema: &'a GraphQLSchema, name: &str) -> Option<&'a
 }
 
 #[allow(dead_code)]
-pub fn get_query_type<'a>(schema: &'a GraphQLSchema) -> Option<&'a SchemaType> {
+pub fn get_query_type(schema: &GraphQLSchema) -> Option<&SchemaType> {
     schema
         .query_type
         .as_ref()
@@ -447,7 +447,7 @@ pub fn get_query_type<'a>(schema: &'a GraphQLSchema) -> Option<&'a SchemaType> {
 }
 
 #[allow(dead_code)]
-pub fn get_mutation_type<'a>(schema: &'a GraphQLSchema) -> Option<&'a SchemaType> {
+pub fn get_mutation_type(schema: &GraphQLSchema) -> Option<&SchemaType> {
     schema
         .mutation_type
         .as_ref()
@@ -455,7 +455,7 @@ pub fn get_mutation_type<'a>(schema: &'a GraphQLSchema) -> Option<&'a SchemaType
 }
 
 #[allow(dead_code)]
-pub fn get_subscription_type<'a>(schema: &'a GraphQLSchema) -> Option<&'a SchemaType> {
+pub fn get_subscription_type(schema: &GraphQLSchema) -> Option<&SchemaType> {
     schema
         .subscription_type
         .as_ref()

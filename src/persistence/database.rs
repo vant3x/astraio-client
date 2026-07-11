@@ -665,6 +665,7 @@ impl SaveRequestParams {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn imported(
         collection_id: i32,
         folder_id: Option<i32>,

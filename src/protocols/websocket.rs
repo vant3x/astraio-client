@@ -111,7 +111,7 @@ pub enum WsStatus {
     Error(String),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct WsTlsConfig {
     pub skip_verify: bool,
     #[serde(default)]
@@ -120,17 +120,6 @@ pub struct WsTlsConfig {
     pub client_cert_pem: Option<String>,
     #[serde(default)]
     pub client_key_pem: Option<String>,
-}
-
-impl Default for WsTlsConfig {
-    fn default() -> Self {
-        Self {
-            skip_verify: false,
-            ca_cert_pem: None,
-            client_cert_pem: None,
-            client_key_pem: None,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
