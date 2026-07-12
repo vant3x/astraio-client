@@ -3,7 +3,7 @@ use crate::data::auth::AuthType;
 use crate::data::auth_input::AuthInput;
 use crate::http_client::config::RequestConfig;
 use crate::protocols::graphql::{GraphQLRequest, GraphQLResponse};
-use crate::protocols::graphql_schema::{GraphQLSchema, SchemaType, TypeKind};
+use crate::protocols::graphql_schema::{get_autocomplete_suggestions, GraphQLSchema, SchemaType, TypeKind};
 use crate::ui::components::key_value_editor::{self, KeyValueEditor};
 use crate::ui::request_status::RequestStatus;
 use crate::ui::theme::{method_color, status_color};
@@ -91,6 +91,7 @@ pub enum Message {
     SaveToCollection(i32, Option<i32>),
     SavedToCollection(Result<(), crate::error::AppError>),
     ToggleSaveMenu,
+    AutocompleteSelected(String),
 }
 
 #[derive(Debug)]
@@ -120,6 +121,7 @@ pub struct GraphQLView {
     pub schema_selected_type: Option<String>,
     pub show_save_menu: bool,
     pub last_save_status: Option<String>,
+    pub autocomplete_suggestions: Vec<String>,
 }
 
 impl Clone for GraphQLView {
@@ -152,6 +154,7 @@ impl Clone for GraphQLView {
             schema_selected_type: self.schema_selected_type.clone(),
             show_save_menu: self.show_save_menu,
             last_save_status: self.last_save_status.clone(),
+            autocomplete_suggestions: self.autocomplete_suggestions.clone(),
         }
     }
 }
@@ -192,6 +195,7 @@ impl Default for GraphQLView {
             schema_selected_type: None,
             show_save_menu: false,
             last_save_status: None,
+            autocomplete_suggestions: Vec::new(),
         }
     }
 }
@@ -245,6 +249,15 @@ impl GraphQLView {
                 }
                 Auth::None => {}
             }
+        }
+    }
+
+    fn update_autocomplete(&mut self) {
+        if let Some(schema) = &self.schema {
+            let query = self.query_input.text();
+            let cursor = query.len();
+            self.autocomplete_suggestions =
+                get_autocomplete_suggestions(schema, &query, cursor);
         }
     }
 
@@ -396,7 +409,10 @@ impl GraphQLView {
     pub fn update(&mut self, message: Message) {
         match message {
             Message::UrlInputChanged(url) => self.url_input = url,
-            Message::QueryChanged(action) => self.query_input.perform(action),
+            Message::QueryChanged(action) => {
+                self.query_input.perform(action);
+                self.update_autocomplete();
+            }
             Message::VariablesChanged(action) => self.variables_input.perform(action),
             Message::OperationNameChanged(name) => self.operation_name = name,
             Message::TabSelected(tab) => self.active_tab = tab,
@@ -557,6 +573,17 @@ impl GraphQLView {
             Message::ToggleSaveMenu => {
                 self.show_save_menu = !self.show_save_menu;
             }
+            Message::AutocompleteSelected(suggestion) => {
+                let query = self.query_input.text();
+                let last_word_start = query
+                    .rfind(|c: char| c.is_whitespace() || c == '{' || c == '(' || c == ':')
+                    .map(|p| p + 1)
+                    .unwrap_or(0);
+                let prefix = &query[..last_word_start];
+                let new_query = format!("{}{}", prefix, suggestion);
+                self.query_input = text_editor::Content::with_text(&new_query);
+                self.autocomplete_suggestions.clear();
+            }
         }
     }
 
@@ -609,7 +636,43 @@ impl GraphQLView {
                 ]
                 .into()
             });
-            container(context_menu)
+
+            let editor_with_autocomplete: Element<'_, Message, Theme, Renderer> =
+                if self.autocomplete_suggestions.is_empty() {
+                    container(context_menu)
+                        .padding(5)
+                        .width(Length::Fill)
+                        .height(Length::Fill)
+                        .into()
+                } else {
+                    let mut suggestions_list = column![].spacing(2);
+                    for suggestion in &self.autocomplete_suggestions {
+                        let s = suggestion.clone();
+                        suggestions_list = suggestions_list.push(
+                            button(text(suggestion.clone()).size(12))
+                                .on_press(Message::AutocompleteSelected(s))
+                                .width(Length::Fill),
+                        );
+                    }
+                    let suggestions_popup = container(
+                        scrollable(suggestions_list).height(Length::Fixed(150.0)),
+                    )
+                    .padding(4)
+                    .style(move |_: &Theme| iced::widget::container::Style {
+                        background: Some(iced::Color::from_rgb(0.15, 0.15, 0.2).into()),
+                        border: iced::Border::default()
+                            .rounded(4)
+                            .color(iced::Color::from_rgb(0.3, 0.3, 0.4)),
+                        ..iced::widget::container::Style::default()
+                    });
+
+                    column![context_menu, suggestions_popup]
+                        .width(Length::Fill)
+                        .height(Length::Fill)
+                        .into()
+                };
+
+            container(editor_with_autocomplete)
                 .padding(5)
                 .width(Length::Fill)
                 .height(Length::Fill)
