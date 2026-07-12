@@ -135,22 +135,7 @@ impl ScriptContext {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum ScriptPhase {
-    PreRequest,
-    PostResponse,
-}
-
-impl std::fmt::Display for ScriptPhase {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ScriptPhase::PreRequest => write!(f, "Pre-request"),
-            ScriptPhase::PostResponse => write!(f, "Post-response"),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RequestScripts {
     #[serde(default)]
     pub pre_request: Script,
@@ -972,11 +957,5 @@ mod tests {
             .to_string(),
             "extract_header(ct from content-type)"
         );
-    }
-
-    #[test]
-    fn script_phase_display() {
-        assert_eq!(ScriptPhase::PreRequest.to_string(), "Pre-request");
-        assert_eq!(ScriptPhase::PostResponse.to_string(), "Post-response");
     }
 }

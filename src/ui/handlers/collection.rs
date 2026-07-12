@@ -565,6 +565,11 @@ fn save_current_to_collection(app: &mut AstraNovaApp) {
             format!("{} {}", request.method, request.url)
         };
 
+        let scripts_json = view
+            .parse_scripts_from_editors()
+            .ok()
+            .and_then(|s| s.to_json().ok());
+
         let _ = crate::services::collection_service::save_request(
             &app.db_conn,
             &crate::persistence::database::SaveRequestParams {
@@ -580,7 +585,7 @@ fn save_current_to_collection(app: &mut AstraNovaApp) {
                 auth_data,
                 params,
                 config_json: None,
-                scripts: None,
+                scripts: scripts_json,
             },
         );
 

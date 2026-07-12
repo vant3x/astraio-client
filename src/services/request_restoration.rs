@@ -123,6 +123,12 @@ pub fn build_view_from_collection_request(req: &CollectionRequest) -> HttpReques
         }
     }
 
+    if let Some(scripts_data) = &req.scripts {
+        if let Ok(scripts) = crate::protocols::scripts::RequestScripts::from_json(scripts_data) {
+            view.load_scripts(&scripts);
+        }
+    }
+
     view
 }
 
