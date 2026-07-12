@@ -184,6 +184,7 @@ pub enum Message {
     EnvFileExported(Option<String>),
     SelectEnvironment(i32),
     SwitchView(View),
+    ToggleEnvironmentManager,
     HistoryMsg(history_view::Message),
     HistoryExportComplete(Option<String>),
     ToggleHistory,
@@ -245,6 +246,7 @@ impl Clone for Message {
             Self::EnvFileExported(v) => Self::EnvFileExported(v.clone()),
             Self::SelectEnvironment(i) => Self::SelectEnvironment(*i),
             Self::SwitchView(v) => Self::SwitchView(*v),
+            Self::ToggleEnvironmentManager => Self::ToggleEnvironmentManager,
             Self::HistoryMsg(m) => Self::HistoryMsg(m.clone()),
             Self::HistoryExportComplete(v) => Self::HistoryExportComplete(v.clone()),
             Self::ToggleHistory => Self::ToggleHistory,
@@ -432,6 +434,13 @@ impl AstraNovaApp {
             }
             Message::SwitchView(view) => {
                 self.current_view = view;
+                Task::none()
+            }
+            Message::ToggleEnvironmentManager => {
+                self.current_view = match self.current_view {
+                    View::EnvironmentManager => View::Main,
+                    View::Main => View::EnvironmentManager,
+                };
                 Task::none()
             }
             Message::ToggleHistory => {
@@ -639,6 +648,9 @@ impl AstraNovaApp {
                         }
                         iced::keyboard::Key::Character(ref c) if c.as_ref() == "f" => {
                             Some(Message::ToggleResponseSearch)
+                        }
+                        iced::keyboard::Key::Character(ref c) if c.as_ref() == "e" => {
+                            Some(Message::ToggleEnvironmentManager)
                         }
                         _ => None,
                     }

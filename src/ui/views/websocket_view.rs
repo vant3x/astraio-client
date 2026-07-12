@@ -429,70 +429,91 @@ impl WebSocketView {
         let filtered_count = filtered_messages.len();
 
         let mut message_list = column![].spacing(4);
-        for msg in &filtered_messages {
-            let dir_color = if msg.direction == ">" {
-                Color::from_rgb(0.2, 0.4, 0.8)
+        if filtered_messages.is_empty() {
+            let empty_text = if self.messages.is_empty() {
+                match &self.status {
+                    WsStatus::Disconnected | WsStatus::Error(_) => {
+                        text("No messages yet. Enter a WebSocket URL and click Connect.")
+                    }
+                    WsStatus::Connecting => text("Connecting..."),
+                    WsStatus::Connected => text("Connected. Send a message to begin."),
+                }
             } else {
-                Color::from_rgb(0.2, 0.7, 0.3)
+                text("No messages match the current filter.")
             };
-
-            let type_label = match msg.message_type {
-                WsMessageType::Text => "TEXT",
-                WsMessageType::Binary => "BIN",
-                WsMessageType::Ping => "PING",
-                WsMessageType::Pong => "PONG",
-                WsMessageType::Close => "CLOSE",
-            };
-
-            let type_color = match msg.message_type {
-                WsMessageType::Text => Color::from_rgb(0.3, 0.7, 0.9),
-                WsMessageType::Binary => Color::from_rgb(0.8, 0.5, 0.1),
-                WsMessageType::Ping => Color::from_rgb(0.5, 0.5, 0.5),
-                WsMessageType::Pong => Color::from_rgb(0.5, 0.5, 0.5),
-                WsMessageType::Close => Color::from_rgb(0.8, 0.2, 0.2),
-            };
-
-            let formatted = msg.formatted_data();
-            let data_display: String = formatted.chars().take(200).collect();
-            let truncated = if formatted.len() > 200 {
-                format!("{}...", data_display)
-            } else {
-                data_display
-            };
-
-            let byte_size = msg.data.len();
-            let size_label = if byte_size >= 1024 {
-                format!("{:.1}KB", byte_size as f64 / 1024.0)
-            } else {
-                format!("{}B", byte_size)
-            };
-
-            let timestamp = msg.timestamp.clone();
-            let time_display = if timestamp.len() >= 10 {
-                format!(
-                    "{}:{}",
-                    &timestamp[..timestamp.len() - 4],
-                    &timestamp[timestamp.len() - 2..]
-                )
-            } else {
-                timestamp.clone()
-            };
-
-            let dir_clone = msg.direction.clone();
             message_list = message_list.push(
-                column![
-                    row![
-                        text(dir_clone).size(13).color(dir_color),
-                        text(type_label).size(10).color(type_color),
-                        text(truncated).size(13),
-                    ]
-                    .spacing(6),
-                    row![text(format!("  {} - {}", time_display, size_label))
-                        .size(10)
-                        .color(Color::from_rgb(0.4, 0.4, 0.4)),],
-                ]
-                .spacing(2),
+                container(empty_text.size(14).color(Color::from_rgb(0.5, 0.5, 0.5)))
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .align_x(Alignment::Center)
+                    .align_y(Alignment::Center),
             );
+        } else {
+            for msg in &filtered_messages {
+                let dir_color = if msg.direction == ">" {
+                    Color::from_rgb(0.2, 0.4, 0.8)
+                } else {
+                    Color::from_rgb(0.2, 0.7, 0.3)
+                };
+
+                let type_label = match msg.message_type {
+                    WsMessageType::Text => "TEXT",
+                    WsMessageType::Binary => "BIN",
+                    WsMessageType::Ping => "PING",
+                    WsMessageType::Pong => "PONG",
+                    WsMessageType::Close => "CLOSE",
+                };
+
+                let type_color = match msg.message_type {
+                    WsMessageType::Text => Color::from_rgb(0.3, 0.7, 0.9),
+                    WsMessageType::Binary => Color::from_rgb(0.8, 0.5, 0.1),
+                    WsMessageType::Ping => Color::from_rgb(0.5, 0.5, 0.5),
+                    WsMessageType::Pong => Color::from_rgb(0.5, 0.5, 0.5),
+                    WsMessageType::Close => Color::from_rgb(0.8, 0.2, 0.2),
+                };
+
+                let formatted = msg.formatted_data();
+                let data_display: String = formatted.chars().take(200).collect();
+                let truncated = if formatted.len() > 200 {
+                    format!("{}...", data_display)
+                } else {
+                    data_display
+                };
+
+                let byte_size = msg.data.len();
+                let size_label = if byte_size >= 1024 {
+                    format!("{:.1}KB", byte_size as f64 / 1024.0)
+                } else {
+                    format!("{}B", byte_size)
+                };
+
+                let timestamp = msg.timestamp.clone();
+                let time_display = if timestamp.len() >= 10 {
+                    format!(
+                        "{}:{}",
+                        &timestamp[..timestamp.len() - 4],
+                        &timestamp[timestamp.len() - 2..]
+                    )
+                } else {
+                    timestamp.clone()
+                };
+
+                let dir_clone = msg.direction.clone();
+                message_list = message_list.push(
+                    column![
+                        row![
+                            text(dir_clone).size(13).color(dir_color),
+                            text(type_label).size(10).color(type_color),
+                            text(truncated).size(13),
+                        ]
+                        .spacing(6),
+                        row![text(format!("  {} - {}", time_display, size_label))
+                            .size(10)
+                            .color(Color::from_rgb(0.4, 0.4, 0.4)),],
+                    ]
+                    .spacing(2),
+                );
+            }
         }
 
         let message_stats = if total_messages != filtered_count {
