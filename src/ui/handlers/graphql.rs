@@ -220,6 +220,7 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: graphql_view::Message) -> Tas
                     auth_data: auth_json,
                     params: Vec::new(),
                     config_json: None,
+                    scripts: None,
                 },
             );
 

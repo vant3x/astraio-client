@@ -1,4 +1,4 @@
-use super::{ContentType, HttpRequestView, Message, ResponseTab};
+use super::{ContentType, HttpRequestView, Message, ResponseTab, ScriptTab};
 use crate::data::auth::Auth;
 use crate::data::auth_input::AuthInput;
 use crate::http_client::snippets::SnippetFormat;
@@ -45,6 +45,14 @@ impl HttpRequestView {
                 super::TabId::Authorization,
                 TabLabel::Text("Authorization".to_string()),
                 container(auth_tab_content)
+                    .padding(10)
+                    .width(Length::Fill)
+                    .height(Length::Fill),
+            )
+            .push(
+                super::TabId::Scripts,
+                TabLabel::Text("Scripts".to_string()),
+                container(self.create_scripts_tab_content())
                     .padding(10)
                     .width(Length::Fill)
                     .height(Length::Fill),
@@ -1051,6 +1059,61 @@ impl HttpRequestView {
             .spacing(15)
             .padding(20),
         ))
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into()
+    }
+
+    fn create_scripts_tab_content(&self) -> Element<'_, Message, Theme, iced::Renderer> {
+        let pre_request_btn = if self.active_script_tab == ScriptTab::PreRequest {
+            button("Pre-request")
+                .on_press(Message::ScriptTabSelected(ScriptTab::PreRequest))
+                .style(iced::widget::button::primary)
+        } else {
+            button("Pre-request")
+                .on_press(Message::ScriptTabSelected(ScriptTab::PreRequest))
+        };
+
+        let post_response_btn = if self.active_script_tab == ScriptTab::PostResponse {
+            button("Post-response")
+                .on_press(Message::ScriptTabSelected(ScriptTab::PostResponse))
+                .style(iced::widget::button::primary)
+        } else {
+            button("Post-response")
+                .on_press(Message::ScriptTabSelected(ScriptTab::PostResponse))
+        };
+
+        let tab_buttons = row![pre_request_btn, post_response_btn].spacing(5);
+
+        let editor_content = match self.active_script_tab {
+            ScriptTab::PreRequest => {
+                text_editor(&self.pre_request_script_editor)
+                    .on_action(Message::PreRequestScriptChanged)
+                    .highlight("json", self.highlighter_theme)
+                    .height(Length::Fill)
+            }
+            ScriptTab::PostResponse => {
+                text_editor(&self.post_response_script_editor)
+                    .on_action(Message::PostResponseScriptChanged)
+                    .highlight("json", self.highlighter_theme)
+                    .height(Length::Fill)
+            }
+        };
+
+        let help_text = text("Define actions as a JSON array. Supported: set_variable, set_header, remove_header, set_body, set_url, set_method, assert_status, assert_header, assert_body, extract_json, extract_header, log, delay.")
+            .size(11)
+            .color(Color::from_rgb(0.5, 0.5, 0.5));
+
+        container(
+            column![
+                text("Scripts").size(16),
+                help_text,
+                tab_buttons,
+                editor_content,
+            ]
+            .spacing(8)
+            .padding(5),
+        )
         .width(Length::Fill)
         .height(Length::Fill)
         .into()

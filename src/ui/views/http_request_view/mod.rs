@@ -7,6 +7,7 @@ use crate::data::auth_input::AuthInput;
 use crate::http_client::config::RequestConfig;
 use crate::http_client::response::HttpResponse;
 use crate::http_client::snippets::SnippetFormat;
+use crate::protocols::scripts::RequestScripts;
 use crate::ui::components::key_value_editor::{self, KeyValueEditor};
 use crate::ui::request_status::RequestStatus;
 use iced::highlighter;
@@ -164,6 +165,11 @@ pub enum Message {
     CancelRequest,
     SetIdle,
     ClearKeychainSecrets,
+    ScriptTabSelected(ScriptTab),
+    PreRequestScriptChanged(text_editor::Action),
+    PostResponseScriptChanged(text_editor::Action),
+    SaveScripts,
+    ScriptsSaved(Result<(), String>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -173,6 +179,7 @@ pub enum TabId {
     Headers,
     Params,
     Authorization,
+    Scripts,
     Settings,
 }
 
@@ -182,6 +189,13 @@ pub enum ResponseTab {
     Body,
     Headers,
     Timeline,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum ScriptTab {
+    #[default]
+    PreRequest,
+    PostResponse,
 }
 
 pub use crate::ui::theme::method_color;
@@ -222,6 +236,10 @@ pub struct HttpRequestView {
     pub show_image_preview: bool,
     pub image_preview_handle: Option<ImageHandle>,
     pub abort_handle: Option<iced::task::Handle>,
+    pub scripts: RequestScripts,
+    pub pre_request_script_editor: text_editor::Content,
+    pub post_response_script_editor: text_editor::Content,
+    pub active_script_tab: ScriptTab,
 }
 
 impl Clone for HttpRequestView {
@@ -263,6 +281,14 @@ impl Clone for HttpRequestView {
             show_image_preview: self.show_image_preview,
             image_preview_handle: self.image_preview_handle.clone(),
             abort_handle: None,
+            scripts: self.scripts.clone(),
+            pre_request_script_editor: text_editor::Content::with_text(
+                &self.pre_request_script_editor.text(),
+            ),
+            post_response_script_editor: text_editor::Content::with_text(
+                &self.post_response_script_editor.text(),
+            ),
+            active_script_tab: self.active_script_tab.clone(),
         }
     }
 }
@@ -309,6 +335,10 @@ impl Default for HttpRequestView {
             show_image_preview: false,
             image_preview_handle: None,
             abort_handle: None,
+            scripts: RequestScripts::default(),
+            pre_request_script_editor: text_editor::Content::new(),
+            post_response_script_editor: text_editor::Content::new(),
+            active_script_tab: ScriptTab::default(),
         }
     }
 }
@@ -759,6 +789,21 @@ impl HttpRequestView {
             Message::ClearKeychainSecrets => {
                 // Handled at app level - no view state change needed.
             }
+            Message::ScriptTabSelected(tab) => {
+                self.active_script_tab = tab;
+            }
+            Message::PreRequestScriptChanged(action) => {
+                self.pre_request_script_editor.perform(action);
+            }
+            Message::PostResponseScriptChanged(action) => {
+                self.post_response_script_editor.perform(action);
+            }
+            Message::SaveScripts => {
+                // Handled in app.rs
+            }
+            Message::ScriptsSaved(_) => {
+                // Handled in app.rs
+            }
         }
     }
 
@@ -783,5 +828,24 @@ impl HttpRequestView {
             self.response_search_matches.push((line, col));
             start = absolute_pos + 1;
         }
+    }
+
+    pub fn load_scripts(&mut self, scripts: &RequestScripts) {
+        self.scripts = scripts.clone();
+        if let Ok(json) = scripts.pre_request.to_json() {
+            self.pre_request_script_editor = text_editor::Content::with_text(&json);
+        }
+        if let Ok(json) = scripts.post_response.to_json() {
+            self.post_response_script_editor = text_editor::Content::with_text(&json);
+        }
+    }
+
+    pub fn parse_scripts_from_editors(&self) -> Result<RequestScripts, crate::error::AppError> {
+        let pre_json = self.pre_request_script_editor.text();
+        let post_json = self.post_response_script_editor.text();
+        Ok(RequestScripts {
+            pre_request: crate::protocols::scripts::Script::from_json(&pre_json)?,
+            post_response: crate::protocols::scripts::Script::from_json(&post_json)?,
+        })
     }
 }

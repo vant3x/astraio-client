@@ -264,6 +264,7 @@ mod tests {
             auth_data: None,
             params: vec![],
             config_json: None,
+            scripts: None,
             sort_order: 0,
         };
         let view = build_view_from_collection_request(&req);
@@ -287,6 +288,7 @@ mod tests {
             auth_data: Some("my-token".to_string()),
             params: vec![],
             config_json: None,
+            scripts: None,
             sort_order: 0,
         };
         let view = build_view_from_collection_request(&req);
@@ -312,6 +314,7 @@ mod tests {
             auth_data: Some("admin:secret".to_string()),
             params: vec![],
             config_json: None,
+            scripts: None,
             sort_order: 0,
         };
         let view = build_view_from_collection_request(&req);
@@ -340,6 +343,7 @@ mod tests {
             auth_data: Some("X-API-Key:abc123".to_string()),
             params: vec![],
             config_json: None,
+            scripts: None,
             sort_order: 0,
         };
         let view = build_view_from_collection_request(&req);
@@ -368,6 +372,7 @@ mod tests {
             auth_data: Some("admin:secret".to_string()),
             params: vec![],
             config_json: None,
+            scripts: None,
             sort_order: 0,
         };
         let view = build_view_from_collection_request(&req);
@@ -409,6 +414,7 @@ mod tests {
             auth_data: Some(auth_json),
             params: vec![],
             config_json: None,
+            scripts: None,
             sort_order: 0,
         };
         let view = build_view_from_collection_request(&req);
@@ -443,6 +449,7 @@ mod tests {
             auth_data: Some("my-access-token".to_string()),
             params: vec![],
             config_json: None,
+            scripts: None,
             sort_order: 0,
         };
         let view = build_view_from_collection_request(&req);
@@ -474,6 +481,7 @@ mod tests {
             auth_data: None,
             params: vec![],
             config_json: None,
+            scripts: None,
             sort_order: 0,
         };
         let view = build_view_from_collection_request(&req);
@@ -496,6 +504,7 @@ mod tests {
             auth_data: None,
             params: vec![],
             config_json: None,
+            scripts: None,
             sort_order: 0,
         };
         let view = build_view_from_collection_request(&req);
@@ -518,6 +527,7 @@ mod tests {
             auth_data: None,
             params: vec![("key".to_string(), "val".to_string())],
             config_json: None,
+            scripts: None,
             sort_order: 0,
         };
         let view = build_view_from_collection_request(&req);
@@ -566,6 +576,7 @@ mod tests {
             auth_data: Some(json),
             params: vec![],
             config_json: None,
+            scripts: None,
             sort_order: 0,
         };
         let view = build_view_from_collection_request(&req);
@@ -619,6 +630,7 @@ mod tests {
             auth_data: Some(json),
             params: vec![],
             config_json: None,
+            scripts: None,
             sort_order: 0,
         };
         let view = build_view_from_collection_request(&req);

@@ -163,6 +163,7 @@ mod tests {
             auth_data: None,
             params: vec![],
             config_json: None,
+            scripts: None,
             sort_order: 0,
         }];
 
@@ -196,6 +197,7 @@ mod tests {
             auth_data: None,
             params: vec![],
             config_json: None,
+            scripts: None,
             sort_order: 0,
         }];
 
@@ -225,6 +227,7 @@ mod tests {
             auth_data: None,
             params: vec![],
             config_json: None,
+            scripts: None,
             sort_order: 0,
         }];
 
@@ -250,6 +253,7 @@ mod tests {
             auth_data: None,
             params: vec![],
             config_json: None,
+            scripts: None,
             sort_order: 0,
         }];
 
@@ -277,6 +281,7 @@ mod tests {
             auth_data: None,
             params: vec![],
             config_json: None,
+            scripts: None,
             sort_order: 0,
         }];
 

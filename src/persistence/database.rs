@@ -149,6 +149,8 @@ pub struct CollectionRequest {
     pub auth_data: Option<String>,
     pub params: Vec<(String, String)>,
     pub config_json: Option<String>,
+    #[serde(default)]
+    pub scripts: Option<String>,
     pub sort_order: i32,
 }
 
@@ -265,12 +267,18 @@ pub fn init_schema(conn: &Connection) -> std::result::Result<(), AppError> {
             auth_data TEXT,
             params TEXT NOT NULL DEFAULT '[]',
             config_json TEXT,
+            scripts TEXT,
             sort_order INTEGER NOT NULL DEFAULT 0,
             FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE CASCADE,
             FOREIGN KEY (folder_id) REFERENCES collection_folders(id) ON DELETE CASCADE
         )",
         [],
     )?;
+    conn.execute(
+        "ALTER TABLE collection_requests ADD COLUMN scripts TEXT",
+        [],
+    )
+    .ok();
     conn.execute(
         "CREATE TABLE IF NOT EXISTS app_settings (
             key TEXT PRIMARY KEY,
@@ -644,6 +652,7 @@ pub struct SaveRequestParams {
     pub auth_data: Option<String>,
     pub params: Vec<(String, String)>,
     pub config_json: Option<String>,
+    pub scripts: Option<String>,
 }
 
 impl SaveRequestParams {
@@ -662,6 +671,7 @@ impl SaveRequestParams {
             auth_data: None,
             params: Vec::new(),
             config_json: None,
+            scripts: None,
         }
     }
 
@@ -689,6 +699,7 @@ impl SaveRequestParams {
             auth_data: None,
             params: params.to_vec(),
             config_json: None,
+            scripts: None,
         }
     }
 }
@@ -713,7 +724,7 @@ pub fn save_collection_request(
     let auth_type_str = params.auth_type.to_string();
 
     conn.execute(
-        "INSERT INTO collection_requests (collection_id, folder_id, name, method, url, headers, body, body_type, auth_type, auth_data, params, config_json, sort_order) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+        "INSERT INTO collection_requests (collection_id, folder_id, name, method, url, headers, body, body_type, auth_type, auth_data, params, config_json, scripts, sort_order) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
         params![
             params.collection_id,
             params.folder_id,
@@ -727,6 +738,7 @@ pub fn save_collection_request(
             params.auth_data,
             params_json,
             params.config_json,
+            params.scripts,
             max_order + 1,
         ],
     )?;
@@ -745,6 +757,7 @@ pub fn save_collection_request(
         auth_data: params.auth_data.clone(),
         params: params.params.clone(),
         config_json: params.config_json.clone(),
+        scripts: params.scripts.clone(),
         sort_order: max_order + 1,
     })
 }
@@ -755,7 +768,7 @@ pub fn get_collection_requests(
     folder_id: Option<i32>,
 ) -> Result<Vec<CollectionRequest>> {
     let mut stmt = conn.prepare(
-        "SELECT id, collection_id, folder_id, name, method, url, headers, body, body_type, auth_type, auth_data, params, config_json, sort_order FROM collection_requests WHERE collection_id = ?1 AND folder_id IS ?2 ORDER BY sort_order",
+        "SELECT id, collection_id, folder_id, name, method, url, headers, body, body_type, auth_type, auth_data, params, config_json, scripts, sort_order FROM collection_requests WHERE collection_id = ?1 AND folder_id IS ?2 ORDER BY sort_order",
     )?;
     let rows = stmt.query_map(params![collection_id, folder_id], |row| {
         parse_collection_request(row)
@@ -782,7 +795,8 @@ fn parse_collection_request(row: &rusqlite::Row) -> rusqlite::Result<CollectionR
         auth_data: row.get(10)?,
         params: serde_json::from_str(&params_json).unwrap_or_default(),
         config_json: row.get(12)?,
-        sort_order: row.get(13)?,
+        scripts: row.get(13)?,
+        sort_order: row.get(14)?,
     })
 }
 
@@ -873,6 +887,7 @@ mod tests {
                 auth_data TEXT,
                 params TEXT NOT NULL DEFAULT '[]',
                 config_json TEXT,
+                scripts TEXT,
                 sort_order INTEGER NOT NULL DEFAULT 0
             )",
             [],
@@ -1217,6 +1232,7 @@ mod tests {
                 auth_data: None,
                 params: params.clone(),
                 config_json: None,
+                scripts: None,
             },
         )
         .unwrap();
@@ -1235,6 +1251,7 @@ mod tests {
                 auth_data: Some("token123".to_string()),
                 params: vec![],
                 config_json: None,
+                scripts: None,
             },
         )
         .unwrap();
@@ -1269,6 +1286,7 @@ mod tests {
                 auth_data: None,
                 params: vec![],
                 config_json: None,
+                scripts: None,
             },
         )
         .unwrap();

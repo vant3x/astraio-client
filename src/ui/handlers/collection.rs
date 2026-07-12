@@ -270,6 +270,7 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: collection_view::Message) -> 
                                                         auth_data: None,
                                                         params: req.params.clone(),
                                                         config_json: None,
+                                                        scripts: None,
                                                     },
                                                 );
                                             }
@@ -293,6 +294,7 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: collection_view::Message) -> 
                                             auth_data: None,
                                             params: req.params.clone(),
                                             config_json: None,
+                                            scripts: None,
                                         },
                                     );
                                 }
@@ -578,6 +580,7 @@ fn save_current_to_collection(app: &mut AstraNovaApp) {
                 auth_data,
                 params,
                 config_json: None,
+                scripts: None,
             },
         );
 

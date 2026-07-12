@@ -159,6 +159,7 @@ mod tests {
                 auth_data TEXT,
                 params TEXT NOT NULL DEFAULT '[]',
                 config_json TEXT,
+                scripts TEXT,
                 sort_order INTEGER NOT NULL DEFAULT 0
             )",
             [],

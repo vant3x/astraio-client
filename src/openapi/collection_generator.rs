@@ -201,6 +201,7 @@ pub fn to_collection_requests(
                 auth_data: None,
                 params: req.params.clone(),
                 config_json: None,
+                scripts: None,
                 sort_order: i as i32,
             };
             (collection_req, folder_id)

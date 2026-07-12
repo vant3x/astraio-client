@@ -1,4 +1,5 @@
 use crate::http_client::client;
+use crate::protocols::scripts::{ScriptContext, ScriptEngine};
 use crate::ui::app::{AstraNovaApp, Message};
 use crate::ui::views::http_request_view;
 use iced::Task;
@@ -20,7 +21,8 @@ pub fn handle_http_request_msg(
             if let Some(env) = &app.active_environment {
                 temp_view.apply_environment(env);
             }
-            let request = match temp_view.build_request() {
+
+            let mut request = match temp_view.build_request() {
                 Ok(r) => r,
                 Err(e) => {
                     app.toast_manager
@@ -28,6 +30,33 @@ pub fn handle_http_request_msg(
                     return Task::none();
                 }
             };
+
+            let mut script_context = ScriptContext::new();
+            if let Some(env) = &app.active_environment {
+                for (key, value) in &env.variables {
+                    script_context
+                        .variables
+                        .insert(key.clone(), value.clone());
+                }
+            }
+
+            let pre_request_script = temp_view.scripts.pre_request.clone();
+            if !pre_request_script.actions.is_empty() {
+                if let Err(e) =
+                    ScriptEngine::execute_pre_request(&pre_request_script, &mut request, &mut script_context)
+                {
+                    app.toast_manager
+                        .error(format!("Pre-request script error: {}", e));
+                    return Task::none();
+                }
+                for log in &script_context.logs {
+                    app.toast_manager.info(format!("[Pre-request] {}", log));
+                }
+            }
+
+            let request_url = request.url.clone();
+            let request_method = request.method.to_string();
+
             view.pending_request_data = serde_json::to_string(&request).ok();
             view.update(http_request_view::Message::SetLoading);
 
@@ -56,8 +85,33 @@ pub fn handle_http_request_msg(
                 Arc::clone(&app.http_client)
             };
 
+            let post_response_script = view.scripts.post_response.clone();
             let (task, handle) = Task::perform(
-                async move { client::send_request(&http_client, request).await },
+                async move {
+                    let response = client::send_request(&http_client, request).await;
+
+                    match response {
+                        Ok(mut resp) => {
+                            let mut post_ctx = ScriptContext::new();
+                            if let Err(e) = ScriptEngine::execute_post_response(
+                                &post_response_script,
+                                &resp,
+                                &mut post_ctx,
+                            ) {
+                                return Err(crate::error::AppError::Validation(
+                                    format!("Post-response script error: {}", e),
+                                ));
+                            }
+                            for log in &post_ctx.logs {
+                                log::info!("[Post-response] {}", log);
+                            }
+                            resp.url = request_url;
+                            resp.method = request_method.parse().unwrap_or(crate::http_client::request::HttpMethod::Get);
+                            Ok(resp)
+                        }
+                        Err(e) => Err(e),
+                    }
+                },
                 move |result| {
                     Message::HttpRequestViewMsg(
                         index,
@@ -252,6 +306,26 @@ pub fn handle_http_request_msg(
             }
             Task::none()
         }
+        http_request_view::Message::SaveScripts => {
+            let Some(view) = app.request_tabs.get(index) else {
+                return Task::none();
+            };
+            match view.parse_scripts_from_editors() {
+                Ok(_scripts) => {
+                    app.toast_manager.success("Scripts saved".to_string());
+                    Task::perform(
+                        async move { Ok::<(), String>(()) },
+                        move |_| Message::HttpRequestViewMsg(index, http_request_view::Message::ScriptsSaved(Ok(()))),
+                    )
+                }
+                Err(e) => {
+                    app.toast_manager
+                        .error(format!("Invalid scripts: {}", e));
+                    Task::none()
+                }
+            }
+        }
+        http_request_view::Message::ScriptsSaved(_) => Task::none(),
         http_request_view::Message::ClearKeychainSecrets => {
             if let Some(view) = app.request_tabs.get_mut(index) {
                 view.update(http_request_view::Message::ClearKeychainSecrets);
