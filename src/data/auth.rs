@@ -165,6 +165,22 @@ impl Auth {
             Auth::OAuth2(_) => AuthType::OAuth2,
         }
     }
+
+    pub fn to_safe_json(&self) -> Result<String, serde_json::Error> {
+        match self {
+            Auth::OAuth2(config) => {
+                let mut safe = (**config).clone();
+                safe.access_token = String::new();
+                safe.refresh_token = String::new();
+                safe.client_secret = String::new();
+                safe.pkce_verifier = None;
+                safe.device_code = String::new();
+                safe.user_code = String::new();
+                serde_json::to_string(&Auth::OAuth2(Box::new(safe)))
+            }
+            other => serde_json::to_string(other),
+        }
+    }
 }
 
 #[cfg(test)]

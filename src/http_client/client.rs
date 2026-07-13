@@ -50,19 +50,10 @@ pub fn build_client(config: &RequestConfig) -> Result<reqwest::Client, AppError>
     // Proxy: prefer ProxyConfig (with auth) over flat proxy_url
     if let Some(proxy_config) = &config.proxy {
         let proxy = if let Some(auth) = &proxy_config.auth {
-            let proxy_url = proxy_config.url.clone();
-            let username = auth.username.clone();
-            let password = auth.password.clone();
-            reqwest::Proxy::custom(move |url| {
-                if url.host_str() == Some("localhost") || url.host_str() == Some("127.0.0.1") {
-                    None
-                } else {
-                    let auth_url = format!("http://{}:{}@{}", username, password, &proxy_url[7..]);
-                    reqwest::Url::parse(&auth_url)
-                        .or_else(|_| reqwest::Url::parse(&proxy_url))
-                        .ok()
-                }
-            })
+            let proxy_url = &proxy_config.url;
+            let mut proxy = reqwest::Proxy::all(proxy_url)?;
+            proxy = proxy.basic_auth(&auth.username, &auth.password);
+            proxy
         } else {
             reqwest::Proxy::all(&proxy_config.url)?
         };

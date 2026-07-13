@@ -541,7 +541,7 @@ fn save_current_to_collection(app: &mut AstraNovaApp) {
         };
         let auth_data = match &view.auth {
             crate::data::auth::Auth::None => None,
-            auth => serde_json::to_string(auth).ok(),
+            auth => auth.to_safe_json().ok(),
         };
 
         let params: Vec<(String, String)> = view

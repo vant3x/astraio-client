@@ -105,6 +105,7 @@ pub fn build_authorization_url(
 }
 
 pub async fn exchange_code(
+    client: &Client,
     token_url: &str,
     code: &str,
     client_id: &str,
@@ -112,7 +113,6 @@ pub async fn exchange_code(
     redirect_uri: &str,
     pkce_verifier: Option<&str>,
 ) -> Result<OAuth2TokenResponse, AppError> {
-    let client = Client::new();
     let mut params = vec![
         ("grant_type", "authorization_code"),
         ("code", code),
@@ -160,12 +160,12 @@ pub async fn exchange_code(
 
 #[allow(dead_code)]
 pub async fn client_credentials(
+    client: &Client,
     token_url: &str,
     client_id: &str,
     client_secret: &str,
     scopes: &str,
 ) -> Result<OAuth2TokenResponse, AppError> {
-    let client = Client::new();
     let mut params = vec![("grant_type", "client_credentials")];
 
     if !client_id.is_empty() {
@@ -213,12 +213,12 @@ pub async fn client_credentials(
 }
 
 pub async fn refresh_token(
+    client: &Client,
     token_url: &str,
     refresh_token: &str,
     client_id: &str,
     client_secret: &str,
 ) -> Result<OAuth2TokenResponse, AppError> {
-    let client = Client::new();
     let mut params = vec![
         ("grant_type", "refresh_token"),
         ("refresh_token", refresh_token),
@@ -386,11 +386,11 @@ impl LocalAuthCallback {
 }
 
 pub async fn device_authorization(
+    client: &Client,
     device_auth_url: &str,
     client_id: &str,
     scopes: &str,
 ) -> Result<DeviceAuthorizationResponse, AppError> {
-    let client = Client::new();
     let mut params = vec![("client_id", client_id)];
 
     if !scopes.is_empty() {
@@ -437,12 +437,12 @@ pub async fn device_authorization(
 }
 
 pub async fn poll_device_token(
+    client: &Client,
     token_url: &str,
     device_code: &str,
     client_id: &str,
     client_secret: &str,
 ) -> Result<DeviceTokenResponse, AppError> {
-    let client = Client::new();
     let mut params = vec![
         ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
         ("device_code", device_code),

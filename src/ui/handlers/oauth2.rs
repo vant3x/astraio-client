@@ -71,10 +71,12 @@ pub fn handle_auth_complete(
                     let redirect_uri = config.redirect_uri.clone();
                     let verifier = pkce_verifier.clone();
                     let tab_index = index;
+                    let http_client = app.http_client.clone();
 
                     return Task::perform(
                         async move {
                             crate::data::oauth2::exchange_code(
+                                &http_client,
                                 &token_url,
                                 &code,
                                 &client_id,
@@ -144,6 +146,7 @@ pub fn handle_token_received(
 pub fn handle_refresh_token(app: &mut AstraNovaApp, index: usize) -> Task<Message> {
     if let Some(view) = app.request_tabs.get(index) {
         if let Auth::OAuth2(config) = &view.auth {
+            let http_client = app.http_client.clone();
             if !config.device_code.is_empty() {
                 let token_url = config.token_url.clone();
                 let device_code = config.device_code.clone();
@@ -154,6 +157,7 @@ pub fn handle_refresh_token(app: &mut AstraNovaApp, index: usize) -> Task<Messag
                 return Task::perform(
                     async move {
                         crate::data::oauth2::poll_device_token(
+                            &http_client,
                             &token_url,
                             &device_code,
                             &client_id,
@@ -176,6 +180,7 @@ pub fn handle_refresh_token(app: &mut AstraNovaApp, index: usize) -> Task<Messag
                 return Task::perform(
                     async move {
                         crate::data::oauth2::refresh_token(
+                            &http_client,
                             &token_url,
                             &refresh_token,
                             &client_id,
@@ -201,10 +206,12 @@ pub fn handle_start_device_auth(app: &AstraNovaApp, index: usize) -> Task<Messag
                 let client_id = config.client_id.clone();
                 let scopes = config.scopes.clone();
                 let tab_index = index;
+                let http_client = app.http_client.clone();
 
                 return Task::perform(
                     async move {
                         crate::data::oauth2::device_authorization(
+                            &http_client,
                             &device_auth_url,
                             &client_id,
                             &scopes,

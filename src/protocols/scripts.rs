@@ -82,18 +82,10 @@ impl std::fmt::Display for ScriptAction {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(transparent)]
 pub struct Script {
     pub actions: Vec<ScriptAction>,
-}
-
-impl Default for Script {
-    fn default() -> Self {
-        Self {
-            actions: Vec::new(),
-        }
-    }
 }
 
 impl Script {
@@ -135,21 +127,12 @@ impl ScriptContext {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RequestScripts {
     #[serde(default)]
     pub pre_request: Script,
     #[serde(default)]
     pub post_response: Script,
-}
-
-impl Default for RequestScripts {
-    fn default() -> Self {
-        Self {
-            pre_request: Script::default(),
-            post_response: Script::default(),
-        }
-    }
 }
 
 impl RequestScripts {
@@ -241,7 +224,10 @@ impl ScriptEngine {
                 context.logs.push(resolved);
             }
             ScriptAction::Delay { ms } => {
-                std::thread::sleep(std::time::Duration::from_millis(*ms));
+                log::warn!(
+                    "Script Delay({}ms) is not supported in synchronous context - skipping",
+                    ms
+                );
             }
             _ => {}
         }

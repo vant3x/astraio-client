@@ -292,6 +292,8 @@ pub fn init_schema(conn: &Connection) -> std::result::Result<(), AppError> {
 pub fn init() -> std::result::Result<Connection, AppError> {
     let db_path = get_db_path()?;
     let conn = Connection::open(db_path)?;
+    conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")
+        .map_err(|e| AppError::Database(format!("Failed to set pragmas: {}", e)))?;
     init_schema(&conn)?;
     Ok(conn)
 }

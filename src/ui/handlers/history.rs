@@ -4,7 +4,7 @@ use iced::Task;
 
 pub fn handle_message(app: &mut AstraNovaApp, msg: history_view::Message) -> Task<Message> {
     match msg.clone() {
-        history_view::Message::ClearHistory => {
+        history_view::Message::ConfirmClearHistory => {
             if let Err(e) = crate::services::history_service::clear(&app.db_conn) {
                 log::error!("Failed to clear history: {}", e);
             }
@@ -23,7 +23,7 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: history_view::Message) -> Tas
             }
             app.history_view.update(msg);
         }
-        history_view::Message::DeleteEntry(entry_id) => {
+        history_view::Message::ConfirmDeleteEntry(entry_id) => {
             let _ = crate::services::history_service::delete_entry(&app.db_conn, entry_id);
             app.history_view.update(msg);
         }
@@ -76,6 +76,9 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: history_view::Message) -> Tas
                     Err(msg) => Message::HistoryExportComplete(Some(msg)),
                 },
             );
+        }
+        _ => {
+            app.history_view.update(msg);
         }
     }
     Task::none()

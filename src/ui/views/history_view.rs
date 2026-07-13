@@ -9,8 +9,12 @@ use iced_fonts::lucide;
 #[derive(Debug, Clone)]
 pub enum Message {
     ResendEntry(i32),
-    DeleteEntry(i32),
-    ClearHistory,
+    RequestDeleteEntry(i32),
+    ConfirmDeleteEntry(i32),
+    CancelDeleteEntry,
+    RequestClearHistory,
+    ConfirmClearHistory,
+    CancelClearHistory,
     SearchChanged(String),
     FilterMethod(String),
     ExportHistory,
@@ -25,6 +29,8 @@ pub struct HistoryView {
     pub search_query: String,
     pub filter_method: String,
     pub viewing_response: Option<RequestHistoryEntry>,
+    pub pending_delete_entry: Option<i32>,
+    pub pending_clear_history: bool,
 }
 
 impl Clone for HistoryView {
@@ -35,6 +41,8 @@ impl Clone for HistoryView {
             search_query: self.search_query.clone(),
             filter_method: self.filter_method.clone(),
             viewing_response: self.viewing_response.clone(),
+            pending_delete_entry: self.pending_delete_entry,
+            pending_clear_history: self.pending_clear_history,
         }
     }
 }
@@ -76,7 +84,12 @@ impl HistoryView {
     pub fn update(&mut self, message: Message) -> Option<i32> {
         match message {
             Message::ResendEntry(entry_id) => Some(entry_id),
-            Message::DeleteEntry(entry_id) => {
+            Message::RequestDeleteEntry(entry_id) => {
+                self.pending_delete_entry = Some(entry_id);
+                None
+            }
+            Message::ConfirmDeleteEntry(entry_id) => {
+                self.pending_delete_entry = None;
                 self.entries.retain(|e| e.id != entry_id);
                 self.selected_index = None;
                 if self
@@ -89,12 +102,25 @@ impl HistoryView {
                 }
                 None
             }
-            Message::ClearHistory => {
+            Message::CancelDeleteEntry => {
+                self.pending_delete_entry = None;
+                None
+            }
+            Message::RequestClearHistory => {
+                self.pending_clear_history = true;
+                None
+            }
+            Message::ConfirmClearHistory => {
+                self.pending_clear_history = false;
                 self.entries.clear();
                 self.selected_index = None;
                 self.search_query.clear();
                 self.filter_method.clear();
                 self.viewing_response = None;
+                None
+            }
+            Message::CancelClearHistory => {
+                self.pending_clear_history = false;
                 None
             }
             Message::SearchChanged(query) => {
@@ -218,11 +244,23 @@ impl HistoryView {
     }
 
     pub fn view(&self) -> Element<'_, Message, Theme, Renderer> {
-        let clear_button: Element<'_, Message, Theme, Renderer> = if self.entries.is_empty() {
+        let clear_button: Element<'_, Message, Theme, Renderer> = if self.pending_clear_history {
+            row![
+                text("Clear all?").size(12).color(Color::from_rgb(0.9, 0.3, 0.3)),
+                button(text("Yes").size(11))
+                    .padding([2, 8])
+                    .on_press(Message::ConfirmClearHistory),
+                button(lucide::x().size(10))
+                    .on_press(Message::CancelClearHistory),
+            ]
+            .spacing(4)
+            .align_y(Alignment::Center)
+            .into()
+        } else if self.entries.is_empty() {
             button(row![lucide::trash().size(14), text(" Clear")].spacing(4)).into()
         } else {
             button(row![lucide::trash().size(14), text(" Clear")].spacing(4))
-                .on_press(Message::ClearHistory)
+                .on_press(Message::RequestClearHistory)
                 .into()
         };
 
@@ -373,9 +411,23 @@ impl HistoryView {
                 .into();
 
             let delete_btn: Element<'_, Message, Theme, Renderer> =
-                button(lucide::x().size(12))
-                    .on_press(Message::DeleteEntry(entry.id))
-                    .into();
+                if self.pending_delete_entry == Some(entry.id) {
+                    row![
+                        text("Del?").size(10).color(Color::from_rgb(0.9, 0.3, 0.3)),
+                        button(text("Yes").size(10))
+                            .padding([2, 6])
+                            .on_press(Message::ConfirmDeleteEntry(entry.id)),
+                        button(lucide::x().size(10))
+                            .on_press(Message::CancelDeleteEntry),
+                    ]
+                    .spacing(2)
+                    .align_y(Alignment::Center)
+                    .into()
+                } else {
+                    button(lucide::x().size(12))
+                        .on_press(Message::RequestDeleteEntry(entry.id))
+                        .into()
+                };
 
             let full_row = row![entry_button, view_btn, delete_btn]
                 .spacing(4)

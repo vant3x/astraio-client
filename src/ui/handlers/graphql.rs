@@ -203,7 +203,7 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: graphql_view::Message) -> Tas
             )
             .ok();
 
-            let auth_json = serde_json::to_string(&view.auth).ok();
+            let auth_json = view.auth.to_safe_json().ok();
 
             let result = crate::services::collection_service::save_request(
                 &app.db_conn,

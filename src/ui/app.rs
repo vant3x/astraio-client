@@ -63,6 +63,7 @@ struct DevicePollRecipe {
     client_secret: String,
     token_url: String,
     interval_secs: u64,
+    http_client: Arc<reqwest::Client>,
 }
 
 impl Recipe for DevicePollRecipe {
@@ -82,15 +83,18 @@ impl Recipe for DevicePollRecipe {
         let client_secret = self.client_secret;
         let token_url = self.token_url;
         let interval = std::time::Duration::from_secs(self.interval_secs.max(5));
+        let http_client = self.http_client;
 
         futures::stream::unfold((), move |()| {
             let device_code = device_code.clone();
             let client_id = client_id.clone();
             let client_secret = client_secret.clone();
             let token_url = token_url.clone();
+            let http_client = http_client.clone();
             async move {
                 tokio::time::sleep(interval).await;
                 let result = crate::data::oauth2::poll_device_token(
+                    &http_client,
                     &token_url,
                     &device_code,
                     &client_id,
@@ -169,7 +173,7 @@ pub(crate) struct AstraNovaApp {
     pub(crate) secret_store: crate::services::secret_store::SecretStore,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Message {
     HttpRequestViewMsg(usize, http_request_view::Message),
     AddRequestTab,
@@ -228,57 +232,6 @@ pub enum Message {
     WsSendFromKeyboard,
     ClearKeychainSecrets,
     KeychainCleared(Result<u32, crate::error::AppError>),
-}
-
-impl Clone for Message {
-    fn clone(&self) -> Self {
-        match self {
-            Self::HttpRequestViewMsg(i, m) => Self::HttpRequestViewMsg(*i, m.clone()),
-            Self::AddRequestTab => Self::AddRequestTab,
-            Self::CloseRequestTab(i) => Self::CloseRequestTab(*i),
-            Self::CloseActiveRequestTab => Self::CloseActiveRequestTab,
-            Self::NoOp => Self::NoOp,
-            Self::SelectRequestTab(i) => Self::SelectRequestTab(*i),
-            Self::PrevRequestTab => Self::PrevRequestTab,
-            Self::NextRequestTab => Self::NextRequestTab,
-            Self::EnvManagerMsg(m) => Self::EnvManagerMsg(m.clone()),
-            Self::EnvFileLoaded(v) => Self::EnvFileLoaded(v.clone()),
-            Self::EnvFileExported(v) => Self::EnvFileExported(v.clone()),
-            Self::SelectEnvironment(i) => Self::SelectEnvironment(*i),
-            Self::SwitchView(v) => Self::SwitchView(*v),
-            Self::ToggleEnvironmentManager => Self::ToggleEnvironmentManager,
-            Self::HistoryMsg(m) => Self::HistoryMsg(m.clone()),
-            Self::HistoryExportComplete(v) => Self::HistoryExportComplete(v.clone()),
-            Self::ToggleHistory => Self::ToggleHistory,
-            Self::CollectionMsg(m) => Self::CollectionMsg(m.clone()),
-            Self::ToggleCollections => Self::ToggleCollections,
-            Self::ToggleEnvInfo => Self::ToggleEnvInfo,
-            Self::ToggleTheme => Self::ToggleTheme,
-            Self::WebSocketMsg(m) => Self::WebSocketMsg(m.clone()),
-            Self::GraphQLMsg(m) => Self::GraphQLMsg(m.clone()),
-            Self::WsEvent(e) => Self::WsEvent(e.clone()),
-            Self::WsConnected(s, r, st, wh, rh) => Self::WsConnected(
-                s.clone(),
-                r.clone(),
-                st.clone(),
-                Arc::clone(wh),
-                Arc::clone(rh),
-            ),
-            Self::SelectProtocol(p) => Self::SelectProtocol(*p),
-            Self::OAuth2StartAuth(i) => Self::OAuth2StartAuth(*i),
-            Self::OAuth2AuthComplete(i, r, v) => Self::OAuth2AuthComplete(*i, r.clone(), v.clone()),
-            Self::OAuth2TokenReceived(i, r) => Self::OAuth2TokenReceived(*i, r.clone()),
-            Self::OAuth2RefreshToken(i) => Self::OAuth2RefreshToken(*i),
-            Self::OAuth2StartDeviceAuth(i) => Self::OAuth2StartDeviceAuth(*i),
-            Self::OAuth2DeviceAuthReceived(i, r) => Self::OAuth2DeviceAuthReceived(*i, r.clone()),
-            Self::OAuth2DeviceTokenPoll(i, r) => Self::OAuth2DeviceTokenPoll(*i, r.clone()),
-            Self::OAuth2AutoPollToggle(i, b) => Self::OAuth2AutoPollToggle(*i, *b),
-            Self::ToggleResponseSearch => Self::ToggleResponseSearch,
-            Self::WsSendFromKeyboard => Self::WsSendFromKeyboard,
-            Self::ClearKeychainSecrets => Self::ClearKeychainSecrets,
-            Self::KeychainCleared(r) => Self::KeychainCleared(r.clone()),
-        }
-    }
 }
 
 impl AstraNovaApp {
@@ -686,6 +639,7 @@ impl AstraNovaApp {
                         client_secret: config.client_secret.clone(),
                         token_url: config.token_url.clone(),
                         interval_secs: interval,
+                        http_client: self.http_client.clone(),
                     });
                 }
             }

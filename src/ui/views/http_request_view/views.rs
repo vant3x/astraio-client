@@ -966,6 +966,23 @@ impl HttpRequestView {
         })
         .on_press(Message::VerifySslToggled(!verify_ssl));
 
+        let ssl_warning: Element<'_, Message, Theme, iced::Renderer> = if !verify_ssl {
+            container(
+                row![lucide::triangle_alert().size(14), text(" SSL verification disabled. Requests may be intercepted.").size(12)]
+                    .spacing(6)
+                    .align_y(Alignment::Center),
+            )
+            .padding(8)
+            .style(move |_theme: &Theme| iced::widget::container::Style {
+                background: Some(iced::Color::from_rgb(0.8, 0.2, 0.2).into()),
+                text_color: Some(iced::Color::WHITE),
+                ..Default::default()
+            })
+            .into()
+        } else {
+            column![].into()
+        };
+
         let ca_cert = self
             .request_config
             .tls
@@ -1029,6 +1046,7 @@ impl HttpRequestView {
                     .spacing(10)
                     .width(Length::Fill),
                 ssl_toggle,
+                ssl_warning,
                 rule::horizontal(10),
                 text("TLS / mTLS").size(16),
                 ca_cert_input,
