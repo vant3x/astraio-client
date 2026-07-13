@@ -75,12 +75,19 @@ impl HttpRequestView {
                 .align_x(Alignment::Center)
                 .align_y(Alignment::Center)
                 .into(),
-            RequestStatus::Loading => container(text("Loading..."))
-                .width(Length::Fill)
-                .height(Length::Fill)
-                .align_x(Alignment::Center)
-                .align_y(Alignment::Center)
-                .into(),
+            RequestStatus::Loading => container(
+                column![
+                    iced_aw::Spinner::new().width(32).height(32),
+                    text("Sending request...").size(14),
+                ]
+                .spacing(8)
+                .align_x(Alignment::Center),
+            )
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .align_x(Alignment::Center)
+            .align_y(Alignment::Center)
+            .into(),
             RequestStatus::Success => {
                 let search_bar = if self.show_response_search {
                     let match_info = if self.response_search_matches.is_empty() {

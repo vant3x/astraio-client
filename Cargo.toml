@@ -8,7 +8,7 @@ authors = ["vant3x"]
 
 [dependencies]
 iced = { version = "0.14.0", features = ["tokio", "image", "svg", "canvas", "highlighter"] }
-iced_aw = { version = "0.13.1", features = ["tabs", "tab_bar", "context_menu"] }
+iced_aw = { version = "0.13.1", features = ["tabs", "tab_bar", "context_menu", "spinner"] }
 
 
 bytes = "1.0.0"
