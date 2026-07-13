@@ -144,48 +144,71 @@ impl HttpRequestView {
             _ => {}
         }
 
-        let body_text = self.body_input.text();
-        let body = if Self::is_body_empty(&body_text) {
-            None
-        } else {
-            Some(body_text)
-        };
-
-        // Only set Content-Type for text body (multipart sets it automatically)
-        if body.is_some() && self.body_type == BodyType::Text {
-            let content_type_str = match self.request_content_type {
-                ContentType::Json => "application/json",
-                ContentType::Text => "text/plain",
-                ContentType::Html => "text/html",
-                ContentType::Xml => "application/xml",
-            };
-            headers.push(("Content-Type".to_string(), content_type_str.to_string()));
-        }
-
-        // Convert multipart entries to MultipartField
-        let multipart_fields: Vec<MultipartField> = if self.body_type == BodyType::Multipart {
-            self.multipart_entries
-                .iter()
-                .filter(|e| !e.name.is_empty())
-                .map(|e| {
-                    if e.is_file {
-                        MultipartField {
-                            name: e.name.clone(),
-                            value: MultipartValue::File {
-                                path: e.value.clone(),
-                                filename: None,
-                            },
+        let (body, multipart_fields) = match self.body_type {
+            BodyType::Text => {
+                let body_text = self.body_input.text();
+                let body = if Self::is_body_empty(&body_text) {
+                    None
+                } else {
+                    Some(body_text)
+                };
+                if body.is_some() {
+                    let content_type_str = match self.request_content_type {
+                        ContentType::Json => "application/json",
+                        ContentType::Text => "text/plain",
+                        ContentType::Html => "text/html",
+                        ContentType::Xml => "application/xml",
+                    };
+                    headers.push(("Content-Type".to_string(), content_type_str.to_string()));
+                }
+                (body, vec![])
+            }
+            BodyType::FormUrlencoded => {
+                let encoded: String = self
+                    .form_entries
+                    .iter()
+                    .filter(|e| !e.name.is_empty())
+                    .map(|e| {
+                        format!(
+                            "{}={}",
+                            urlencoding::encode(&e.name),
+                            urlencoding::encode(&e.value)
+                        )
+                    })
+                    .collect::<Vec<String>>()
+                    .join("&");
+                if !encoded.is_empty() {
+                    headers
+                        .push(("Content-Type".to_string(), "application/x-www-form-urlencoded".to_string()));
+                    (Some(encoded), vec![])
+                } else {
+                    (None, vec![])
+                }
+            }
+            BodyType::Multipart => {
+                let fields: Vec<MultipartField> = self
+                    .multipart_entries
+                    .iter()
+                    .filter(|e| !e.name.is_empty())
+                    .map(|e| {
+                        if e.is_file {
+                            MultipartField {
+                                name: e.name.clone(),
+                                value: MultipartValue::File {
+                                    path: e.value.clone(),
+                                    filename: None,
+                                },
+                            }
+                        } else {
+                            MultipartField {
+                                name: e.name.clone(),
+                                value: MultipartValue::Text(e.value.clone()),
+                            }
                         }
-                    } else {
-                        MultipartField {
-                            name: e.name.clone(),
-                            value: MultipartValue::Text(e.value.clone()),
-                        }
-                    }
-                })
-                .collect()
-        } else {
-            vec![]
+                    })
+                    .collect();
+                (None, fields)
+            }
         };
 
         Ok(crate::http_client::request::HttpRequest {

@@ -556,6 +556,9 @@ fn save_current_to_collection(app: &mut AstraNovaApp) {
             crate::ui::views::http_request_view::BodyType::Multipart => {
                 crate::persistence::database::CollectionBodyType::Multipart
             }
+            crate::ui::views::http_request_view::BodyType::FormUrlencoded => {
+                crate::persistence::database::CollectionBodyType::FormUrlencoded
+            }
             _ => crate::persistence::database::CollectionBodyType::Text,
         };
 

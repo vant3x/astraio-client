@@ -901,6 +901,43 @@ impl HttpRequestView {
                 .height(Length::Fill)
                 .into()
             }
+            super::BodyType::FormUrlencoded => {
+                let mut entries_col = column![].spacing(8);
+                for entry in &self.form_entries {
+                    let row = row![
+                        iced::widget::text_input("Key", &entry.name)
+                            .on_input(move |v| Message::FormNameChanged(entry.id, v))
+                            .padding(8),
+                        iced::widget::text_input("Value", &entry.value)
+                            .on_input(move |v| Message::FormValueChanged(entry.id, v))
+                            .padding(8),
+                        button(lucide::x().size(14))
+                            .on_press(Message::RemoveFormEntry(entry.id))
+                            .width(Length::Fixed(35.0)),
+                    ]
+                    .spacing(8)
+                    .align_y(Alignment::Center);
+                    entries_col = entries_col.push(row);
+                }
+
+                let add_button =
+                    button(row![lucide::plus().size(14), text(" Add Field")].spacing(4))
+                        .on_press(Message::AddFormEntry);
+
+                container(
+                    column![
+                        row![text("Body Type:"), body_type_selector].spacing(10),
+                        text("Form URL-Encoded Fields").size(16),
+                        scrollable(entries_col).height(Length::Fill),
+                        add_button,
+                    ]
+                    .spacing(15)
+                    .padding(10),
+                )
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .into()
+            }
         }
     }
 

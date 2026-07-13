@@ -607,6 +607,8 @@ impl AstraNovaApp {
                         }
                         _ => None,
                     }
+                } else if key == iced::keyboard::Key::Named(iced::keyboard::key::Named::Enter) {
+                    Some(Message::WsSendFromKeyboard)
                 } else {
                     None
                 }

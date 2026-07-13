@@ -583,4 +583,88 @@ mod tests {
             _ => panic!("Expected OAuth2"),
         }
     }
+
+    #[test]
+    fn build_request_form_urlencoded_basic() {
+        let mut view = make_view("https://example.com/login", "POST");
+        view.body_type = BodyType::FormUrlencoded;
+        view.form_entries = vec![
+            MultipartEntry {
+                id: 0,
+                name: "username".to_string(),
+                value: "john".to_string(),
+                is_file: false,
+            },
+            MultipartEntry {
+                id: 1,
+                name: "password".to_string(),
+                value: "secret".to_string(),
+                is_file: false,
+            },
+        ];
+        let req = build(&view);
+        let body = req.body.unwrap();
+        assert!(body.contains("username=john"));
+        assert!(body.contains("password=secret"));
+        assert!(body.contains('&'));
+        let ct = req
+            .headers
+            .iter()
+            .find(|(k, _)| k == "Content-Type")
+            .map(|(_, v)| v.clone())
+            .unwrap();
+        assert_eq!(ct, "application/x-www-form-urlencoded");
+    }
+
+    #[test]
+    fn build_request_form_urlencoded_special_chars() {
+        let mut view = make_view("https://example.com/login", "POST");
+        view.body_type = BodyType::FormUrlencoded;
+        view.form_entries = vec![MultipartEntry {
+            id: 0,
+            name: "email".to_string(),
+            value: "a@b.com".to_string(),
+            is_file: false,
+        }];
+        let req = build(&view);
+        let body = req.body.unwrap();
+        assert!(body.contains("email=a%40b.com"));
+    }
+
+    #[test]
+    fn build_request_form_urlencoded_empty_filtered() {
+        let mut view = make_view("https://example.com/login", "POST");
+        view.body_type = BodyType::FormUrlencoded;
+        view.form_entries = vec![
+            MultipartEntry {
+                id: 0,
+                name: String::new(),
+                value: "val".to_string(),
+                is_file: false,
+            },
+            MultipartEntry {
+                id: 1,
+                name: "good".to_string(),
+                value: "yes".to_string(),
+                is_file: false,
+            },
+        ];
+        let req = build(&view);
+        let body = req.body.unwrap();
+        assert!(!body.contains("val"));
+        assert!(body.contains("good=yes"));
+    }
+
+    #[test]
+    fn build_request_form_urlencoded_no_body_when_empty() {
+        let mut view = make_view("https://example.com/api", "POST");
+        view.body_type = BodyType::FormUrlencoded;
+        view.form_entries = vec![];
+        let req = build(&view);
+        assert!(req.body.is_none());
+        assert!(!req
+            .headers
+            .iter()
+            .any(|(k, _)| k == "Content-Type"));
+    }
 }

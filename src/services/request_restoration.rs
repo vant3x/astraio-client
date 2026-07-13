@@ -3,7 +3,7 @@ use crate::persistence::database::{
     CollectionAuthType, CollectionBodyType, CollectionRequest, RequestHistoryEntry,
 };
 use crate::ui::components::key_value_editor::KeyValueEntry;
-use crate::ui::views::http_request_view::{BodyType, HttpRequestView};
+use crate::ui::views::http_request_view::{BodyType, HttpRequestView, MultipartEntry};
 
 pub fn build_view_from_history(entry: &RequestHistoryEntry) -> Option<HttpRequestView> {
     let mut view = HttpRequestView::default();
@@ -36,6 +36,8 @@ pub fn build_view_from_collection_request(req: &CollectionRequest) -> HttpReques
 
     if req.body_type == CollectionBodyType::Multipart {
         view.body_type = BodyType::Multipart;
+    } else if req.body_type == CollectionBodyType::FormUrlencoded {
+        view.body_type = BodyType::FormUrlencoded;
     }
 
     view.headers_editor.entries = req
@@ -193,6 +195,35 @@ fn apply_request_to_view(view: &mut HttpRequestView, request: &HttpRequest) {
     if !request.multipart_fields.is_empty() {
         view.body_type = BodyType::Multipart;
         view.restore_multipart(&request.multipart_fields);
+    }
+
+    let is_form_urlencoded = request
+        .headers
+        .iter()
+        .any(|(k, v)| {
+            k.eq_ignore_ascii_case("content-type")
+                && v.to_lowercase().contains("application/x-www-form-urlencoded")
+        });
+    if is_form_urlencoded {
+        view.body_type = BodyType::FormUrlencoded;
+        if let Some(body) = &request.body {
+            let parsed: Vec<(String, String)> = url::form_urlencoded::parse(body.as_bytes())
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect();
+            if !parsed.is_empty() {
+                view.form_entries = parsed
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, (k, v))| MultipartEntry {
+                        id: i,
+                        name: k,
+                        value: v,
+                        is_file: false,
+                    })
+                    .collect();
+                view.form_next_id = view.form_entries.len();
+            }
+        }
     }
 }
 

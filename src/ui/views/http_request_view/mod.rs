@@ -57,10 +57,11 @@ pub enum BodyType {
     #[default]
     Text,
     Multipart,
+    FormUrlencoded,
 }
 
 impl BodyType {
-    pub const ALL: [BodyType; 2] = [BodyType::Text, BodyType::Multipart];
+    pub const ALL: [BodyType; 3] = [BodyType::Text, BodyType::Multipart, BodyType::FormUrlencoded];
 }
 
 impl std::fmt::Display for BodyType {
@@ -68,6 +69,7 @@ impl std::fmt::Display for BodyType {
         match self {
             BodyType::Text => write!(f, "Text"),
             BodyType::Multipart => write!(f, "Multipart/Form-Data"),
+            BodyType::FormUrlencoded => write!(f, "Form URL-Encoded"),
         }
     }
 }
@@ -131,6 +133,10 @@ pub enum Message {
     RemoveMultipartEntry(usize),
     MultipartFilePicked(usize, Option<String>),
     MultipartBrowseFile(usize),
+    FormNameChanged(usize, String),
+    FormValueChanged(usize, String),
+    AddFormEntry,
+    RemoveFormEntry(usize),
     RetryCountChanged(String),
     RetryBackoffChanged(String),
     ProxyUrlChanged(String),
@@ -222,6 +228,8 @@ pub struct HttpRequestView {
     pub body_type: BodyType,
     pub multipart_entries: Vec<MultipartEntry>,
     pub(crate) multipart_next_id: usize,
+    pub form_entries: Vec<MultipartEntry>,
+    pub(crate) form_next_id: usize,
     pub highlighter_theme: highlighter::Theme,
     pub show_snippets: bool,
     pub snippet_format: SnippetFormat,
@@ -267,6 +275,8 @@ impl Clone for HttpRequestView {
             body_type: self.body_type,
             multipart_entries: self.multipart_entries.clone(),
             multipart_next_id: self.multipart_next_id,
+            form_entries: self.form_entries.clone(),
+            form_next_id: self.form_next_id,
             highlighter_theme: self.highlighter_theme,
             show_snippets: self.show_snippets,
             snippet_format: self.snippet_format,
@@ -321,6 +331,13 @@ impl Default for HttpRequestView {
                 is_file: false,
             }],
             multipart_next_id: 1,
+            form_entries: vec![MultipartEntry {
+                id: 0,
+                name: String::new(),
+                value: String::new(),
+                is_file: false,
+            }],
+            form_next_id: 1,
             highlighter_theme: highlighter::Theme::SolarizedDark,
             show_snippets: false,
             snippet_format: SnippetFormat::Curl,
@@ -674,6 +691,28 @@ impl HttpRequestView {
             }
             Message::RemoveMultipartEntry(id) => {
                 self.multipart_entries.retain(|e| e.id != id);
+            }
+            Message::FormNameChanged(id, name) => {
+                if let Some(entry) = self.form_entries.iter_mut().find(|e| e.id == id) {
+                    entry.name = name;
+                }
+            }
+            Message::FormValueChanged(id, value) => {
+                if let Some(entry) = self.form_entries.iter_mut().find(|e| e.id == id) {
+                    entry.value = value;
+                }
+            }
+            Message::AddFormEntry => {
+                self.form_entries.push(MultipartEntry {
+                    id: self.form_next_id,
+                    name: String::new(),
+                    value: String::new(),
+                    is_file: false,
+                });
+                self.form_next_id += 1;
+            }
+            Message::RemoveFormEntry(id) => {
+                self.form_entries.retain(|e| e.id != id);
             }
             Message::ShowSnippets => {
                 self.show_snippets = true;
