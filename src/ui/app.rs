@@ -167,6 +167,7 @@ pub(crate) struct AstraNovaApp {
     pub(crate) ws_shutdown: Option<mpsc::UnboundedSender<()>>,
     pub(crate) ws_write_handle: Option<Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>>,
     pub(crate) ws_read_handle: Option<Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>>,
+    pub(crate) ws_ping_handle: Option<Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>>,
     pub(crate) ws_connection_id: u64,
     pub(crate) toast_manager: ToastManager,
     pub(crate) dark_mode: bool,
@@ -203,6 +204,7 @@ pub enum Message {
         WsSender,
         Arc<Mutex<Option<mpsc::UnboundedReceiver<WsEvent>>>>,
         Option<mpsc::UnboundedSender<()>>,
+        Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
         Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
         Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
     ),
@@ -277,6 +279,11 @@ impl AstraNovaApp {
             Err(e) => log::warn!("Keyring migration skipped: {}", e),
         }
 
+        // Load theme preference from database
+        let dark_mode = crate::persistence::database::get_app_setting(&db_conn, "theme")
+            .map(|v| v != "light")
+            .unwrap_or(true);
+
         let app = Self {
             request_tabs: vec![HttpRequestView::default()],
             active_request_tab_index: 0,
@@ -304,9 +311,10 @@ impl AstraNovaApp {
             ws_shutdown: None,
             ws_write_handle: None,
             ws_read_handle: None,
+            ws_ping_handle: None,
             ws_connection_id: 0,
             toast_manager: ToastManager::new(),
-            dark_mode: true,
+            dark_mode,
             secret_store,
         };
         (app, Task::none())
@@ -418,6 +426,13 @@ impl AstraNovaApp {
             }
             Message::ToggleTheme => {
                 self.dark_mode = !self.dark_mode;
+                // Persist theme preference
+                let theme_value = if self.dark_mode { "dark" } else { "light" };
+                let _ = crate::persistence::database::set_app_setting(
+                    &self.db_conn,
+                    "theme",
+                    theme_value,
+                );
                 Task::none()
             }
             Message::CollectionMsg(msg) => super::handlers::collection::handle_message(self, msg),
@@ -439,7 +454,7 @@ impl AstraNovaApp {
             Message::WsEvent(event) => super::handlers::websocket::handle_ws_event(self, event),
             Message::WebSocketMsg(msg) => super::handlers::websocket::handle_message(self, msg),
             Message::GraphQLMsg(msg) => super::handlers::graphql::handle_message(self, msg),
-            Message::WsConnected(sender, receiver_arc, shutdown_tx, write_handle, read_handle) => {
+            Message::WsConnected(sender, receiver_arc, shutdown_tx, write_handle, read_handle, ping_handle) => {
                 super::handlers::websocket::handle_ws_connected(
                     self,
                     sender,
@@ -447,6 +462,7 @@ impl AstraNovaApp {
                     shutdown_tx,
                     write_handle,
                     read_handle,
+                    ping_handle,
                 );
                 Task::none()
             }
@@ -604,6 +620,16 @@ impl AstraNovaApp {
                         }
                         iced::keyboard::Key::Character(ref c) if c.as_ref() == "e" => {
                             Some(Message::ToggleEnvironmentManager)
+                        }
+                        iced::keyboard::Key::Character(ref c) if c.as_ref() == "Enter" => {
+                            if modifiers.shift() {
+                                Some(Message::WsSendFromKeyboard)
+                            } else {
+                                Some(Message::HttpRequestViewMsg(
+                                    0,
+                                    http_request_view::Message::SendRequest,
+                                ))
+                            }
                         }
                         _ => None,
                     }
@@ -805,7 +831,7 @@ impl AstraNovaApp {
                     }
                 };
 
-                let toast_overlay = self.toast_manager.view().map(|_| Message::NoOp);
+                let toast_overlay = self.toast_manager.view(&self.theme()).map(|_| Message::NoOp);
 
                 let content: Element<'_, Message> = if self.show_history {
                     let history_panel =

@@ -135,7 +135,10 @@ pub struct Schema {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TypeRef {
+    pub kind: Option<String>,
     pub name: Option<String>,
+    #[serde(rename = "ofType")]
+    pub of_type: Option<Box<TypeRef>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -428,8 +431,32 @@ pub fn parse_introspection_response(response: &IntrospectionResponse) -> Result<
 
 fn render_type_ref(type_ref: &TypeRef) -> String {
     match &type_ref.name {
-        Some(name) => name.clone(),
-        None => "Unknown".to_string(),
+        Some(name) => {
+            // Check if this is a wrapped type (NonNull, List)
+            if let Some(of_type) = &type_ref.of_type {
+                let inner = render_type_ref(of_type);
+                match type_ref.kind.as_deref() {
+                    Some("NON_NULL") => format!("{}!", inner),
+                    Some("LIST") => format!("[{}]", inner),
+                    _ => inner,
+                }
+            } else {
+                name.clone()
+            }
+        }
+        None => {
+            // No name means it's a wrapper type, recurse into ofType
+            if let Some(of_type) = &type_ref.of_type {
+                let inner = render_type_ref(of_type);
+                match type_ref.kind.as_deref() {
+                    Some("NON_NULL") => format!("{}!", inner),
+                    Some("LIST") => format!("[{}]", inner),
+                    _ => inner,
+                }
+            } else {
+                "Unknown".to_string()
+            }
+        }
     }
 }
 

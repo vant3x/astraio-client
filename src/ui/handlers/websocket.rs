@@ -230,6 +230,7 @@ fn handle_connect(app: &mut AstraNovaApp) -> Task<Message> {
                 conn.shutdown_tx,
                 Arc::new(Mutex::new(Some(conn.write_handle))),
                 Arc::new(Mutex::new(Some(conn.read_handle))),
+                Arc::new(Mutex::new(conn.ping_handle)),
             ),
             Err(e) => {
                 log::error!("WebSocket connection failed: {}", e);
@@ -244,6 +245,24 @@ fn handle_disconnect(app: &mut AstraNovaApp) -> Task<Message> {
     if let Some(shutdown) = app.ws_shutdown.take() {
         let _ = shutdown.send(());
     }
+    
+    // Abort all active handles to prevent memory leaks
+    if let Some(write_handle) = app.ws_write_handle.take() {
+        if let Some(handle) = write_handle.lock().ok().and_then(|mut h| h.take()) {
+            handle.abort();
+        }
+    }
+    if let Some(read_handle) = app.ws_read_handle.take() {
+        if let Some(handle) = read_handle.lock().ok().and_then(|mut h| h.take()) {
+            handle.abort();
+        }
+    }
+    if let Some(ping_handle) = app.ws_ping_handle.take() {
+        if let Some(handle) = ping_handle.lock().ok().and_then(|mut h| h.take()) {
+            handle.abort();
+        }
+    }
+    
     app.ws_sender = None;
     app.ws_receiver = None;
     app.websocket_view.status = WsStatus::Disconnected;
@@ -300,6 +319,7 @@ fn handle_disconnected(app: &mut AstraNovaApp, reason: String) -> Task<Message> 
                     conn.shutdown_tx,
                     Arc::new(Mutex::new(Some(conn.write_handle))),
                     Arc::new(Mutex::new(Some(conn.read_handle))),
+                    Arc::new(Mutex::new(conn.ping_handle)),
                 ),
                 Err(e) => {
                     log::error!("WebSocket reconnection failed: {}", e);
@@ -351,12 +371,31 @@ pub fn handle_ws_connected(
     shutdown_tx: Option<tokio::sync::mpsc::UnboundedSender<()>>,
     write_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
     read_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
+    ping_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
 ) {
+    // Abort existing handles before setting new ones to prevent memory leaks
+    if let Some(old_write) = app.ws_write_handle.take() {
+        if let Some(handle) = old_write.lock().ok().and_then(|mut h| h.take()) {
+            handle.abort();
+        }
+    }
+    if let Some(old_read) = app.ws_read_handle.take() {
+        if let Some(handle) = old_read.lock().ok().and_then(|mut h| h.take()) {
+            handle.abort();
+        }
+    }
+    if let Some(old_ping) = app.ws_ping_handle.take() {
+        if let Some(handle) = old_ping.lock().ok().and_then(|mut h| h.take()) {
+            handle.abort();
+        }
+    }
+
     app.ws_sender = Some(sender);
     app.ws_receiver = Some(receiver);
     app.ws_shutdown = shutdown_tx;
     app.ws_write_handle = Some(write_handle);
     app.ws_read_handle = Some(read_handle);
+    app.ws_ping_handle = Some(ping_handle);
     app.websocket_view.status = WsStatus::Connected;
     app.websocket_view.current_retries = 0;
     app.websocket_view.stats.connected_at = Some(std::time::Instant::now());

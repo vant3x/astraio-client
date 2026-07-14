@@ -138,21 +138,34 @@ impl ToastManager {
         self.toasts.retain(|t| !t.is_expired());
     }
 
-    pub fn view(&self) -> Element<'_, (), Theme, Renderer> {
+    pub fn view(&self, theme: &Theme) -> Element<'_, (), Theme, Renderer> {
         if self.toasts.is_empty() {
             return column![].into();
         }
 
         let mut toasts_column = column![].spacing(8);
 
+        let (text_color, bg_color) = match theme {
+            Theme::Dark => (
+                Color::from_rgb(0.9, 0.9, 0.9),
+                Color::from_rgb(0.15, 0.15, 0.15),
+            ),
+            Theme::Light => (
+                Color::from_rgb(0.1, 0.1, 0.1),
+                Color::from_rgb(0.95, 0.95, 0.95),
+            ),
+            _ => (
+                Color::from_rgb(0.9, 0.9, 0.9),
+                Color::from_rgb(0.15, 0.15, 0.15),
+            ),
+        };
+
         for toast in &self.toasts {
             let _opacity = toast.opacity();
 
             let icon_element = toast.toast_type.icon_element(16.0);
 
-            let message_text = text(&toast.message)
-                .size(13)
-                .color(Color::from_rgb(0.9, 0.9, 0.9));
+            let message_text = text(&toast.message).size(13).color(text_color);
 
             let toast_content = row![icon_element, message_text,]
                 .spacing(8)
@@ -163,7 +176,7 @@ impl ToastManager {
                     .padding(12)
                     .max_width(400)
                     .style(move |_theme| container::Style {
-                        background: Some(Color::from_rgb(0.15, 0.15, 0.15).into()),
+                        background: Some(bg_color.into()),
                         border: Border {
                             color: toast.toast_type.color(),
                             width: 1.0,
