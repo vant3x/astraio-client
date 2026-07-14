@@ -22,6 +22,34 @@ pub fn handle_http_request_msg(
                 temp_view.apply_environment(env);
             }
 
+            // Validate URL before sending
+            let url = temp_view.url_input.trim();
+            if url.is_empty() {
+                app.toast_manager.error("URL is required".to_string());
+                return Task::none();
+            }
+            if reqwest::Url::parse(url).is_err() {
+                app.toast_manager.error(format!("Invalid URL: {}", url));
+                return Task::none();
+            }
+
+            // Auto-detect JSON body if content type is not explicitly set
+            let body_text = temp_view.body_input.text();
+            if !body_text.trim().is_empty()
+                && temp_view.request_content_type
+                    == crate::ui::views::http_request_view::ContentType::Text
+            {
+                let trimmed = body_text.trim();
+                if (trimmed.starts_with('{') && trimmed.ends_with('}'))
+                    || (trimmed.starts_with('[') && trimmed.ends_with(']'))
+                {
+                    if serde_json::from_str::<serde_json::Value>(trimmed).is_ok() {
+                        temp_view.request_content_type =
+                            crate::ui::views::http_request_view::ContentType::Json;
+                    }
+                }
+            }
+
             let mut request = match temp_view.build_request() {
                 Ok(r) => r,
                 Err(e) => {

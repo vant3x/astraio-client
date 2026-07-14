@@ -416,6 +416,27 @@ impl HttpRequestView {
                         self.url_input = url;
                     }
                 } else {
+                    // Parse query params from URL and sync to params editor
+                    if let Ok(parsed_url) = reqwest::Url::parse(&url) {
+                        let params: Vec<(String, String)> = parsed_url
+                            .query_pairs()
+                            .map(|(k, v)| (k.to_string(), v.to_string()))
+                            .collect();
+                        if !params.is_empty() {
+                            self.params_editor.entries = params
+                                .into_iter()
+                                .enumerate()
+                                .map(|(i, (k, v))| {
+                                    crate::ui::components::key_value_editor::KeyValueEntry {
+                                        id: i,
+                                        key: k,
+                                        value: v,
+                                        secret: false,
+                                    }
+                                })
+                                .collect();
+                        }
+                    }
                     self.url_input = url;
                 }
             }
