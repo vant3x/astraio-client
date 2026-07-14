@@ -505,8 +505,7 @@ impl AstraNovaApp {
                         if let Some(sender) = &self.websocket_view.ws_sender {
                             let _ = sender.send(&input);
                             self.websocket_view
-                                .messages
-                                .push(crate::protocols::websocket::WsMessage::outgoing(input));
+                                .add_message(crate::protocols::websocket::WsMessage::outgoing(input));
                             self.websocket_view.input.clear();
                         }
                     }

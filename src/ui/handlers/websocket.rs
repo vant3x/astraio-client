@@ -45,8 +45,7 @@ pub fn handle_message(app: &mut AstraNovaApp, message: websocket_view::Message) 
                     app.websocket_view.stats.messages_sent += 1;
                     app.websocket_view.stats.bytes_sent += bytes;
                     app.websocket_view
-                        .messages
-                        .push(crate::protocols::websocket::WsMessage::outgoing(text));
+                        .add_message(crate::protocols::websocket::WsMessage::outgoing(text));
                     app.websocket_view.input.clear();
                 }
             }
@@ -70,8 +69,7 @@ pub fn handle_message(app: &mut AstraNovaApp, message: websocket_view::Message) 
                             .collect::<Vec<_>>()
                             .join(" ");
                         app.websocket_view
-                            .messages
-                            .push(crate::protocols::websocket::WsMessage {
+                            .add_message(crate::protocols::websocket::WsMessage {
                                 direction: ">".to_string(),
                                 message_type: crate::protocols::websocket::WsMessageType::Binary,
                                 data: hex_display,
@@ -89,9 +87,7 @@ pub fn handle_message(app: &mut AstraNovaApp, message: websocket_view::Message) 
                 let _ = sender.send_ping(ping_data);
                 app.websocket_view.stats.messages_sent += 1;
                 app.websocket_view
-                    .messages
-                    .push(crate::protocols::websocket::WsMessage::incoming(
-                        crate::protocols::websocket::WsMessageType::Ping,
+                    .add_message(crate::protocols::websocket::WsMessage::outgoing_ping(
                         "manual ping".to_string(),
                     ));
             }
@@ -106,11 +102,12 @@ pub fn handle_message(app: &mut AstraNovaApp, message: websocket_view::Message) 
                 };
                 let _ = sender.send_close(&close_reason);
                 app.websocket_view
-                    .messages
-                    .push(crate::protocols::websocket::WsMessage::incoming(
-                        crate::protocols::websocket::WsMessageType::Close,
-                        format!("Close sent: {}", close_reason),
-                    ));
+                    .add_message(crate::protocols::websocket::WsMessage {
+                        direction: ">".to_string(),
+                        message_type: crate::protocols::websocket::WsMessageType::Close,
+                        data: format!("Close sent: {}", close_reason),
+                        timestamp: crate::utils::timestamp_seconds(),
+                    });
             }
             let _ = handle_disconnect(app);
             Task::none()
@@ -188,7 +185,6 @@ pub fn handle_message(app: &mut AstraNovaApp, message: websocket_view::Message) 
             app.websocket_view.show_advanced = !app.websocket_view.show_advanced;
             Task::none()
         }
-        websocket_view::Message::ConnectedWithSender(_) => Task::none(),
     }
 }
 
@@ -348,7 +344,7 @@ pub fn handle_ws_event(
                 app.websocket_view.stats.messages_received += 1;
                 app.websocket_view.stats.bytes_received += byte_len;
             }
-            app.websocket_view.messages.push(msg);
+            app.websocket_view.add_message(msg);
             Task::none()
         }
         crate::protocols::websocket::WsEvent::Disconnected(reason) => {

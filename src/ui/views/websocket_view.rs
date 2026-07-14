@@ -16,7 +16,6 @@ pub enum Message {
     AddHeader,
     RemoveHeader(usize),
     Connect,
-    ConnectedWithSender(WsSender),
     Disconnect,
     Disconnected(String),
     SendMessage(String),
@@ -86,6 +85,7 @@ pub struct WebSocketView {
     pub stats: WsStats,
     pub show_tls: bool,
     pub show_advanced: bool,
+    pub max_messages: usize,
 }
 
 impl Clone for WebSocketView {
@@ -112,6 +112,7 @@ impl Clone for WebSocketView {
             stats: self.stats.clone(),
             show_tls: self.show_tls,
             show_advanced: self.show_advanced,
+            max_messages: self.max_messages,
         }
     }
 }
@@ -140,6 +141,7 @@ impl Default for WebSocketView {
             stats: WsStats::default(),
             show_tls: false,
             show_advanced: false,
+            max_messages: 10000,
         }
     }
 }
@@ -147,6 +149,14 @@ impl Default for WebSocketView {
 impl WebSocketView {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn add_message(&mut self, msg: WsMessage) {
+        self.messages.push(msg);
+        if self.messages.len() > self.max_messages {
+            let excess = self.messages.len() - self.max_messages;
+            self.messages.drain(..excess);
+        }
     }
 
     pub fn view(&self) -> Element<'_, Message, Theme, Renderer> {

@@ -58,6 +58,15 @@ impl WsMessage {
         }
     }
 
+    pub fn outgoing_ping(data: String) -> Self {
+        Self {
+            direction: ">".to_string(),
+            message_type: WsMessageType::Ping,
+            data,
+            timestamp: crate::utils::timestamp_seconds(),
+        }
+    }
+
     pub fn formatted_data(&self) -> String {
         match self.message_type {
             WsMessageType::Text => {
@@ -256,20 +265,6 @@ pub struct WsConnection {
     pub ping_handle: Option<JoinHandle<()>>,
 }
 
-impl WsConnection {
-    #[allow(dead_code)]
-    pub fn shutdown(&mut self) {
-        if let Some(tx) = self.shutdown_tx.take() {
-            let _ = tx.send(());
-        }
-        self.write_handle.abort();
-        self.read_handle.abort();
-        if let Some(h) = self.ping_handle.take() {
-            h.abort();
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub enum WsEvent {
     Message(WsMessage),
@@ -430,8 +425,7 @@ pub async fn connect_ws(request: &WsRequest) -> Result<WsConnection, AppError> {
                 tokio::select! {
                     _ = tokio::time::sleep(ping_interval) => {
                         let ping_data = b"ping".to_vec();
-                        if ping_tx.send(WsEvent::Message(WsMessage::incoming(
-                            WsMessageType::Ping,
+                        if ping_tx.send(WsEvent::Message(WsMessage::outgoing_ping(
                             "auto-ping".to_string(),
                         ))).is_err() {
                             break;
