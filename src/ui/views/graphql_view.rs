@@ -92,6 +92,7 @@ pub enum Message {
     SavedToCollection(Result<(), crate::error::AppError>),
     ToggleSaveMenu,
     AutocompleteSelected(String),
+    TimeoutChanged(String),
 }
 
 #[derive(Debug)]
@@ -584,15 +585,27 @@ impl GraphQLView {
                 self.query_input = text_editor::Content::with_text(&new_query);
                 self.autocomplete_suggestions.clear();
             }
+            Message::TimeoutChanged(secs) => {
+                if let Ok(s) = secs.parse::<u64>() {
+                    self.request_config.timeout = std::time::Duration::from_secs(s);
+                }
+            }
         }
     }
 
     pub fn view(&self) -> Element<'_, Message, Theme, Renderer> {
+        let timeout_value = self.request_config.timeout.as_secs().to_string();
+        let timeout_input = iced::widget::text_input("Timeout", &timeout_value)
+            .on_input(Message::TimeoutChanged)
+            .width(Length::Fixed(60.0))
+            .padding(5);
+
         let url_bar = row![
             text("POST").size(14).color(method_color("POST")),
             text_input("GraphQL endpoint URL", &self.url_input)
                 .on_input(Message::UrlInputChanged)
                 .padding(10),
+            timeout_input,
             button(row![lucide::send().size(14), text(" Send")].spacing(4))
                 .on_press(Message::SendRequest),
             button(row![lucide::database().size(14), text(" Introspect")].spacing(4))
@@ -797,7 +810,7 @@ impl GraphQLView {
                     })
                     .push(
                         ResponseTab::Headers,
-                        TabLabel::Text("Data".to_string()),
+                        TabLabel::Text("Headers".to_string()),
                         self.create_response_data_view(),
                     )
                     .set_active_tab(&self.active_response_tab)
