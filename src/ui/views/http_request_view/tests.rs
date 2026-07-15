@@ -662,9 +662,6 @@ mod tests {
         view.form_entries = vec![];
         let req = build(&view);
         assert!(req.body.is_none());
-        assert!(!req
-            .headers
-            .iter()
-            .any(|(k, _)| k == "Content-Type"));
+        assert!(!req.headers.iter().any(|(k, _)| k == "Content-Type"));
     }
 }

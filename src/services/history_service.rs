@@ -57,7 +57,12 @@ pub fn search(
     method_filter: &str,
     limit: usize,
 ) -> Result<Vec<RequestHistoryEntry>, AppError> {
-    Ok(database::search_request_history(conn, query, method_filter, limit)?)
+    Ok(database::search_request_history(
+        conn,
+        query,
+        method_filter,
+        limit,
+    )?)
 }
 
 pub fn clear(conn: &Connection) -> Result<(), AppError> {

@@ -137,11 +137,7 @@ impl HistoryView {
             }
             Message::ExportHistory => None,
             Message::ViewResponse(entry_id) => {
-                self.viewing_response = self
-                    .entries
-                    .iter()
-                    .find(|e| e.id == entry_id)
-                    .cloned();
+                self.viewing_response = self.entries.iter().find(|e| e.id == entry_id).cloned();
                 None
             }
             Message::CloseResponse => {
@@ -187,14 +183,20 @@ impl HistoryView {
                     for (k, v) in headers {
                         headers_col = headers_col.push(
                             row![
-                                text(format!("{}:", k)).size(11).color(Color::from_rgb(0.5, 0.7, 0.9)),
+                                text(format!("{}:", k))
+                                    .size(11)
+                                    .color(Color::from_rgb(0.5, 0.7, 0.9)),
                                 text(v).size(11),
                             ]
                             .spacing(4),
                         );
                     }
                     response_content = response_content
-                        .push(text("Headers").size(12).color(Color::from_rgb(0.6, 0.6, 0.6)))
+                        .push(
+                            text("Headers")
+                                .size(12)
+                                .color(Color::from_rgb(0.6, 0.6, 0.6)),
+                        )
                         .push(
                             container(scrollable(headers_col).height(Length::Fixed(120.0)))
                                 .padding(6)
@@ -232,7 +234,9 @@ impl HistoryView {
             }
         } else {
             response_content = response_content.push(
-                text("No response data stored").size(12).color(Color::from_rgb(0.5, 0.5, 0.5)),
+                text("No response data stored")
+                    .size(12)
+                    .color(Color::from_rgb(0.5, 0.5, 0.5)),
             );
         }
 
@@ -246,12 +250,13 @@ impl HistoryView {
     pub fn view(&self) -> Element<'_, Message, Theme, Renderer> {
         let clear_button: Element<'_, Message, Theme, Renderer> = if self.pending_clear_history {
             row![
-                text("Clear all?").size(12).color(Color::from_rgb(0.9, 0.3, 0.3)),
+                text("Clear all?")
+                    .size(12)
+                    .color(Color::from_rgb(0.9, 0.3, 0.3)),
                 button(text("Yes").size(11))
                     .padding([2, 8])
                     .on_press(Message::ConfirmClearHistory),
-                button(lucide::x().size(10))
-                    .on_press(Message::CancelClearHistory),
+                button(lucide::x().size(10)).on_press(Message::CancelClearHistory),
             ]
             .spacing(4)
             .align_y(Alignment::Center)
@@ -401,10 +406,9 @@ impl HistoryView {
             .spacing(8)
             .align_y(Alignment::Center);
 
-            let entry_button: Element<'_, Message, Theme, Renderer> =
-                button(entry_row)
-                    .on_press(Message::ResendEntry(entry.id))
-                    .into();
+            let entry_button: Element<'_, Message, Theme, Renderer> = button(entry_row)
+                .on_press(Message::ResendEntry(entry.id))
+                .into();
 
             let view_btn: Element<'_, Message, Theme, Renderer> = button(lucide::eye().size(12))
                 .on_press(Message::ViewResponse(entry.id))
@@ -417,8 +421,7 @@ impl HistoryView {
                         button(text("Yes").size(10))
                             .padding([2, 6])
                             .on_press(Message::ConfirmDeleteEntry(entry.id)),
-                        button(lucide::x().size(10))
-                            .on_press(Message::CancelDeleteEntry),
+                        button(lucide::x().size(10)).on_press(Message::CancelDeleteEntry),
                     ]
                     .spacing(2)
                     .align_y(Alignment::Center)

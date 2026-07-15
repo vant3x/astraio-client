@@ -1,9 +1,34 @@
 use crate::http_client::client;
+use crate::http_client::config::RequestConfig;
 use crate::protocols::scripts::{ScriptContext, ScriptEngine};
 use crate::ui::app::{AstraNovaApp, Message};
 use crate::ui::views::http_request_view;
 use iced::Task;
 use std::sync::Arc;
+
+pub(crate) fn build_client_cache_key(config: &RequestConfig) -> String {
+    let proxy_part = match (&config.proxy_url, &config.proxy) {
+        (Some(url), _) => url.clone(),
+        (None, Some(proxy)) => {
+            let user = proxy
+                .auth
+                .as_ref()
+                .map(|a| a.username.as_str())
+                .unwrap_or("");
+            format!("{}:{}", proxy.url, user)
+        }
+        (None, None) => String::new(),
+    };
+    format!(
+        "{}|{}|{}|{}|{}|{}",
+        proxy_part,
+        config.tls.verify_ssl,
+        config.tls.ca_cert_path.as_deref().unwrap_or(""),
+        config.tls.client_cert_path.as_deref().unwrap_or(""),
+        config.tls.client_key_path.as_deref().unwrap_or(""),
+        config.timeout.as_millis(),
+    )
+}
 
 pub fn handle_http_request_msg(
     app: &mut AstraNovaApp,
@@ -40,13 +65,12 @@ pub fn handle_http_request_msg(
                     == crate::ui::views::http_request_view::ContentType::Text
             {
                 let trimmed = body_text.trim();
-                if (trimmed.starts_with('{') && trimmed.ends_with('}'))
-                    || (trimmed.starts_with('[') && trimmed.ends_with(']'))
+                if ((trimmed.starts_with('{') && trimmed.ends_with('}'))
+                    || (trimmed.starts_with('[') && trimmed.ends_with(']')))
+                    && serde_json::from_str::<serde_json::Value>(trimmed).is_ok()
                 {
-                    if serde_json::from_str::<serde_json::Value>(trimmed).is_ok() {
-                        temp_view.request_content_type =
-                            crate::ui::views::http_request_view::ContentType::Json;
-                    }
+                    temp_view.request_content_type =
+                        crate::ui::views::http_request_view::ContentType::Json;
                 }
             }
 
@@ -62,17 +86,17 @@ pub fn handle_http_request_msg(
             let mut script_context = ScriptContext::new();
             if let Some(env) = &app.active_environment {
                 for (key, value) in &env.variables {
-                    script_context
-                        .variables
-                        .insert(key.clone(), value.clone());
+                    script_context.variables.insert(key.clone(), value.clone());
                 }
             }
 
             let pre_request_script = temp_view.scripts.pre_request.clone();
             if !pre_request_script.actions.is_empty() {
-                if let Err(e) =
-                    ScriptEngine::execute_pre_request(&pre_request_script, &mut request, &mut script_context)
-                {
+                if let Err(e) = ScriptEngine::execute_pre_request(
+                    &pre_request_script,
+                    &mut request,
+                    &mut script_context,
+                ) {
                     app.toast_manager
                         .error(format!("Pre-request script error: {}", e));
                     return Task::none();
@@ -88,12 +112,14 @@ pub fn handle_http_request_msg(
             view.pending_request_data = serde_json::to_string(&request).ok();
             view.update(http_request_view::Message::SetLoading);
 
-            let http_client = if request.config.proxy_url.is_some() || !request.config.tls.verify_ssl {
-                let cache_key = format!(
-                    "{}|{}",
-                    request.config.proxy_url.as_deref().unwrap_or(""),
-                    request.config.tls.verify_ssl
-                );
+            let needs_custom_client = request.config.proxy_url.is_some()
+                || request.config.proxy.is_some()
+                || !request.config.tls.verify_ssl
+                || request.config.tls.ca_cert_path.is_some()
+                || request.config.tls.client_cert_path.is_some();
+
+            let http_client = if needs_custom_client {
+                let cache_key = build_client_cache_key(&request.config);
                 if let Some(cached) = app.custom_clients.get(&cache_key) {
                     Arc::clone(cached)
                 } else {
@@ -126,15 +152,18 @@ pub fn handle_http_request_msg(
                                 &resp,
                                 &mut post_ctx,
                             ) {
-                                return Err(crate::error::AppError::Validation(
-                                    format!("Post-response script error: {}", e),
-                                ));
+                                return Err(crate::error::AppError::Validation(format!(
+                                    "Post-response script error: {}",
+                                    e
+                                )));
                             }
                             for log in &post_ctx.logs {
                                 log::info!("[Post-response] {}", log);
                             }
                             resp.url = request_url;
-                            resp.method = request_method.parse().unwrap_or(crate::http_client::request::HttpMethod::Get);
+                            resp.method = request_method
+                                .parse()
+                                .unwrap_or(crate::http_client::request::HttpMethod::Get);
                             Ok(resp)
                         }
                         Err(e) => Err(e),
@@ -173,7 +202,8 @@ pub fn handle_http_request_msg(
                         crate::persistence::database::DEFAULT_HISTORY_LIMIT,
                     );
                     app.history_view.entries =
-                        crate::services::history_service::get_all(&app.db_conn, 200).unwrap_or_default();
+                        crate::services::history_service::get_all(&app.db_conn, 200)
+                            .unwrap_or_default();
 
                     if response.status >= 400 {
                         app.toast_manager
@@ -297,10 +327,12 @@ pub fn handle_http_request_msg(
                         response.body.into_bytes()
                     };
 
-                    std::fs::write(file_handle.path(), &bytes)
+                    let path = file_handle.path().to_path_buf();
+                    tokio::fs::write(&path, &bytes)
+                        .await
                         .map_err(|e| format!("Write error: {}", e))?;
 
-                    Ok(file_handle.path().to_string_lossy().to_string())
+                    Ok(path.to_string_lossy().to_string())
                 },
                 move |result| {
                     Message::HttpRequestViewMsg(
@@ -341,14 +373,15 @@ pub fn handle_http_request_msg(
             match view.parse_scripts_from_editors() {
                 Ok(_scripts) => {
                     app.toast_manager.success("Scripts saved".to_string());
-                    Task::perform(
-                        async move { Ok::<(), String>(()) },
-                        move |_| Message::HttpRequestViewMsg(index, http_request_view::Message::ScriptsSaved(Ok(()))),
-                    )
+                    Task::perform(async move { Ok::<(), String>(()) }, move |_| {
+                        Message::HttpRequestViewMsg(
+                            index,
+                            http_request_view::Message::ScriptsSaved(Ok(())),
+                        )
+                    })
                 }
                 Err(e) => {
-                    app.toast_manager
-                        .error(format!("Invalid scripts: {}", e));
+                    app.toast_manager.error(format!("Invalid scripts: {}", e));
                     Task::none()
                 }
             }
@@ -358,10 +391,9 @@ pub fn handle_http_request_msg(
             if let Some(view) = app.request_tabs.get_mut(index) {
                 view.update(http_request_view::Message::ClearKeychainSecrets);
             }
-            Task::perform(
-                async { Ok::<(), crate::error::AppError>(()) },
-                |_| Message::ClearKeychainSecrets,
-            )
+            Task::perform(async { Ok::<(), crate::error::AppError>(()) }, |_| {
+                Message::ClearKeychainSecrets
+            })
         }
         other => {
             if let Some(view) = app.request_tabs.get_mut(index) {

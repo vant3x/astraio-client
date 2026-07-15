@@ -86,10 +86,11 @@ pub fn handle_message(app: &mut AstraNovaApp, message: websocket_view::Message) 
                 let ping_data = b"ping".to_vec();
                 let _ = sender.send_ping(ping_data);
                 app.websocket_view.stats.messages_sent += 1;
-                app.websocket_view
-                    .add_message(crate::protocols::websocket::WsMessage::outgoing_ping(
+                app.websocket_view.add_message(
+                    crate::protocols::websocket::WsMessage::outgoing_ping(
                         "manual ping".to_string(),
-                    ));
+                    ),
+                );
             }
             Task::none()
         }
@@ -241,7 +242,7 @@ fn handle_disconnect(app: &mut AstraNovaApp) -> Task<Message> {
     if let Some(shutdown) = app.ws_shutdown.take() {
         let _ = shutdown.send(());
     }
-    
+
     // Abort all active handles to prevent memory leaks
     if let Some(write_handle) = app.ws_write_handle.take() {
         if let Some(handle) = write_handle.lock().ok().and_then(|mut h| h.take()) {
@@ -258,7 +259,7 @@ fn handle_disconnect(app: &mut AstraNovaApp) -> Task<Message> {
             handle.abort();
         }
     }
-    
+
     app.ws_sender = None;
     app.ws_receiver = None;
     app.websocket_view.status = WsStatus::Disconnected;
@@ -270,6 +271,48 @@ fn handle_disconnected(app: &mut AstraNovaApp, reason: String) -> Task<Message> 
     if reason == "cleared" {
         app.websocket_view.messages.clear();
         return Task::none();
+    }
+
+    if !app.websocket_view.messages.is_empty() {
+        let url = app.websocket_view.url.clone();
+        let messages = app.websocket_view.messages.clone();
+        let duration_ms = app
+            .websocket_view
+            .stats
+            .connected_at
+            .map(|t| t.elapsed().as_millis() as u64);
+
+        let request_data = serde_json::to_string(&serde_json::json!({
+            "url": url,
+            "headers": app.websocket_view.headers,
+            "subprotocol": app.websocket_view.subprotocol,
+            "config": app.websocket_view.config,
+        }))
+        .ok();
+
+        let response_data = serde_json::to_string(&messages).ok();
+
+        let connected = if app.websocket_view.status.is_connected() {
+            1
+        } else {
+            0
+        };
+
+        let _ = crate::services::history_service::save_raw(
+            &app.db_conn,
+            "WS",
+            &url,
+            Some(connected),
+            duration_ms,
+            request_data.as_deref(),
+            response_data.as_deref(),
+        );
+        let _ = crate::services::history_service::trim(
+            &app.db_conn,
+            crate::persistence::database::DEFAULT_HISTORY_LIMIT,
+        );
+        app.history_view.entries =
+            crate::services::history_service::get_all(&app.db_conn, 200).unwrap_or_default();
     }
 
     app.ws_sender = None;
@@ -352,7 +395,34 @@ pub fn handle_ws_event(
         }
         crate::protocols::websocket::WsEvent::Error(e) => {
             log::error!("WebSocket error: {}", e);
-            app.websocket_view.status = WsStatus::Error(e);
+            app.websocket_view.status = WsStatus::Error(e.clone());
+
+            if app.websocket_view.auto_reconnect
+                && app.websocket_view.current_retries < app.websocket_view.max_retries
+            {
+                if let Some(shutdown) = app.ws_shutdown.take() {
+                    let _ = shutdown.send(());
+                }
+                if let Some(h) = app.ws_write_handle.take() {
+                    if let Some(handle) = h.lock().ok().and_then(|mut h| h.take()) {
+                        handle.abort();
+                    }
+                }
+                if let Some(h) = app.ws_read_handle.take() {
+                    if let Some(handle) = h.lock().ok().and_then(|mut h| h.take()) {
+                        handle.abort();
+                    }
+                }
+                if let Some(h) = app.ws_ping_handle.take() {
+                    if let Some(handle) = h.lock().ok().and_then(|mut h| h.take()) {
+                        handle.abort();
+                    }
+                }
+                app.ws_sender = None;
+                app.ws_receiver = None;
+                return handle_disconnected(app, e);
+            }
+
             Task::none()
         }
     }

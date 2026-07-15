@@ -322,9 +322,11 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: collection_view::Message) -> 
         collection_view::Message::ExportCollection(idx) => {
             if let Some(col) = app.collection_view.collections.get(idx) {
                 let folders =
-                    crate::services::collection_service::get_folders(&app.db_conn, col.id).unwrap_or_default();
+                    crate::services::collection_service::get_folders(&app.db_conn, col.id)
+                        .unwrap_or_default();
                 let requests =
-                    crate::services::collection_service::get_requests(&app.db_conn, col.id, None).unwrap_or_default();
+                    crate::services::collection_service::get_requests(&app.db_conn, col.id, None)
+                        .unwrap_or_default();
                 match crate::export::postman::export_collection(col, &folders, &requests) {
                     Ok(json) => {
                         let col_name = col.name.clone();
@@ -434,6 +436,58 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: collection_view::Message) -> 
         collection_view::Message::SaveCurrentRequest => {
             save_current_to_collection(app);
         }
+        collection_view::Message::MoveRequestUp(req_id) => {
+            if let Some(req) = app.collection_view.requests.iter().find(|r| r.id == req_id) {
+                let req = req.clone();
+                match crate::services::collection_service::move_up(&app.db_conn, &req) {
+                    Ok(()) => {
+                        refresh_collection_data(app, req.collection_id);
+                    }
+                    Err(e) => log::error!("Error moving request up: {}", e),
+                }
+            }
+        }
+        collection_view::Message::MoveRequestDown(req_id) => {
+            if let Some(req) = app.collection_view.requests.iter().find(|r| r.id == req_id) {
+                let req = req.clone();
+                match crate::services::collection_service::move_down(&app.db_conn, &req) {
+                    Ok(()) => {
+                        refresh_collection_data(app, req.collection_id);
+                    }
+                    Err(e) => log::error!("Error moving request down: {}", e),
+                }
+            }
+        }
+        collection_view::Message::StartMoveToFolder(_req_id) => {
+            app.collection_view.update(msg.clone());
+            return Task::none();
+        }
+        collection_view::Message::MoveToFolder(req_id, target_folder_id) => {
+            match crate::services::collection_service::move_to_folder(
+                &app.db_conn,
+                req_id,
+                target_folder_id,
+            ) {
+                Ok(()) => {
+                    if let Some(req) = app.collection_view.requests.iter().find(|r| r.id == req_id)
+                    {
+                        let col_id = req.collection_id;
+                        app.collection_view.update(msg.clone());
+                        refresh_collection_data(app, col_id);
+                        return Task::none();
+                    }
+                    app.collection_view.update(msg.clone());
+                }
+                Err(e) => {
+                    log::error!("Error moving request to folder: {}", e);
+                    app.collection_view.update(msg.clone());
+                }
+            }
+        }
+        collection_view::Message::CancelMoveToFolder => {
+            app.collection_view.update(msg.clone());
+            return Task::none();
+        }
         _ => {}
     }
     app.collection_view.update(msg);
@@ -441,10 +495,12 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: collection_view::Message) -> 
 }
 
 fn refresh_collection_data(app: &mut AstraNovaApp, col_id: i32) {
-    let folders = crate::services::collection_service::get_folders(&app.db_conn, col_id).unwrap_or_default();
+    let folders =
+        crate::services::collection_service::get_folders(&app.db_conn, col_id).unwrap_or_default();
     app.collection_view
         .sync_folders_for_collection(col_id, &folders);
-    let reqs = crate::services::collection_service::get_requests(&app.db_conn, col_id, None).unwrap_or_default();
+    let reqs = crate::services::collection_service::get_requests(&app.db_conn, col_id, None)
+        .unwrap_or_default();
     app.collection_view
         .sync_requests_for_collection(col_id, &reqs);
 }

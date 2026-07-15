@@ -120,6 +120,12 @@ pub enum WsStatus {
     Error(String),
 }
 
+impl WsStatus {
+    pub fn is_connected(&self) -> bool {
+        matches!(self, WsStatus::Connected)
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct WsTlsConfig {
     pub skip_verify: bool,
@@ -282,13 +288,12 @@ fn build_tls_connector(config: &WsTlsConfig) -> Result<Connector, AppError> {
         builder.add_root_certificate(cert);
     }
 
-    if let (Some(ref cert_pem), Some(ref key_pem)) = (&config.client_cert_pem, &config.client_key_pem)
+    if let (Some(ref cert_pem), Some(ref key_pem)) =
+        (&config.client_cert_pem, &config.client_key_pem)
     {
         let combined = format!("{}\n{}", cert_pem, key_pem);
         let identity = native_tls::Identity::from_pkcs8(combined.as_bytes(), combined.as_bytes())
-            .or_else(|_| {
-                native_tls::Identity::from_pkcs8(cert_pem.as_bytes(), key_pem.as_bytes())
-            })
+            .or_else(|_| native_tls::Identity::from_pkcs8(cert_pem.as_bytes(), key_pem.as_bytes()))
             .map_err(|e| AppError::WebSocket(format!("Invalid client certificate: {}", e)))?;
         builder.identity(identity);
     }
@@ -344,15 +349,14 @@ pub async fn connect_ws(request: &WsRequest) -> Result<WsConnection, AppError> {
         }
     };
 
-    let (ws_stream, _response) =
-        tokio::time::timeout(connect_timeout, connect_future)
-            .await
-            .map_err(|_| {
-                AppError::WebSocket(format!(
-                    "Connection timed out after {}ms",
-                    request.config.connect_timeout_ms
-                ))
-            })??;
+    let (ws_stream, _response) = tokio::time::timeout(connect_timeout, connect_future)
+        .await
+        .map_err(|_| {
+            AppError::WebSocket(format!(
+                "Connection timed out after {}ms",
+                request.config.connect_timeout_ms
+            ))
+        })??;
 
     let (mut write, mut read) = ws_stream.split();
 

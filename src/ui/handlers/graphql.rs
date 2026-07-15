@@ -15,14 +15,29 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: graphql_view::Message) -> Tas
                     let http_request = temp_view.build_http_request();
                     app.graphql_view.update(graphql_view::Message::SetLoading);
 
-                    let http_client = if http_request.config.proxy_url.is_some()
+                    let needs_custom_client = http_request.config.proxy_url.is_some()
+                        || http_request.config.proxy.is_some()
                         || !http_request.config.tls.verify_ssl
-                    {
-                        match crate::http_client::client::build_client(&http_request.config) {
-                            Ok(c) => std::sync::Arc::new(c),
-                            Err(e) => {
-                                log::error!("Failed to build custom client: {}", e);
-                                std::sync::Arc::clone(&app.http_client)
+                        || http_request.config.tls.ca_cert_path.is_some()
+                        || http_request.config.tls.client_cert_path.is_some();
+
+                    let http_client = if needs_custom_client {
+                        let cache_key =
+                            super::http_request::build_client_cache_key(&http_request.config);
+                        if let Some(cached) = app.custom_clients.get(&cache_key) {
+                            std::sync::Arc::clone(cached)
+                        } else {
+                            match crate::http_client::client::build_client(&http_request.config) {
+                                Ok(c) => {
+                                    let c = std::sync::Arc::new(c);
+                                    app.custom_clients
+                                        .insert(cache_key, std::sync::Arc::clone(&c));
+                                    c
+                                }
+                                Err(e) => {
+                                    log::error!("Failed to build custom client: {}", e);
+                                    std::sync::Arc::clone(&app.http_client)
+                                }
                             }
                         }
                     } else {
@@ -84,14 +99,28 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: graphql_view::Message) -> Tas
             }
             let http_request = temp_view.build_introspection_request();
 
-            let http_client = if http_request.config.proxy_url.is_some()
+            let needs_custom_client = http_request.config.proxy_url.is_some()
+                || http_request.config.proxy.is_some()
                 || !http_request.config.tls.verify_ssl
-            {
-                match crate::http_client::client::build_client(&http_request.config) {
-                    Ok(c) => std::sync::Arc::new(c),
-                    Err(e) => {
-                        log::error!("Failed to build custom client: {}", e);
-                        std::sync::Arc::clone(&app.http_client)
+                || http_request.config.tls.ca_cert_path.is_some()
+                || http_request.config.tls.client_cert_path.is_some();
+
+            let http_client = if needs_custom_client {
+                let cache_key = super::http_request::build_client_cache_key(&http_request.config);
+                if let Some(cached) = app.custom_clients.get(&cache_key) {
+                    std::sync::Arc::clone(cached)
+                } else {
+                    match crate::http_client::client::build_client(&http_request.config) {
+                        Ok(c) => {
+                            let c = std::sync::Arc::new(c);
+                            app.custom_clients
+                                .insert(cache_key, std::sync::Arc::clone(&c));
+                            c
+                        }
+                        Err(e) => {
+                            log::error!("Failed to build custom client: {}", e);
+                            std::sync::Arc::clone(&app.http_client)
+                        }
                     }
                 }
             } else {
@@ -114,9 +143,7 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: graphql_view::Message) -> Tas
 
                     crate::protocols::graphql_schema::parse_introspection_response(&introspection)
                 },
-                move |result| {
-                    Message::GraphQLMsg(graphql_view::Message::SchemaReceived(result))
-                },
+                move |result| Message::GraphQLMsg(graphql_view::Message::SchemaReceived(result)),
             )
         }
         graphql_view::Message::SaveToHistory => {
@@ -142,9 +169,10 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: graphql_view::Message) -> Tas
 
             let request_data = serde_json::to_string(&graphql_request).ok();
 
-            let response_data = view.last_response.as_ref().and_then(|r| {
-                serde_json::to_string(r).ok()
-            });
+            let response_data = view
+                .last_response
+                .as_ref()
+                .and_then(|r| serde_json::to_string(r).ok());
 
             let result = crate::services::history_service::save_raw(
                 &app.db_conn,
@@ -161,13 +189,13 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: graphql_view::Message) -> Tas
                     app.graphql_view
                         .update(graphql_view::Message::SavedToHistory(Ok(())));
                     let _ = crate::services::history_service::trim(&app.db_conn, 500);
-                    let entries = crate::services::history_service::get_all(&app.db_conn, 200).unwrap_or_default();
+                    let entries = crate::services::history_service::get_all(&app.db_conn, 200)
+                        .unwrap_or_default();
                     app.history_view.entries = entries;
                 }
                 Err(e) => {
-                    app.graphql_view.update(graphql_view::Message::SavedToHistory(
-                        Err(e),
-                    ));
+                    app.graphql_view
+                        .update(graphql_view::Message::SavedToHistory(Err(e)));
                 }
             }
             Task::none()
@@ -186,21 +214,19 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: graphql_view::Message) -> Tas
                 .map(|h| (h.key.clone(), h.value.clone()))
                 .collect();
 
-            let graphql_body = serde_json::to_string(
-                &crate::protocols::graphql::GraphQLRequest {
-                    query,
-                    variables: if variables.trim().is_empty() {
-                        None
-                    } else {
-                        crate::protocols::graphql::parse_variables(&variables).ok()
-                    },
-                    operation_name: if operation_name.trim().is_empty() {
-                        None
-                    } else {
-                        Some(operation_name)
-                    },
+            let graphql_body = serde_json::to_string(&crate::protocols::graphql::GraphQLRequest {
+                query,
+                variables: if variables.trim().is_empty() {
+                    None
+                } else {
+                    crate::protocols::graphql::parse_variables(&variables).ok()
                 },
-            )
+                operation_name: if operation_name.trim().is_empty() {
+                    None
+                } else {
+                    Some(operation_name)
+                },
+            })
             .ok();
 
             let auth_json = view.auth.to_safe_json().ok();
@@ -210,7 +236,10 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: graphql_view::Message) -> Tas
                 &crate::persistence::database::SaveRequestParams {
                     collection_id,
                     folder_id,
-                    name: format!("GraphQL Request - {}", url.chars().take(50).collect::<String>()),
+                    name: format!(
+                        "GraphQL Request - {}",
+                        url.chars().take(50).collect::<String>()
+                    ),
                     method: "POST".to_string(),
                     url: url.clone(),
                     headers: headers.clone(),
@@ -226,16 +255,15 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: graphql_view::Message) -> Tas
 
             match result {
                 Ok(_) => {
-                    app.graphql_view.update(
-                        graphql_view::Message::SavedToCollection(Ok(())),
-                    );
-                    let cols = crate::services::collection_service::get_all(&app.db_conn).unwrap_or_default();
+                    app.graphql_view
+                        .update(graphql_view::Message::SavedToCollection(Ok(())));
+                    let cols = crate::services::collection_service::get_all(&app.db_conn)
+                        .unwrap_or_default();
                     app.collection_view.sync_collections(&cols);
                 }
                 Err(e) => {
-                    app.graphql_view.update(
-                        graphql_view::Message::SavedToCollection(Err(e)),
-                    );
+                    app.graphql_view
+                        .update(graphql_view::Message::SavedToCollection(Err(e)));
                 }
             }
             Task::none()

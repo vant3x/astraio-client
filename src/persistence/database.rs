@@ -810,7 +810,6 @@ pub fn rename_collection_request(conn: &Connection, id: i32, new_name: &str) -> 
     Ok(())
 }
 
-#[allow(dead_code)]
 pub fn move_collection_request(
     conn: &Connection,
     id: i32,
@@ -826,6 +825,60 @@ pub fn move_collection_request(
 pub fn delete_collection_request(conn: &Connection, id: i32) -> Result<()> {
     conn.execute("DELETE FROM collection_requests WHERE id = ?1", [id])?;
     Ok(())
+}
+
+pub fn swap_request_sort_order(conn: &Connection, id_a: i32, id_b: i32) -> Result<()> {
+    conn.execute_batch(
+        "UPDATE collection_requests SET sort_order = (
+            SELECT sort_order FROM collection_requests WHERE id = CASE ?1 WHEN collection_requests.id THEN ?2 ELSE ?1 END
+        ) WHERE id IN (?1, ?2);",
+    )?;
+    let order_a: i32 = conn
+        .query_row(
+            "SELECT sort_order FROM collection_requests WHERE id = ?1",
+            [id_a],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+    let order_b: i32 = conn
+        .query_row(
+            "SELECT sort_order FROM collection_requests WHERE id = ?1",
+            [id_b],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+    conn.execute(
+        "UPDATE collection_requests SET sort_order = ?1 WHERE id = ?2",
+        params![order_b, id_a],
+    )?;
+    conn.execute(
+        "UPDATE collection_requests SET sort_order = ?1 WHERE id = ?2",
+        params![order_a, id_b],
+    )?;
+    Ok(())
+}
+
+pub fn get_adjacent_requests(
+    conn: &Connection,
+    collection_id: i32,
+    folder_id: Option<i32>,
+    current_sort_order: i32,
+) -> Result<(Option<i32>, Option<i32>), AppError> {
+    let prev: Option<i32> = conn
+        .query_row(
+            "SELECT id FROM collection_requests WHERE collection_id = ?1 AND folder_id IS ?2 AND sort_order < ?3 ORDER BY sort_order DESC LIMIT 1",
+            params![collection_id, folder_id, current_sort_order],
+            |row| row.get(0),
+        )
+        .ok();
+    let next: Option<i32> = conn
+        .query_row(
+            "SELECT id FROM collection_requests WHERE collection_id = ?1 AND folder_id IS ?2 AND sort_order > ?3 ORDER BY sort_order ASC LIMIT 1",
+            params![collection_id, folder_id, current_sort_order],
+            |row| row.get(0),
+        )
+        .ok();
+    Ok((prev, next))
 }
 
 #[cfg(test)]

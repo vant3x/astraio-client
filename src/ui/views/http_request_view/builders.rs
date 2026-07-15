@@ -178,8 +178,10 @@ impl HttpRequestView {
                     .collect::<Vec<String>>()
                     .join("&");
                 if !encoded.is_empty() {
-                    headers
-                        .push(("Content-Type".to_string(), "application/x-www-form-urlencoded".to_string()));
+                    headers.push((
+                        "Content-Type".to_string(),
+                        "application/x-www-form-urlencoded".to_string(),
+                    ));
                     (Some(encoded), vec![])
                 } else {
                     (None, vec![])

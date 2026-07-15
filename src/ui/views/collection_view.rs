@@ -45,6 +45,12 @@ pub enum Message {
     CancelDeleteRequest,
     LoadRequest(i32),
 
+    MoveRequestUp(i32),
+    MoveRequestDown(i32),
+    StartMoveToFolder(i32),
+    MoveToFolder(i32, Option<i32>),
+    CancelMoveToFolder,
+
     ImportCollection,
     ImportCollectionData(Option<String>),
     ImportOpenApi,
@@ -83,6 +89,8 @@ pub struct CollectionView {
     pub pending_delete_collection: Option<usize>,
     pub pending_delete_folder: Option<i32>,
     pub pending_delete_request: Option<i32>,
+    pub moving_request: Option<i32>,
+    pub moving_collection_id: Option<i32>,
 }
 
 impl Clone for CollectionView {
@@ -108,6 +116,8 @@ impl Clone for CollectionView {
             pending_delete_collection: self.pending_delete_collection,
             pending_delete_folder: self.pending_delete_folder,
             pending_delete_request: self.pending_delete_request,
+            moving_request: self.moving_request,
+            moving_collection_id: self.moving_collection_id,
         }
     }
 }
@@ -261,6 +271,25 @@ impl CollectionView {
                 self.renaming_request = None;
                 None
             }
+            Message::MoveRequestUp(_req_id) => None,
+            Message::MoveRequestDown(_req_id) => None,
+            Message::StartMoveToFolder(req_id) => {
+                if let Some(req) = self.requests.iter().find(|r| r.id == req_id) {
+                    self.moving_request = Some(req_id);
+                    self.moving_collection_id = Some(req.collection_id);
+                }
+                None
+            }
+            Message::MoveToFolder(_req_id, _target_folder_id) => {
+                self.moving_request = None;
+                self.moving_collection_id = None;
+                None
+            }
+            Message::CancelMoveToFolder => {
+                self.moving_request = None;
+                self.moving_collection_id = None;
+                None
+            }
         }
     }
 
@@ -341,14 +370,86 @@ impl CollectionView {
             );
         }
 
-        let content = column![
-            header,
-            new_collection_input,
-            save_button,
-            scrollable(tree).height(Length::Fill),
-        ]
-        .spacing(6)
-        .padding(8);
+        let content = if let Some(moving_req_id) = self.moving_request {
+            let col_id = self.moving_collection_id.unwrap_or(0);
+            let mut folder_buttons = column![].spacing(2);
+            folder_buttons = folder_buttons.push(
+                button(
+                    row![
+                        lucide::corner_down_left().size(11),
+                        text(" Root (no folder)").size(11)
+                    ]
+                    .spacing(4),
+                )
+                .width(Length::Fill)
+                .on_press(Message::MoveToFolder(moving_req_id, None)),
+            );
+            for folder in &self.folders {
+                if folder.collection_id == col_id {
+                    let fid = folder.id;
+                    let fname = folder.name.clone();
+                    let depth = if folder.parent_folder_id.is_some() {
+                        "  └ "
+                    } else {
+                        ""
+                    };
+                    folder_buttons = folder_buttons.push(
+                        button(
+                            row![
+                                text(depth).size(10),
+                                lucide::folder_open().size(11),
+                                text(fname).size(11)
+                            ]
+                            .spacing(4),
+                        )
+                        .width(Length::Fill)
+                        .on_press(Message::MoveToFolder(moving_req_id, Some(fid))),
+                    );
+                }
+            }
+            folder_buttons = folder_buttons.push(
+                button(
+                    text("Cancel")
+                        .size(11)
+                        .color(Color::from_rgb(0.6, 0.6, 0.6)),
+                )
+                .width(Length::Fill)
+                .on_press(Message::CancelMoveToFolder),
+            );
+            let picker = container(
+                column![
+                    text("Move to folder:").size(12),
+                    scrollable(folder_buttons).height(Length::Fixed(200.0)),
+                ]
+                .spacing(4)
+                .padding(8),
+            )
+            .style(|_theme| iced::widget::container::Style {
+                background: Some(iced::Background::Color(Color::from_rgb(0.14, 0.14, 0.18))),
+                border: iced::Border::default().rounded(4),
+                ..iced::widget::container::Style::default()
+            })
+            .width(Length::Fill);
+
+            column![
+                header,
+                new_collection_input,
+                save_button,
+                picker,
+                scrollable(tree).height(Length::Fill),
+            ]
+            .spacing(6)
+            .padding(8)
+        } else {
+            column![
+                header,
+                new_collection_input,
+                save_button,
+                scrollable(tree).height(Length::Fill),
+            ]
+            .spacing(6)
+            .padding(8)
+        };
 
         container(content)
             .width(Length::Fill)
@@ -441,27 +542,101 @@ impl CollectionView {
             let context_menu = ContextMenu::new(row_button, move || {
                 container(
                     column![
-                        button(text("New Folder").size(11))
-                            .width(Length::Fill)
-                            .on_press(Message::ShowNewFolderInput(col_id, None)),
-                        button(text("Rename").size(11))
-                            .width(Length::Fill)
-                            .on_press(Message::StartRenameCollection(col_idx)),
-                        button(text("Export").size(11))
-                            .width(Length::Fill)
-                            .on_press(Message::ExportCollection(col_idx)),
+                        button(
+                            text("New Folder")
+                                .size(11)
+                                .color(Color::from_rgb(1.0, 1.0, 1.0))
+                        )
+                        .width(Length::Fill)
+                        .style(|_theme, status| {
+                            let bg = match status {
+                                button::Status::Hovered => {
+                                    Some(iced::Background::Color(Color::from_rgb(0.6, 0.6, 1.0)))
+                                }
+                                _ => Some(iced::Background::Color(Color::from_rgb(0.5, 0.5, 0.9))),
+                            };
+                            button::Style {
+                                background: bg,
+                                text_color: Color::from_rgb(1.0, 1.0, 1.0),
+                                ..button::Style::default()
+                            }
+                        })
+                        .on_press(Message::ShowNewFolderInput(col_id, None)),
+                        button(
+                            text("Rename")
+                                .size(11)
+                                .color(Color::from_rgb(1.0, 1.0, 1.0))
+                        )
+                        .width(Length::Fill)
+                        .style(|_theme, status| {
+                            let bg = match status {
+                                button::Status::Hovered => {
+                                    Some(iced::Background::Color(Color::from_rgb(0.6, 0.6, 1.0)))
+                                }
+                                _ => Some(iced::Background::Color(Color::from_rgb(0.5, 0.5, 0.9))),
+                            };
+                            button::Style {
+                                background: bg,
+                                text_color: Color::from_rgb(1.0, 1.0, 1.0),
+                                ..button::Style::default()
+                            }
+                        })
+                        .on_press(Message::StartRenameCollection(col_idx)),
+                        button(
+                            text("Export")
+                                .size(11)
+                                .color(Color::from_rgb(1.0, 1.0, 1.0))
+                        )
+                        .width(Length::Fill)
+                        .style(|_theme, status| {
+                            let bg = match status {
+                                button::Status::Hovered => {
+                                    Some(iced::Background::Color(Color::from_rgb(0.6, 0.6, 1.0)))
+                                }
+                                _ => Some(iced::Background::Color(Color::from_rgb(0.5, 0.5, 0.9))),
+                            };
+                            button::Style {
+                                background: bg,
+                                text_color: Color::from_rgb(1.0, 1.0, 1.0),
+                                ..button::Style::default()
+                            }
+                        })
+                        .on_press(Message::ExportCollection(col_idx)),
                         button(
                             text("Delete")
                                 .size(11)
-                                .color(Color::from_rgb(0.8, 0.2, 0.2))
+                                .color(Color::from_rgb(1.0, 1.0, 1.0))
                         )
                         .width(Length::Fill)
+                        .style(|_theme, status| {
+                            let bg = match status {
+                                button::Status::Hovered => {
+                                    Some(iced::Background::Color(Color::from_rgb(0.85, 0.25, 0.25)))
+                                }
+                                _ => {
+                                    Some(iced::Background::Color(Color::from_rgb(0.70, 0.18, 0.18)))
+                                }
+                            };
+                            button::Style {
+                                background: bg,
+                                text_color: Color::from_rgb(1.0, 1.0, 1.0),
+                                ..button::Style::default()
+                            }
+                        })
                         .on_press(Message::RequestDeleteCollection(col_idx)),
                     ]
-                    .spacing(4)
-                    .padding(8),
+                    .spacing(2)
+                    .padding(4),
                 )
-                .width(Length::Fixed(180.0))
+                .style(|_theme| iced::widget::container::Style {
+                    background: Some(iced::Background::Color(Color::from_rgb(0.16, 0.16, 0.20))),
+                    border: iced::Border::default()
+                        .rounded(6)
+                        .width(1)
+                        .color(Color::from_rgb(0.5, 0.5, 0.9)),
+                    ..iced::widget::container::Style::default()
+                })
+                .width(Length::Fixed(170.0))
                 .into()
             });
 
@@ -594,24 +769,81 @@ impl CollectionView {
             let context_menu = ContextMenu::new(row_button, move || {
                 container(
                     column![
-                        button(text("New Sub-folder").size(11))
-                            .width(Length::Fill)
-                            .on_press(Message::ShowNewFolderInput(col_id, Some(folder_id))),
-                        button(text("Rename").size(11))
-                            .width(Length::Fill)
-                            .on_press(Message::StartRenameFolder(folder_id)),
+                        button(
+                            text("New Sub-folder")
+                                .size(11)
+                                .color(Color::from_rgb(1.0, 1.0, 1.0))
+                        )
+                        .width(Length::Fill)
+                        .style(|_theme, status| {
+                            let bg = match status {
+                                button::Status::Hovered => {
+                                    Some(iced::Background::Color(Color::from_rgb(0.6, 0.6, 1.0)))
+                                }
+                                _ => Some(iced::Background::Color(Color::from_rgb(0.5, 0.5, 0.9))),
+                            };
+                            button::Style {
+                                background: bg,
+                                text_color: Color::from_rgb(1.0, 1.0, 1.0),
+                                ..button::Style::default()
+                            }
+                        })
+                        .on_press(Message::ShowNewFolderInput(col_id, Some(folder_id))),
+                        button(
+                            text("Rename")
+                                .size(11)
+                                .color(Color::from_rgb(1.0, 1.0, 1.0))
+                        )
+                        .width(Length::Fill)
+                        .style(|_theme, status| {
+                            let bg = match status {
+                                button::Status::Hovered => {
+                                    Some(iced::Background::Color(Color::from_rgb(0.6, 0.6, 1.0)))
+                                }
+                                _ => Some(iced::Background::Color(Color::from_rgb(0.5, 0.5, 0.9))),
+                            };
+                            button::Style {
+                                background: bg,
+                                text_color: Color::from_rgb(1.0, 1.0, 1.0),
+                                ..button::Style::default()
+                            }
+                        })
+                        .on_press(Message::StartRenameFolder(folder_id)),
                         button(
                             text("Delete")
                                 .size(11)
-                                .color(Color::from_rgb(0.8, 0.2, 0.2))
+                                .color(Color::from_rgb(1.0, 1.0, 1.0))
                         )
                         .width(Length::Fill)
+                        .style(|_theme, status| {
+                            let bg = match status {
+                                button::Status::Hovered => {
+                                    Some(iced::Background::Color(Color::from_rgb(0.85, 0.25, 0.25)))
+                                }
+                                _ => {
+                                    Some(iced::Background::Color(Color::from_rgb(0.70, 0.18, 0.18)))
+                                }
+                            };
+                            button::Style {
+                                background: bg,
+                                text_color: Color::from_rgb(1.0, 1.0, 1.0),
+                                ..button::Style::default()
+                            }
+                        })
                         .on_press(Message::RequestDeleteFolder(folder_id)),
                     ]
-                    .spacing(4)
-                    .padding(8),
+                    .spacing(2)
+                    .padding(4),
                 )
-                .width(Length::Fixed(180.0))
+                .style(|_theme| iced::widget::container::Style {
+                    background: Some(iced::Background::Color(Color::from_rgb(0.16, 0.16, 0.20))),
+                    border: iced::Border::default()
+                        .rounded(6)
+                        .width(1)
+                        .color(Color::from_rgb(0.5, 0.5, 0.9)),
+                    ..iced::widget::container::Style::default()
+                })
+                .width(Length::Fixed(170.0))
                 .into()
             });
 
@@ -735,14 +967,18 @@ impl CollectionView {
             } else {
                 actions = actions
                     .push(
-                        button(lucide::pencil().size(9).color(Color::from_rgb(0.6, 0.75, 1.0)))
-                            .style(|_theme, _status| button::Style {
-                                background: Some(iced::Background::Color(Color::from_rgb(
-                                    0.12, 0.12, 0.16,
-                                ))),
-                                ..button::Style::default()
-                            })
-                            .on_press(Message::StartRenameRequest(req.id)),
+                        button(
+                            lucide::pencil()
+                                .size(9)
+                                .color(Color::from_rgb(0.6, 0.75, 1.0)),
+                        )
+                        .style(|_theme, _status| button::Style {
+                            background: Some(iced::Background::Color(Color::from_rgb(
+                                0.12, 0.12, 0.16,
+                            ))),
+                            ..button::Style::default()
+                        })
+                        .on_press(Message::StartRenameRequest(req.id)),
                     )
                     .push(
                         button(
@@ -772,7 +1008,137 @@ impl CollectionView {
                     ..button::Style::default()
                 });
 
-            tree = tree.push(row_button);
+            let req_id = req.id;
+            let context_menu = ContextMenu::new(row_button, move || {
+                container(
+                    column![
+                        button(
+                            text("Move Up")
+                                .size(11)
+                                .color(Color::from_rgb(1.0, 1.0, 1.0))
+                        )
+                        .width(Length::Fill)
+                        .style(|_theme, status| {
+                            let bg = match status {
+                                button::Status::Hovered => {
+                                    Some(iced::Background::Color(Color::from_rgb(0.6, 0.6, 1.0)))
+                                }
+                                _ => Some(iced::Background::Color(Color::from_rgb(0.5, 0.5, 0.9))),
+                            };
+                            button::Style {
+                                background: bg,
+                                text_color: Color::from_rgb(1.0, 1.0, 1.0),
+                                ..button::Style::default()
+                            }
+                        })
+                        .on_press(Message::MoveRequestUp(req_id)),
+                        button(
+                            text("Move Down")
+                                .size(11)
+                                .color(Color::from_rgb(1.0, 1.0, 1.0))
+                        )
+                        .width(Length::Fill)
+                        .style(|_theme, status| {
+                            let bg = match status {
+                                button::Status::Hovered => {
+                                    Some(iced::Background::Color(Color::from_rgb(0.6, 0.6, 1.0)))
+                                }
+                                _ => Some(iced::Background::Color(Color::from_rgb(0.5, 0.5, 0.9))),
+                            };
+                            button::Style {
+                                background: bg,
+                                text_color: Color::from_rgb(1.0, 1.0, 1.0),
+                                ..button::Style::default()
+                            }
+                        })
+                        .on_press(Message::MoveRequestDown(req_id)),
+                        button(
+                            text("Move to Folder...")
+                                .size(11)
+                                .color(Color::from_rgb(1.0, 1.0, 1.0))
+                        )
+                        .width(Length::Fill)
+                        .style(|_theme, status| {
+                            let bg = match status {
+                                button::Status::Hovered => {
+                                    Some(iced::Background::Color(Color::from_rgb(0.6, 0.6, 1.0)))
+                                }
+                                _ => Some(iced::Background::Color(Color::from_rgb(0.5, 0.5, 0.9))),
+                            };
+                            button::Style {
+                                background: bg,
+                                text_color: Color::from_rgb(1.0, 1.0, 1.0),
+                                ..button::Style::default()
+                            }
+                        })
+                        .on_press(Message::StartMoveToFolder(req_id)),
+                        container(text("").height(Length::Fixed(1.0)))
+                            .width(Length::Fill)
+                            .style(|_theme| iced::widget::container::Style {
+                                background: Some(iced::Background::Color(Color::from_rgb(
+                                    0.25, 0.45, 0.80,
+                                ))),
+                                ..iced::widget::container::Style::default()
+                            }),
+                        button(
+                            text("Rename")
+                                .size(11)
+                                .color(Color::from_rgb(1.0, 1.0, 1.0))
+                        )
+                        .width(Length::Fill)
+                        .style(|_theme, status| {
+                            let bg = match status {
+                                button::Status::Hovered => {
+                                    Some(iced::Background::Color(Color::from_rgb(0.6, 0.6, 1.0)))
+                                }
+                                _ => Some(iced::Background::Color(Color::from_rgb(0.5, 0.5, 0.9))),
+                            };
+                            button::Style {
+                                background: bg,
+                                text_color: Color::from_rgb(1.0, 1.0, 1.0),
+                                ..button::Style::default()
+                            }
+                        })
+                        .on_press(Message::StartRenameRequest(req_id)),
+                        button(
+                            text("Delete")
+                                .size(11)
+                                .color(Color::from_rgb(1.0, 1.0, 1.0))
+                        )
+                        .width(Length::Fill)
+                        .style(|_theme, status| {
+                            let bg = match status {
+                                button::Status::Hovered => {
+                                    Some(iced::Background::Color(Color::from_rgb(0.85, 0.25, 0.25)))
+                                }
+                                _ => {
+                                    Some(iced::Background::Color(Color::from_rgb(0.70, 0.18, 0.18)))
+                                }
+                            };
+                            button::Style {
+                                background: bg,
+                                text_color: Color::from_rgb(1.0, 1.0, 1.0),
+                                ..button::Style::default()
+                            }
+                        })
+                        .on_press(Message::RequestDeleteRequest(req_id)),
+                    ]
+                    .spacing(2)
+                    .padding(4),
+                )
+                .style(|_theme| iced::widget::container::Style {
+                    background: Some(iced::Background::Color(Color::from_rgb(0.16, 0.16, 0.20))),
+                    border: iced::Border::default()
+                        .rounded(6)
+                        .width(1)
+                        .color(Color::from_rgb(0.5, 0.5, 0.9)),
+                    ..iced::widget::container::Style::default()
+                })
+                .width(Length::Fixed(170.0))
+                .into()
+            });
+
+            tree = tree.push(context_menu);
         }
 
         tree

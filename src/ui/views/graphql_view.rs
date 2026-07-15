@@ -3,7 +3,9 @@ use crate::data::auth::AuthType;
 use crate::data::auth_input::AuthInput;
 use crate::http_client::config::RequestConfig;
 use crate::protocols::graphql::{GraphQLRequest, GraphQLResponse};
-use crate::protocols::graphql_schema::{get_autocomplete_suggestions, GraphQLSchema, SchemaType, TypeKind};
+use crate::protocols::graphql_schema::{
+    get_autocomplete_suggestions, GraphQLSchema, SchemaType, TypeKind,
+};
 use crate::ui::components::key_value_editor::{self, KeyValueEditor};
 use crate::ui::request_status::RequestStatus;
 use crate::ui::theme::{method_color, status_color};
@@ -257,8 +259,7 @@ impl GraphQLView {
         if let Some(schema) = &self.schema {
             let query = self.query_input.text();
             let cursor = query.len();
-            self.autocomplete_suggestions =
-                get_autocomplete_suggestions(schema, &query, cursor);
+            self.autocomplete_suggestions = get_autocomplete_suggestions(schema, &query, cursor);
         }
     }
 
@@ -350,7 +351,8 @@ impl GraphQLView {
     }
 
     pub fn build_introspection_request(&self) -> crate::http_client::request::HttpRequest {
-        let graphql_request = GraphQLRequest::new(crate::protocols::graphql_schema::INTROSPECTION_QUERY);
+        let graphql_request =
+            GraphQLRequest::new(crate::protocols::graphql_schema::INTROSPECTION_QUERY);
 
         let mut headers: Vec<(String, String)> = self
             .headers_editor
@@ -548,29 +550,25 @@ impl GraphQLView {
             Message::SaveToHistory => {
                 self.show_save_menu = false;
             }
-            Message::SavedToHistory(result) => {
-                match result {
-                    Ok(()) => {
-                        self.last_save_status = Some("Saved to history".to_string());
-                    }
-                    Err(e) => {
-                        self.last_save_status = Some(format!("Failed to save: {}", e));
-                    }
+            Message::SavedToHistory(result) => match result {
+                Ok(()) => {
+                    self.last_save_status = Some("Saved to history".to_string());
                 }
-            }
+                Err(e) => {
+                    self.last_save_status = Some(format!("Failed to save: {}", e));
+                }
+            },
             Message::SaveToCollection(_, _) => {
                 self.show_save_menu = false;
             }
-            Message::SavedToCollection(result) => {
-                match result {
-                    Ok(()) => {
-                        self.last_save_status = Some("Saved to collection".to_string());
-                    }
-                    Err(e) => {
-                        self.last_save_status = Some(format!("Failed to save: {}", e));
-                    }
+            Message::SavedToCollection(result) => match result {
+                Ok(()) => {
+                    self.last_save_status = Some("Saved to collection".to_string());
                 }
-            }
+                Err(e) => {
+                    self.last_save_status = Some(format!("Failed to save: {}", e));
+                }
+            },
             Message::ToggleSaveMenu => {
                 self.show_save_menu = !self.show_save_menu;
             }
@@ -611,15 +609,13 @@ impl GraphQLView {
             button(row![lucide::database().size(14), text(" Introspect")].spacing(4))
                 .on_press(Message::IntrospectSchema),
             {
-                let save_button: Element<'_, Message, Theme, Renderer> = button(
-                    row![lucide::save().size(14), text(" Save")].spacing(4),
-                )
-                .on_press(Message::ToggleSaveMenu)
-                .into();
+                let save_button: Element<'_, Message, Theme, Renderer> =
+                    button(row![lucide::save().size(14), text(" Save")].spacing(4))
+                        .on_press(Message::ToggleSaveMenu)
+                        .into();
                 if self.show_save_menu {
                     let menu: Element<'_, Message, Theme, Renderer> = column![
-                        button(text("Save to History").size(12))
-                            .on_press(Message::SaveToHistory),
+                        button(text("Save to History").size(12)).on_press(Message::SaveToHistory),
                         button(text("Save to Collection").size(12))
                             .on_press(Message::SaveToCollection(0, None)),
                     ]
@@ -667,17 +663,16 @@ impl GraphQLView {
                                 .width(Length::Fill),
                         );
                     }
-                    let suggestions_popup = container(
-                        scrollable(suggestions_list).height(Length::Fixed(150.0)),
-                    )
-                    .padding(4)
-                    .style(move |_: &Theme| iced::widget::container::Style {
-                        background: Some(iced::Color::from_rgb(0.15, 0.15, 0.2).into()),
-                        border: iced::Border::default()
-                            .rounded(4)
-                            .color(iced::Color::from_rgb(0.3, 0.3, 0.4)),
-                        ..iced::widget::container::Style::default()
-                    });
+                    let suggestions_popup =
+                        container(scrollable(suggestions_list).height(Length::Fixed(150.0)))
+                            .padding(4)
+                            .style(move |_: &Theme| iced::widget::container::Style {
+                                background: Some(iced::Color::from_rgb(0.15, 0.15, 0.2).into()),
+                                border: iced::Border::default()
+                                    .rounded(4)
+                                    .color(iced::Color::from_rgb(0.3, 0.3, 0.4)),
+                                ..iced::widget::container::Style::default()
+                            });
 
                     column![context_menu, suggestions_popup]
                         .width(Length::Fill)
@@ -946,15 +941,15 @@ impl GraphQLView {
             tabs,
             rule::horizontal(10),
             column![
-                    row![
-                        method_label,
-                        status_text,
-                        duration_text,
-                        text(" | ").size(14),
-                        size_text,
-                        save_status,
-                        row![copy_button, wrap_toggle].align_y(Alignment::Center),
-                    ]
+                row![
+                    method_label,
+                    status_text,
+                    duration_text,
+                    text(" | ").size(14),
+                    size_text,
+                    save_status,
+                    row![copy_button, wrap_toggle].align_y(Alignment::Center),
+                ]
                 .spacing(10)
                 .padding(10)
                 .align_y(Alignment::Center),
@@ -1016,7 +1011,9 @@ impl GraphQLView {
                 };
 
                 let type_label = row![
-                    text(format!("[{}]", schema_type.kind)).size(11).color(kind_color),
+                    text(format!("[{}]", schema_type.kind))
+                        .size(11)
+                        .color(kind_color),
                     text(&schema_type.name).size(13),
                 ]
                 .spacing(5);
@@ -1058,24 +1055,28 @@ impl GraphQLView {
 
                     if let Some(desc) = &selected_type.description {
                         if !desc.is_empty() {
-                            detail = detail.push(text(desc.clone()).size(12).color(
-                                Color::from_rgb(0.6, 0.6, 0.6),
-                            ));
+                            detail = detail.push(
+                                text(desc.clone())
+                                    .size(12)
+                                    .color(Color::from_rgb(0.6, 0.6, 0.6)),
+                            );
                         }
                     }
 
                     if !selected_type.fields.is_empty() {
                         detail = detail.push(rule::horizontal(5));
-                        detail = detail.push(text("Fields:").size(13).color(
-                            Color::from_rgb(0.5, 0.5, 0.5),
-                        ));
+                        detail = detail.push(
+                            text("Fields:")
+                                .size(13)
+                                .color(Color::from_rgb(0.5, 0.5, 0.5)),
+                        );
                         for field in &selected_type.fields {
                             let mut field_text = row![
                                 text(&field.name).size(12),
                                 text(": ").size(12).color(Color::from_rgb(0.5, 0.5, 0.5)),
-                                text(&field.return_type).size(12).color(Color::from_rgb(
-                                    0.2, 0.6, 0.9,
-                                )),
+                                text(&field.return_type)
+                                    .size(12)
+                                    .color(Color::from_rgb(0.2, 0.6, 0.9,)),
                             ]
                             .spacing(4);
 
@@ -1106,17 +1107,19 @@ impl GraphQLView {
 
                     if !selected_type.input_fields.is_empty() {
                         detail = detail.push(rule::horizontal(5));
-                        detail = detail.push(text("Input Fields:").size(13).color(
-                            Color::from_rgb(0.5, 0.5, 0.5),
-                        ));
+                        detail = detail.push(
+                            text("Input Fields:")
+                                .size(13)
+                                .color(Color::from_rgb(0.5, 0.5, 0.5)),
+                        );
                         for field in &selected_type.input_fields {
                             detail = detail.push(
                                 row![
                                     text(&field.name).size(12),
                                     text(": ").size(12).color(Color::from_rgb(0.5, 0.5, 0.5)),
-                                    text(&field.field_type).size(12).color(Color::from_rgb(
-                                        0.2, 0.6, 0.9,
-                                    )),
+                                    text(&field.field_type)
+                                        .size(12)
+                                        .color(Color::from_rgb(0.2, 0.6, 0.9,)),
                                 ]
                                 .spacing(4),
                             );
@@ -1125,9 +1128,11 @@ impl GraphQLView {
 
                     if !selected_type.enum_values.is_empty() {
                         detail = detail.push(rule::horizontal(5));
-                        detail = detail.push(text("Enum Values:").size(13).color(
-                            Color::from_rgb(0.5, 0.5, 0.5),
-                        ));
+                        detail = detail.push(
+                            text("Enum Values:")
+                                .size(13)
+                                .color(Color::from_rgb(0.5, 0.5, 0.5)),
+                        );
                         for val in &selected_type.enum_values {
                             let mut val_text = row![text(&val.name).size(12)].spacing(4);
                             if val.is_deprecated {
@@ -1153,8 +1158,11 @@ impl GraphQLView {
                     if !selected_type.interfaces.is_empty() {
                         detail = detail.push(rule::horizontal(5));
                         detail = detail.push(
-                            text(format!("Implements: {}", selected_type.interfaces.join(", ")))
-                                .size(12),
+                            text(format!(
+                                "Implements: {}",
+                                selected_type.interfaces.join(", ")
+                            ))
+                            .size(12),
                         );
                     }
 
@@ -1175,23 +1183,23 @@ impl GraphQLView {
                 container(
                     column![
                         text("Select a type from the list to view its details.").size(12),
-                        text(format!("Query root: {}", qt)).size(12).color(
-                            Color::from_rgb(0.2, 0.6, 0.9),
-                        ),
+                        text(format!("Query root: {}", qt))
+                            .size(12)
+                            .color(Color::from_rgb(0.2, 0.6, 0.9),),
                         {
                             let mut info = column![].spacing(2);
                             if let Some(mt) = &schema.mutation_type {
                                 info = info.push(
-                                    text(format!("Mutation root: {}", mt)).size(12).color(
-                                        Color::from_rgb(0.2, 0.6, 0.9),
-                                    ),
+                                    text(format!("Mutation root: {}", mt))
+                                        .size(12)
+                                        .color(Color::from_rgb(0.2, 0.6, 0.9)),
                                 );
                             }
                             if let Some(st) = &schema.subscription_type {
                                 info = info.push(
-                                    text(format!("Subscription root: {}", st)).size(12).color(
-                                        Color::from_rgb(0.2, 0.6, 0.9),
-                                    ),
+                                    text(format!("Subscription root: {}", st))
+                                        .size(12)
+                                        .color(Color::from_rgb(0.2, 0.6, 0.9)),
                                 );
                             }
                             info
@@ -1213,11 +1221,13 @@ impl GraphQLView {
             };
 
             row![
-                container(type_list_scroll).width(Length::FillPortion(1)).height(Length::Fill),
+                container(type_list_scroll)
+                    .width(Length::FillPortion(1))
+                    .height(Length::Fill),
                 detail_panel
             ]
-                .spacing(10)
-                .into()
+            .spacing(10)
+            .into()
         } else {
             container(
                 column![

@@ -59,7 +59,8 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: history_view::Message) -> Tas
                             export_json(&entries)
                         };
 
-                        match std::fs::write(path, &content) {
+                        let path_buf = path.to_path_buf();
+                        match tokio::fs::write(&path_buf, &content).await {
                             Ok(()) => Ok(format!(
                                 "Exported {} entries to {}",
                                 entries.len(),
@@ -87,16 +88,12 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: history_view::Message) -> Tas
 fn refresh_history_entries(app: &mut AstraNovaApp) {
     let query = app.history_view.search_query.clone();
     let method = app.history_view.filter_method.clone();
-    app.history_view.entries = crate::services::history_service::search(
-        &app.db_conn,
-        &query,
-        &method,
-        500,
-    )
-    .unwrap_or_else(|e| {
-        log::error!("Failed to search history: {}", e);
-        Vec::new()
-    });
+    app.history_view.entries =
+        crate::services::history_service::search(&app.db_conn, &query, &method, 500)
+            .unwrap_or_else(|e| {
+                log::error!("Failed to search history: {}", e);
+                Vec::new()
+            });
 }
 
 fn export_json(entries: &[crate::persistence::database::RequestHistoryEntry]) -> String {
@@ -105,7 +102,16 @@ fn export_json(entries: &[crate::persistence::database::RequestHistoryEntry]) ->
 
 fn export_csv(entries: &[crate::persistence::database::RequestHistoryEntry]) -> String {
     let mut wtr = csv::Writer::from_writer(vec![]);
-    let _ = wtr.write_record(["id", "method", "url", "status", "duration_ms", "timestamp", "request_data", "response_data"]);
+    let _ = wtr.write_record([
+        "id",
+        "method",
+        "url",
+        "status",
+        "duration_ms",
+        "timestamp",
+        "request_data",
+        "response_data",
+    ]);
     for e in entries {
         let request_data = e.request_data.clone().unwrap_or_default();
         let response_data = e.response_data.clone().unwrap_or_default();

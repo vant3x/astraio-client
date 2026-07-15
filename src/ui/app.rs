@@ -232,6 +232,7 @@ pub enum Message {
     OAuth2AutoPollToggle(usize, bool),
     ToggleResponseSearch,
     WsSendFromKeyboard,
+    SendActiveRequest,
     ClearKeychainSecrets,
     KeychainCleared(Result<u32, crate::error::AppError>),
 }
@@ -240,8 +241,8 @@ impl AstraNovaApp {
     fn new() -> (Self, Task<Message>) {
         let (db_conn, environments) = match database::init() {
             Ok(conn) => {
-                let envs = crate::services::environment_service::get_all(&conn)
-                    .unwrap_or_else(|e| {
+                let envs =
+                    crate::services::environment_service::get_all(&conn).unwrap_or_else(|e| {
                         log::error!("Failed to load environments: {}", e);
                         Vec::new()
                     });
@@ -258,13 +259,13 @@ impl AstraNovaApp {
             }
         };
 
-        let history = crate::services::history_service::get_all(&db_conn, 200)
-            .unwrap_or_else(|e| {
+        let history =
+            crate::services::history_service::get_all(&db_conn, 200).unwrap_or_else(|e| {
                 log::error!("Failed to load history: {}", e);
                 Vec::new()
             });
-        let collections = crate::services::collection_service::get_all(&db_conn)
-            .unwrap_or_else(|e| {
+        let collections =
+            crate::services::collection_service::get_all(&db_conn).unwrap_or_else(|e| {
                 log::error!("Failed to load collections: {}", e);
                 Vec::new()
             });
@@ -273,7 +274,10 @@ impl AstraNovaApp {
         cv.sync_collections(&collections);
 
         let secret_store = crate::services::secret_store::SecretStore::new();
-        match crate::services::secret_store::migrate_plaintext_tokens_to_keyring(&secret_store, &db_conn) {
+        match crate::services::secret_store::migrate_plaintext_tokens_to_keyring(
+            &secret_store,
+            &db_conn,
+        ) {
             Ok(0) => {}
             Ok(n) => log::info!("Migrated {} plaintext tokens to OS keyring", n),
             Err(e) => log::warn!("Keyring migration skipped: {}", e),
@@ -454,7 +458,14 @@ impl AstraNovaApp {
             Message::WsEvent(event) => super::handlers::websocket::handle_ws_event(self, event),
             Message::WebSocketMsg(msg) => super::handlers::websocket::handle_message(self, msg),
             Message::GraphQLMsg(msg) => super::handlers::graphql::handle_message(self, msg),
-            Message::WsConnected(sender, receiver_arc, shutdown_tx, write_handle, read_handle, ping_handle) => {
+            Message::WsConnected(
+                sender,
+                receiver_arc,
+                shutdown_tx,
+                write_handle,
+                read_handle,
+                ping_handle,
+            ) => {
                 super::handlers::websocket::handle_ws_connected(
                     self,
                     sender,
@@ -504,10 +515,43 @@ impl AstraNovaApp {
                     {
                         if let Some(sender) = &self.websocket_view.ws_sender {
                             let _ = sender.send(&input);
-                            self.websocket_view
-                                .add_message(crate::protocols::websocket::WsMessage::outgoing(input));
+                            self.websocket_view.add_message(
+                                crate::protocols::websocket::WsMessage::outgoing(input),
+                            );
                             self.websocket_view.input.clear();
                         }
+                    }
+                }
+                Task::none()
+            }
+            Message::SendActiveRequest => {
+                match self.active_protocol {
+                    Protocol::WebSocket => {
+                        let input = self.websocket_view.input.clone();
+                        if !input.is_empty()
+                            && matches!(self.websocket_view.status, WsStatus::Connected)
+                        {
+                            if let Some(sender) = &self.websocket_view.ws_sender {
+                                let _ = sender.send(&input);
+                                self.websocket_view.add_message(
+                                    crate::protocols::websocket::WsMessage::outgoing(input),
+                                );
+                                self.websocket_view.input.clear();
+                            }
+                        }
+                    }
+                    Protocol::GraphQL => {
+                        return super::handlers::graphql::handle_message(
+                            self,
+                            graphql_view::Message::SendRequest,
+                        );
+                    }
+                    Protocol::Http => {
+                        return super::handlers::http_request::handle_http_request_msg(
+                            self,
+                            self.active_request_tab_index,
+                            http_request_view::Message::SendRequest,
+                        );
                     }
                 }
                 Task::none()
@@ -518,18 +562,20 @@ impl AstraNovaApp {
                 let mut identifiers = Vec::new();
 
                 if let Ok(mut stmt) = conn.prepare(
-                    "SELECT id, collection_id FROM collection_requests WHERE auth_type = 'oauth2'"
+                    "SELECT id, collection_id FROM collection_requests WHERE auth_type = 'oauth2'",
                 ) {
-                    if let Ok(rows) = stmt.query_map([], |row| Ok((row.get::<_, i32>(0)?, row.get::<_, i32>(1)?))) {
+                    if let Ok(rows) =
+                        stmt.query_map([], |row| Ok((row.get::<_, i32>(0)?, row.get::<_, i32>(1)?)))
+                    {
                         for row in rows.flatten() {
                             identifiers.push(format!("col_{}_{}", row.1, row.0));
                         }
                     }
                 }
 
-                if let Ok(mut stmt) = conn.prepare(
-                    "SELECT id FROM request_history WHERE request_data LIKE '%OAuth2%'"
-                ) {
+                if let Ok(mut stmt) = conn
+                    .prepare("SELECT id FROM request_history WHERE request_data LIKE '%OAuth2%'")
+                {
                     if let Ok(rows) = stmt.query_map([], |row| row.get::<_, i32>(0)) {
                         for row in rows.flatten() {
                             identifiers.push(format!("hist_{}", row));
@@ -552,10 +598,8 @@ impl AstraNovaApp {
             Message::KeychainCleared(result) => {
                 match result {
                     Ok(count) => {
-                        self.toast_manager.success(format!(
-                            "Cleared {} keychain entries",
-                            count
-                        ));
+                        self.toast_manager
+                            .success(format!("Cleared {} keychain entries", count));
                     }
                     Err(e) => {
                         self.toast_manager
@@ -578,7 +622,12 @@ impl AstraNovaApp {
         };
 
         let keyboard_subscription = iced::event::listen_with(|event, _status, _window| {
-            if let iced::event::Event::Keyboard(iced::keyboard::Event::KeyPressed { key, modifiers, .. }) = event {
+            if let iced::event::Event::Keyboard(iced::keyboard::Event::KeyPressed {
+                key,
+                modifiers,
+                ..
+            }) = event
+            {
                 if modifiers.control() || modifiers.command() {
                     match key {
                         iced::keyboard::Key::Character(ref c) if c.as_ref() == "n" => {
@@ -621,14 +670,7 @@ impl AstraNovaApp {
                             Some(Message::ToggleEnvironmentManager)
                         }
                         iced::keyboard::Key::Character(ref c) if c.as_ref() == "Enter" => {
-                            if modifiers.shift() {
-                                Some(Message::WsSendFromKeyboard)
-                            } else {
-                                Some(Message::HttpRequestViewMsg(
-                                    0,
-                                    http_request_view::Message::SendRequest,
-                                ))
-                            }
+                            Some(Message::SendActiveRequest)
                         }
                         _ => None,
                     }
@@ -830,7 +872,10 @@ impl AstraNovaApp {
                     }
                 };
 
-                let toast_overlay = self.toast_manager.view(&self.theme()).map(|_| Message::NoOp);
+                let toast_overlay = self
+                    .toast_manager
+                    .view(&self.theme())
+                    .map(|_| Message::NoOp);
 
                 let content: Element<'_, Message> = if self.show_history {
                     let history_panel =

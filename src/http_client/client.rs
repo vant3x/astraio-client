@@ -7,6 +7,8 @@ use base64::Engine;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
+const MAX_BODY_SIZE: usize = 10 * 1024 * 1024;
+
 fn is_binary_content_type(content_type: &str) -> bool {
     content_type.contains("image/")
         || content_type.contains("application/octet-stream")
@@ -35,12 +37,27 @@ async fn read_response_body(
     if is_binary_content_type(&content_type) {
         let bytes = res.bytes().await?;
         let size = bytes.len() as u64;
-        let encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);
-        Ok((encoded, BodyEncoding::Base64, size))
+        if bytes.len() > MAX_BODY_SIZE {
+            let truncated = bytes.slice(..MAX_BODY_SIZE);
+            let encoded = base64::engine::general_purpose::STANDARD.encode(&truncated);
+            Ok((encoded, BodyEncoding::Base64, size))
+        } else {
+            let encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);
+            Ok((encoded, BodyEncoding::Base64, size))
+        }
     } else {
         let text = res.text().await?;
         let size = text.len() as u64;
-        Ok((text, BodyEncoding::Text, size))
+        if text.len() > MAX_BODY_SIZE {
+            let truncated: String = text.chars().take(MAX_BODY_SIZE).collect();
+            let display = format!(
+                "{}\n\n--- Response truncated ({} bytes total, showing first {} bytes) ---",
+                truncated, size, MAX_BODY_SIZE
+            );
+            Ok((display, BodyEncoding::Text, size))
+        } else {
+            Ok((text, BodyEncoding::Text, size))
+        }
     }
 }
 
@@ -119,9 +136,7 @@ async fn build_multipart_form(
                 let file_path = std::path::Path::new(path);
                 let file_name = filename
                     .as_deref()
-                    .or_else(|| {
-                        file_path.file_name().map(|f| f.to_str().unwrap_or("file"))
-                    })
+                    .or_else(|| file_path.file_name().map(|f| f.to_str().unwrap_or("file")))
                     .unwrap_or("file")
                     .to_string();
 
@@ -173,10 +188,8 @@ async fn attempt_digest_auth(
         &request.method.to_string(),
         current_url,
     ) {
-        let mut retry_builder = client.request(
-            request.method.to_string().parse()?,
-            current_url.to_string(),
-        );
+        let mut retry_builder =
+            client.request(request.method.to_string().parse()?, current_url.to_string());
         retry_builder = retry_builder.timeout(request.config.timeout);
         for (key, value) in &request.headers {
             retry_builder = retry_builder.header(key, value);
@@ -193,7 +206,13 @@ async fn attempt_digest_auth(
                     })
                     .collect();
                 let (body, encoding, size) = read_response_body(retry_res).await?;
-                Ok(Some((response_status, response_headers, body, encoding, size)))
+                Ok(Some((
+                    response_status,
+                    response_headers,
+                    body,
+                    encoding,
+                    size,
+                )))
             }
             Err(e) => Err(AppError::from(e)),
         }
@@ -319,10 +338,17 @@ pub async fn send_request(
                         if location.is_empty() {
                             response_status = status;
                             response_headers = res_headers;
-                            let (body, encoding, size) = read_response_body(res).await?;
-                            response_body = body;
-                            response_body_encoding = encoding;
-                            response_size = size;
+                            match read_response_body(res).await {
+                                Ok((body, encoding, size)) => {
+                                    response_body = body;
+                                    response_body_encoding = encoding;
+                                    response_size = size;
+                                }
+                                Err(e) => {
+                                    last_error = e.to_string();
+                                    break;
+                                }
+                            }
                             break;
                         }
 
@@ -332,18 +358,36 @@ pub async fn send_request(
                         current_url = if location.starts_with("http") {
                             location.to_string()
                         } else {
-                            let base = reqwest::Url::parse(&current_url)?;
-                            base.join(location)?.to_string()
+                            match reqwest::Url::parse(&current_url) {
+                                Ok(base) => match base.join(location) {
+                                    Ok(joined) => joined.to_string(),
+                                    Err(e) => {
+                                        last_error = e.to_string();
+                                        break;
+                                    }
+                                },
+                                Err(e) => {
+                                    last_error = e.to_string();
+                                    break;
+                                }
+                            }
                         };
                         continue;
                     }
 
                     response_status = status;
                     response_headers = res_headers;
-                    let (body, encoding, size) = read_response_body(res).await?;
-                    response_body = body;
-                    response_body_encoding = encoding;
-                    response_size = size;
+                    match read_response_body(res).await {
+                        Ok((body, encoding, size)) => {
+                            response_body = body;
+                            response_body_encoding = encoding;
+                            response_size = size;
+                        }
+                        Err(e) => {
+                            last_error = e.to_string();
+                            break;
+                        }
+                    }
                     break;
                 }
                 Err(e) => {

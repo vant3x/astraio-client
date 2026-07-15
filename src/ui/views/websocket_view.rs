@@ -213,11 +213,7 @@ impl WebSocketView {
         let advanced_toggle =
             button(text(advanced_toggle_label).size(12)).on_press(Message::ToggleShowAdvanced);
 
-        let tls_toggle_label = if self.show_tls {
-            "[-] TLS"
-        } else {
-            "[+] TLS"
-        };
+        let tls_toggle_label = if self.show_tls { "[-] TLS" } else { "[+] TLS" };
         let tls_toggle = button(text(tls_toggle_label).size(12)).on_press(Message::ToggleShowTls);
 
         let reconnect_config = if self.auto_reconnect {
@@ -272,16 +268,14 @@ impl WebSocketView {
             .padding(5)
             .width(Length::Fixed(150.0));
 
-            column![
-                row![
-                    text("Connect timeout:").size(12),
-                    timeout_input,
-                    text("Ping interval:").size(12),
-                    ping_input,
-                ]
-                .spacing(6)
-                .align_y(Alignment::Center),
+            column![row![
+                text("Connect timeout:").size(12),
+                timeout_input,
+                text("Ping interval:").size(12),
+                ping_input,
             ]
+            .spacing(6)
+            .align_y(Alignment::Center),]
             .spacing(4)
         } else {
             column![]
@@ -303,11 +297,7 @@ impl WebSocketView {
                     let recv = WsStats::format_bytes(self.stats.bytes_received);
                     text(format!(
                         "Duration: {} | Sent: {} | Recv: {} | Msgs: {}/{}",
-                        dur,
-                        sent,
-                        recv,
-                        self.stats.messages_sent,
-                        self.stats.messages_received
+                        dur, sent, recv, self.stats.messages_sent, self.stats.messages_received
                     ))
                     .size(11)
                     .color(Color::from_rgb(0.4, 0.4, 0.4))
@@ -374,18 +364,12 @@ impl WebSocketView {
             let dur = self.stats.format_duration();
             let sent = WsStats::format_bytes(self.stats.bytes_sent);
             let recv = WsStats::format_bytes(self.stats.bytes_received);
-            row![
-                text(format!(
-                    "Connected {} | Sent: {} ({}) | Recv: {} ({})",
-                    dur,
-                    sent,
-                    self.stats.messages_sent,
-                    recv,
-                    self.stats.messages_received,
-                ))
-                .size(11)
-                .color(Color::from_rgb(0.4, 0.4, 0.4)),
-            ]
+            row![text(format!(
+                "Connected {} | Sent: {} ({}) | Recv: {} ({})",
+                dur, sent, self.stats.messages_sent, recv, self.stats.messages_received,
+            ))
+            .size(11)
+            .color(Color::from_rgb(0.4, 0.4, 0.4)),]
         } else {
             row![]
         };

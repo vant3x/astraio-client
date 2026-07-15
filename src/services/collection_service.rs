@@ -36,7 +36,10 @@ pub fn rename(conn: &Connection, collection: &Collection, new_name: &str) -> Res
     update(conn, &updated)
 }
 
-pub fn get_folders(conn: &Connection, collection_id: i32) -> Result<Vec<CollectionFolder>, AppError> {
+pub fn get_folders(
+    conn: &Connection,
+    collection_id: i32,
+) -> Result<Vec<CollectionFolder>, AppError> {
     Ok(database::get_folders(conn, collection_id)?)
 }
 
@@ -80,7 +83,11 @@ pub fn get_requests(
     collection_id: i32,
     folder_id: Option<i32>,
 ) -> Result<Vec<CollectionRequest>, AppError> {
-    Ok(database::get_collection_requests(conn, collection_id, folder_id)?)
+    Ok(database::get_collection_requests(
+        conn,
+        collection_id,
+        folder_id,
+    )?)
 }
 
 pub fn save_request(
@@ -94,17 +101,38 @@ pub fn rename_request(conn: &Connection, id: i32, new_name: &str) -> Result<(), 
     Ok(database::rename_collection_request(conn, id, new_name)?)
 }
 
-#[allow(dead_code)]
-pub fn move_request(
-    conn: &Connection,
-    id: i32,
-    new_folder_id: Option<i32>,
-) -> Result<(), AppError> {
-    Ok(database::move_collection_request(conn, id, new_folder_id)?)
-}
-
 pub fn delete_request(conn: &Connection, id: i32) -> Result<(), AppError> {
     Ok(database::delete_collection_request(conn, id)?)
+}
+
+pub fn move_to_folder(
+    conn: &Connection,
+    req_id: i32,
+    target_folder_id: Option<i32>,
+) -> Result<(), AppError> {
+    Ok(database::move_collection_request(
+        conn,
+        req_id,
+        target_folder_id,
+    )?)
+}
+
+pub fn move_up(conn: &Connection, req: &CollectionRequest) -> Result<(), AppError> {
+    let (prev_id, _) =
+        database::get_adjacent_requests(conn, req.collection_id, req.folder_id, req.sort_order)?;
+    if let Some(prev_id) = prev_id {
+        database::swap_request_sort_order(conn, req.id, prev_id)?;
+    }
+    Ok(())
+}
+
+pub fn move_down(conn: &Connection, req: &CollectionRequest) -> Result<(), AppError> {
+    let (_, next_id) =
+        database::get_adjacent_requests(conn, req.collection_id, req.folder_id, req.sort_order)?;
+    if let Some(next_id) = next_id {
+        database::swap_request_sort_order(conn, req.id, next_id)?;
+    }
+    Ok(())
 }
 
 pub fn delete_request_and_refresh(
@@ -266,7 +294,7 @@ mod tests {
         )
         .unwrap();
 
-        move_request(&conn, req.id, Some(folder.id)).unwrap();
+        move_to_folder(&conn, req.id, Some(folder.id)).unwrap();
         let root_reqs = get_requests(&conn, col.id, None).unwrap();
         assert!(root_reqs.is_empty());
         let folder_reqs = get_requests(&conn, col.id, Some(folder.id)).unwrap();

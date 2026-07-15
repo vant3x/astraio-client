@@ -26,11 +26,12 @@ impl SecretStore {
         let entry = keyring::Entry::new(SERVICE_NAME, &key).map_err(|e| {
             AppError::Io(format!("Failed to create keyring entry '{}': {}", key, e))
         })?;
-        entry
-            .set_password(secret)
-            .map_err(|e| {
-                AppError::Io(format!("Failed to store secret in keyring '{}': {}", key, e))
-            })?;
+        entry.set_password(secret).map_err(|e| {
+            AppError::Io(format!(
+                "Failed to store secret in keyring '{}': {}",
+                key, e
+            ))
+        })?;
         log::debug!("Stored secret: category={}, field={}", category, field);
         Ok(())
     }
@@ -107,10 +108,7 @@ impl SecretStore {
         Ok(())
     }
 
-    pub fn get_oauth2_tokens(
-        &self,
-        identifier: &str,
-    ) -> Result<OAuth2Secrets, AppError> {
+    pub fn get_oauth2_tokens(&self, identifier: &str) -> Result<OAuth2Secrets, AppError> {
         let access_token = self
             .get_secret("oauth2", identifier, "access_token")?
             .unwrap_or_default();
@@ -135,78 +133,43 @@ impl SecretStore {
         )
     }
 
-    pub fn store_basic_password(
-        &self,
-        identifier: &str,
-        password: &str,
-    ) -> Result<(), AppError> {
+    pub fn store_basic_password(&self, identifier: &str, password: &str) -> Result<(), AppError> {
         self.store_secret("basic", identifier, "pass", password)
     }
 
-    pub fn get_basic_password(
-        &self,
-        identifier: &str,
-    ) -> Result<Option<String>, AppError> {
+    pub fn get_basic_password(&self, identifier: &str) -> Result<Option<String>, AppError> {
         self.get_secret("basic", identifier, "pass")
     }
 
-    pub fn store_api_key(
-        &self,
-        identifier: &str,
-        api_key: &str,
-    ) -> Result<(), AppError> {
+    pub fn store_api_key(&self, identifier: &str, api_key: &str) -> Result<(), AppError> {
         self.store_secret("apikey", identifier, "value", api_key)
     }
 
-    pub fn get_api_key(
-        &self,
-        identifier: &str,
-    ) -> Result<Option<String>, AppError> {
+    pub fn get_api_key(&self, identifier: &str) -> Result<Option<String>, AppError> {
         self.get_secret("apikey", identifier, "value")
     }
 
-    pub fn store_bearer_token(
-        &self,
-        identifier: &str,
-        token: &str,
-    ) -> Result<(), AppError> {
+    pub fn store_bearer_token(&self, identifier: &str, token: &str) -> Result<(), AppError> {
         self.store_secret("bearer", identifier, "token", token)
     }
 
-    pub fn get_bearer_token(
-        &self,
-        identifier: &str,
-    ) -> Result<Option<String>, AppError> {
+    pub fn get_bearer_token(&self, identifier: &str) -> Result<Option<String>, AppError> {
         self.get_secret("bearer", identifier, "token")
     }
 
-    pub fn store_proxy_password(
-        &self,
-        identifier: &str,
-        password: &str,
-    ) -> Result<(), AppError> {
+    pub fn store_proxy_password(&self, identifier: &str, password: &str) -> Result<(), AppError> {
         self.store_secret("proxy", identifier, "pass", password)
     }
 
-    pub fn get_proxy_password(
-        &self,
-        identifier: &str,
-    ) -> Result<Option<String>, AppError> {
+    pub fn get_proxy_password(&self, identifier: &str) -> Result<Option<String>, AppError> {
         self.get_secret("proxy", identifier, "pass")
     }
 
-    pub fn store_pkce_verifier(
-        &self,
-        identifier: &str,
-        verifier: &str,
-    ) -> Result<(), AppError> {
+    pub fn store_pkce_verifier(&self, identifier: &str, verifier: &str) -> Result<(), AppError> {
         self.store_secret("oauth2", identifier, "pkce_verifier", verifier)
     }
 
-    pub fn get_pkce_verifier(
-        &self,
-        identifier: &str,
-    ) -> Result<Option<String>, AppError> {
+    pub fn get_pkce_verifier(&self, identifier: &str) -> Result<Option<String>, AppError> {
         self.get_secret("oauth2", identifier, "pkce_verifier")
     }
 }
@@ -275,33 +238,43 @@ pub fn migrate_plaintext_tokens_to_keyring(
     }
 
     match conn.prepare(
-        "SELECT id, method, url, request_data FROM request_history WHERE request_data IS NOT NULL"
+        "SELECT id, method, url, request_data FROM request_history WHERE request_data IS NOT NULL",
     ) {
         Ok(mut stmt) => {
             let rows: Vec<(i32, String, String, String)> = stmt
                 .query_map([], |row| {
-                    Ok((
-                        row.get(0)?,
-                        row.get(1)?,
-                        row.get(2)?,
-                        row.get(3)?,
-                    ))
+                    Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
                 })
                 .map_err(|e| AppError::Database(e.to_string()))?
                 .filter_map(|r| r.ok())
                 .collect();
 
             for (id, _method, _url, request_data) in rows {
-                if let Ok(request) = serde_json::from_str::<crate::http_client::request::HttpRequest>(&request_data) {
+                if let Ok(request) =
+                    serde_json::from_str::<crate::http_client::request::HttpRequest>(&request_data)
+                {
                     if let Some(crate::data::auth::Auth::OAuth2(config)) = &request.auth {
                         let identifier = format!("hist_{}", id);
 
                         if !config.access_token.is_empty()
-                            && store.store_secret("oauth2", &identifier, "access_token", &config.access_token).is_ok() {
+                            && store
+                                .store_secret(
+                                    "oauth2",
+                                    &identifier,
+                                    "access_token",
+                                    &config.access_token,
+                                )
+                                .is_ok()
+                        {
                             migrated += 1;
                         }
                         if !config.refresh_token.is_empty() {
-                            let _ = store.store_secret("oauth2", &identifier, "refresh_token", &config.refresh_token);
+                            let _ = store.store_secret(
+                                "oauth2",
+                                &identifier,
+                                "refresh_token",
+                                &config.refresh_token,
+                            );
                         }
                     }
                 }
@@ -378,7 +351,8 @@ mod tests {
     #[ignore = "triggers macOS Keychain prompt - run manually"]
     fn store_and_get_oauth2_tokens() {
         let store = test_store();
-        let result = store.store_oauth2_tokens("test_oauth", "access123", "refresh456", "secret789");
+        let result =
+            store.store_oauth2_tokens("test_oauth", "access123", "refresh456", "secret789");
         if result.is_err() {
             return;
         }

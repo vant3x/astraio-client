@@ -1012,9 +1012,12 @@ impl HttpRequestView {
 
         let ssl_warning: Element<'_, Message, Theme, iced::Renderer> = if !verify_ssl {
             container(
-                row![lucide::triangle_alert().size(14), text(" SSL verification disabled. Requests may be intercepted.").size(12)]
-                    .spacing(6)
-                    .align_y(Alignment::Center),
+                row![
+                    lucide::triangle_alert().size(14),
+                    text(" SSL verification disabled. Requests may be intercepted.").size(12)
+                ]
+                .spacing(6)
+                .align_y(Alignment::Center),
             )
             .padding(8)
             .style(move |_theme: &Theme| iced::widget::container::Style {
@@ -1132,8 +1135,7 @@ impl HttpRequestView {
                 .on_press(Message::ScriptTabSelected(ScriptTab::PreRequest))
                 .style(iced::widget::button::primary)
         } else {
-            button("Pre-request")
-                .on_press(Message::ScriptTabSelected(ScriptTab::PreRequest))
+            button("Pre-request").on_press(Message::ScriptTabSelected(ScriptTab::PreRequest))
         };
 
         let post_response_btn = if self.active_script_tab == ScriptTab::PostResponse {
@@ -1141,25 +1143,20 @@ impl HttpRequestView {
                 .on_press(Message::ScriptTabSelected(ScriptTab::PostResponse))
                 .style(iced::widget::button::primary)
         } else {
-            button("Post-response")
-                .on_press(Message::ScriptTabSelected(ScriptTab::PostResponse))
+            button("Post-response").on_press(Message::ScriptTabSelected(ScriptTab::PostResponse))
         };
 
         let tab_buttons = row![pre_request_btn, post_response_btn].spacing(5);
 
         let editor_content = match self.active_script_tab {
-            ScriptTab::PreRequest => {
-                text_editor(&self.pre_request_script_editor)
-                    .on_action(Message::PreRequestScriptChanged)
-                    .highlight("json", self.highlighter_theme)
-                    .height(Length::Fill)
-            }
-            ScriptTab::PostResponse => {
-                text_editor(&self.post_response_script_editor)
-                    .on_action(Message::PostResponseScriptChanged)
-                    .highlight("json", self.highlighter_theme)
-                    .height(Length::Fill)
-            }
+            ScriptTab::PreRequest => text_editor(&self.pre_request_script_editor)
+                .on_action(Message::PreRequestScriptChanged)
+                .highlight("json", self.highlighter_theme)
+                .height(Length::Fill),
+            ScriptTab::PostResponse => text_editor(&self.post_response_script_editor)
+                .on_action(Message::PostResponseScriptChanged)
+                .highlight("json", self.highlighter_theme)
+                .height(Length::Fill),
         };
 
         let help_text = text("Define actions as a JSON array. Supported: set_variable, set_header, remove_header, set_body, set_url, set_method, assert_status, assert_header, assert_body, extract_json, extract_header, log, delay.")

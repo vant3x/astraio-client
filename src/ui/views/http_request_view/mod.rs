@@ -61,7 +61,11 @@ pub enum BodyType {
 }
 
 impl BodyType {
-    pub const ALL: [BodyType; 3] = [BodyType::Text, BodyType::Multipart, BodyType::FormUrlencoded];
+    pub const ALL: [BodyType; 3] = [
+        BodyType::Text,
+        BodyType::Multipart,
+        BodyType::FormUrlencoded,
+    ];
 }
 
 impl std::fmt::Display for BodyType {
@@ -501,7 +505,9 @@ impl HttpRequestView {
                     self.content_type = Some(content_type.clone());
 
                     let is_image = content_type.contains("image/");
-                    let formatted_body = if content_type.contains("application/json") {
+                    let formatted_body = if content_type.contains("application/json")
+                        && response.body.len() < 50_000
+                    {
                         match serde_json::from_str::<serde_json::Value>(&response.body) {
                             Ok(json_value) => serde_json::to_string_pretty(&json_value)
                                 .unwrap_or_else(|_| response.body.clone()),
@@ -530,7 +536,17 @@ impl HttpRequestView {
                         response.body.clone()
                     };
 
-                    self.response_body_editor = text_editor::Content::with_text(&formatted_body);
+                    let display_body = if formatted_body.len() > 200_000 {
+                        let truncated: String = formatted_body.chars().take(200_000).collect();
+                        format!(
+                            "{}\n\n--- Response truncated ({} bytes total) ---",
+                            truncated, response.size
+                        )
+                    } else {
+                        formatted_body
+                    };
+
+                    self.response_body_editor = text_editor::Content::with_text(&display_body);
                     self.last_response = Some(response);
                     self.request_status = RequestStatus::Success;
                 }

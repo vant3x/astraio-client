@@ -147,7 +147,9 @@ fn apply_request_to_view(view: &mut HttpRequestView, request: &HttpRequest) {
             view.request_content_type = match value.to_lowercase().as_str() {
                 "application/json" => crate::ui::views::http_request_view::ContentType::Json,
                 "text/html" => crate::ui::views::http_request_view::ContentType::Html,
-                "application/xml" | "text/xml" => crate::ui::views::http_request_view::ContentType::Xml,
+                "application/xml" | "text/xml" => {
+                    crate::ui::views::http_request_view::ContentType::Xml
+                }
                 _ => crate::ui::views::http_request_view::ContentType::Text,
             };
         }
@@ -197,13 +199,11 @@ fn apply_request_to_view(view: &mut HttpRequestView, request: &HttpRequest) {
         view.restore_multipart(&request.multipart_fields);
     }
 
-    let is_form_urlencoded = request
-        .headers
-        .iter()
-        .any(|(k, v)| {
-            k.eq_ignore_ascii_case("content-type")
-                && v.to_lowercase().contains("application/x-www-form-urlencoded")
-        });
+    let is_form_urlencoded = request.headers.iter().any(|(k, v)| {
+        k.eq_ignore_ascii_case("content-type")
+            && v.to_lowercase()
+                .contains("application/x-www-form-urlencoded")
+    });
     if is_form_urlencoded {
         view.body_type = BodyType::FormUrlencoded;
         if let Some(body) = &request.body {

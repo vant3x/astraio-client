@@ -304,7 +304,9 @@ pub struct SchemaEnumValue {
     pub is_deprecated: bool,
 }
 
-pub fn parse_introspection_response(response: &IntrospectionResponse) -> Result<GraphQLSchema, AppError> {
+pub fn parse_introspection_response(
+    response: &IntrospectionResponse,
+) -> Result<GraphQLSchema, AppError> {
     if !response.errors.is_empty() {
         let msgs: Vec<&str> = response.errors.iter().map(|e| e.message.as_str()).collect();
         return Err(AppError::Validation(format!(

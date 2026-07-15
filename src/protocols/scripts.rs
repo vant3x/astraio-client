@@ -210,10 +210,21 @@ impl ScriptEngine {
                 let upper = resolved.to_uppercase();
                 let valid = matches!(
                     upper.as_str(),
-                    "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "HEAD" | "OPTIONS" | "TRACE" | "CONNECT"
+                    "GET"
+                        | "POST"
+                        | "PUT"
+                        | "DELETE"
+                        | "PATCH"
+                        | "HEAD"
+                        | "OPTIONS"
+                        | "TRACE"
+                        | "CONNECT"
                 );
                 if !valid {
-                    return Err(AppError::Validation(format!("Invalid HTTP method: {}", resolved)));
+                    return Err(AppError::Validation(format!(
+                        "Invalid HTTP method: {}",
+                        resolved
+                    )));
                 }
                 request.method = resolved.parse().map_err(|_| {
                     AppError::Validation(format!("Invalid HTTP method: {}", resolved))
@@ -293,10 +304,7 @@ impl ScriptEngine {
                     }
                 }
             }
-            ScriptAction::AssertBody {
-                contains,
-                equals,
-            } => {
+            ScriptAction::AssertBody { contains, equals } => {
                 if let Some(expected) = equals {
                     let resolved = context.resolve_variables(expected);
                     if response.body != resolved {
@@ -312,10 +320,7 @@ impl ScriptEngine {
                 if let Some(expected) = contains {
                     let resolved = context.resolve_variables(expected);
                     if !response.body.contains(resolved.as_str()) {
-                        let msg = format!(
-                            "Assertion failed: body should contain '{}'",
-                            resolved
-                        );
+                        let msg = format!("Assertion failed: body should contain '{}'", resolved);
                         context.errors.push(msg.clone());
                         return Err(AppError::Validation(msg));
                     }
@@ -323,8 +328,7 @@ impl ScriptEngine {
             }
             ScriptAction::ExtractJson { variable, path } => {
                 let resolved_path = context.resolve_variables(path);
-                if let Ok(json_value) = serde_json::from_str::<serde_json::Value>(&response.body)
-                {
+                if let Ok(json_value) = serde_json::from_str::<serde_json::Value>(&response.body) {
                     let extracted = extract_json_path(&json_value, &resolved_path);
                     if let Some(val) = extracted {
                         context.variables.insert(variable.clone(), val);
@@ -504,10 +508,7 @@ mod tests {
         let mut context = ScriptContext::new();
 
         ScriptEngine::execute_pre_request(&script, &mut request, &mut context).unwrap();
-        assert!(!request
-            .headers
-            .iter()
-            .any(|(k, _)| k == "X-Remove-Me"));
+        assert!(!request.headers.iter().any(|(k, _)| k == "X-Remove-Me"));
     }
 
     #[test]
@@ -813,10 +814,7 @@ mod tests {
             .headers
             .iter()
             .any(|(k, v)| k == "X-Custom" && v == "fixed-value"));
-        assert_eq!(
-            request.body.as_deref(),
-            Some(r#"{"token":"abc123"}"#)
-        );
+        assert_eq!(request.body.as_deref(), Some(r#"{"token":"abc123"}"#));
     }
 
     #[test]
@@ -848,10 +846,7 @@ mod tests {
                 path: "users.0.name".to_string(),
             }],
         };
-        let response = make_response(
-            200,
-            r#"{"users": [{"name": "Alice"}, {"name": "Bob"}]}"#,
-        );
+        let response = make_response(200, r#"{"users": [{"name": "Alice"}, {"name": "Bob"}]}"#);
         let mut context = ScriptContext::new();
 
         ScriptEngine::execute_post_response(&script, &response, &mut context).unwrap();
@@ -923,10 +918,7 @@ mod tests {
             .to_string(),
             "log(hello)"
         );
-        assert_eq!(
-            ScriptAction::Delay { ms: 100 }.to_string(),
-            "delay(100ms)"
-        );
+        assert_eq!(ScriptAction::Delay { ms: 100 }.to_string(), "delay(100ms)");
         assert_eq!(
             ScriptAction::ExtractJson {
                 variable: "id".to_string(),
