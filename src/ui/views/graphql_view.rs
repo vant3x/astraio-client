@@ -13,7 +13,7 @@ use base64::{engine::general_purpose, Engine as _};
 use iced::highlighter;
 use iced::widget::text_editor;
 use iced::{
-    widget::{button, column, container, row, rule, scrollable, text, text_input},
+    widget::{button, column, container, pick_list, row, rule, scrollable, text, text_input},
     Alignment, Color, Element, Length, Renderer, Theme,
 };
 use iced_aw::{ContextMenu, TabLabel, Tabs};
@@ -88,6 +88,7 @@ pub enum Message {
     SchemaReceived(Result<GraphQLSchema, crate::error::AppError>),
     SchemaSearchChanged(String),
     SchemaTypeSelected(String),
+    InsertFieldIntoQuery(String, Vec<(String, String)>, String),
     SaveToHistory,
     SavedToHistory(Result<(), crate::error::AppError>),
     SaveToCollection(i32, Option<i32>),
@@ -95,6 +96,7 @@ pub enum Message {
     ToggleSaveMenu,
     AutocompleteSelected(String),
     TimeoutChanged(String),
+    ThemeSelected(highlighter::Theme),
 }
 
 #[derive(Debug)]
@@ -583,10 +585,47 @@ impl GraphQLView {
                 self.query_input = text_editor::Content::with_text(&new_query);
                 self.autocomplete_suggestions.clear();
             }
+            Message::InsertFieldIntoQuery(field_name, args, return_type) => {
+                let has_args = !args.is_empty();
+                let args_str = if has_args {
+                    let formatted: Vec<String> = args
+                        .iter()
+                        .map(|(name, arg_type)| format!("${}: {}", name, arg_type))
+                        .collect();
+                    format!("({})", formatted.join(", "))
+                } else {
+                    String::new()
+                };
+
+                let is_scalar = !return_type.contains('{')
+                    && !return_type.starts_with('[')
+                    && !return_type.ends_with(']');
+
+                let fragment = if is_scalar {
+                    format!("{}{}", field_name, args_str)
+                } else {
+                    format!("{}{} {{\n  \n}}", field_name, args_str)
+                };
+
+                let query = self.query_input.text();
+                let new_query = if query.trim().is_empty() || query.trim() == "{" {
+                    format!("{{\n  {}\n}}", fragment)
+                } else {
+                    let insert_pos = query.rfind('}').unwrap_or(query.len());
+                    let before = &query[..insert_pos];
+                    let after = &query[insert_pos..];
+                    format!("{}  {}\n{}", before, fragment, after)
+                };
+
+                self.query_input = text_editor::Content::with_text(&new_query);
+            }
             Message::TimeoutChanged(secs) => {
                 if let Ok(s) = secs.parse::<u64>() {
                     self.request_config.timeout = std::time::Duration::from_secs(s);
                 }
+            }
+            Message::ThemeSelected(theme) => {
+                self.highlighter_theme = theme;
             }
         }
     }
@@ -598,12 +637,20 @@ impl GraphQLView {
             .width(Length::Fixed(60.0))
             .padding(5);
 
+        let theme_selector = pick_list(
+            highlighter::Theme::ALL,
+            Some(self.highlighter_theme),
+            Message::ThemeSelected,
+        )
+        .padding(5);
+
         let url_bar = row![
             text("POST").size(14).color(method_color("POST")),
             text_input("GraphQL endpoint URL", &self.url_input)
                 .on_input(Message::UrlInputChanged)
                 .padding(10),
             timeout_input,
+            theme_selector,
             button(row![lucide::send().size(14), text(" Send")].spacing(4))
                 .on_press(Message::SendRequest),
             button(row![lucide::database().size(14), text(" Introspect")].spacing(4))
@@ -1066,63 +1113,129 @@ impl GraphQLView {
                     if !selected_type.fields.is_empty() {
                         detail = detail.push(rule::horizontal(5));
                         detail = detail.push(
-                            text("Fields:")
+                            text(format!("Fields ({}):", selected_type.fields.len()))
                                 .size(13)
                                 .color(Color::from_rgb(0.5, 0.5, 0.5)),
                         );
                         for field in &selected_type.fields {
-                            let mut field_text = row![
-                                text(&field.name).size(12),
+                            let mut field_col = column![].spacing(2);
+
+                            let field_name_row = row![
+                                button(
+                                    text(&field.name)
+                                        .size(12)
+                                        .color(Color::from_rgb(0.2, 0.8, 0.9))
+                                )
+                                .on_press(Message::InsertFieldIntoQuery(
+                                    field.name.clone(),
+                                    field.args.iter().map(|a| (a.name.clone(), a.arg_type.clone())).collect(),
+                                    field.return_type.clone(),
+                                ))
+                                .padding(0),
                                 text(": ").size(12).color(Color::from_rgb(0.5, 0.5, 0.5)),
                                 text(&field.return_type)
                                     .size(12)
-                                    .color(Color::from_rgb(0.2, 0.6, 0.9,)),
+                                    .color(Color::from_rgb(0.2, 0.6, 0.9)),
                             ]
-                            .spacing(4);
+                            .spacing(4)
+                            .align_y(Alignment::Center);
 
                             if field.is_deprecated {
-                                field_text = field_text.push(
+                                let field_name_row = field_name_row.push(
                                     text(" [deprecated]")
                                         .size(10)
                                         .color(Color::from_rgb(0.8, 0.4, 0.1)),
                                 );
+                                field_col = field_col.push(field_name_row);
+                            } else {
+                                field_col = field_col.push(field_name_row);
+                            }
+
+                            if let Some(desc) = &field.description {
+                                if !desc.is_empty() {
+                                    field_col = field_col.push(
+                                        text(format!("  {}", desc))
+                                            .size(10)
+                                            .color(Color::from_rgb(0.5, 0.5, 0.5)),
+                                    );
+                                }
                             }
 
                             if !field.args.is_empty() {
-                                let args_str: Vec<String> = field
-                                    .args
-                                    .iter()
-                                    .map(|a| format!("{}: {}", a.name, a.arg_type))
-                                    .collect();
-                                field_text = field_text.push(
-                                    text(format!("({})", args_str.join(", ")))
-                                        .size(10)
-                                        .color(Color::from_rgb(0.5, 0.5, 0.5)),
+                                let mut args_col = column![].spacing(1);
+                                for arg in &field.args {
+                                    let mut arg_row = row![
+                                        text(&arg.name).size(10).color(Color::from_rgb(0.7, 0.5, 0.9)),
+                                        text(": ").size(10).color(Color::from_rgb(0.5, 0.5, 0.5)),
+                                        text(&arg.arg_type).size(10).color(Color::from_rgb(0.2, 0.6, 0.9)),
+                                    ]
+                                    .spacing(2);
+
+                                    if let Some(default) = &arg.default_value {
+                                        arg_row = arg_row.push(
+                                            text(format!(" = {}", default))
+                                                .size(10)
+                                                .color(Color::from_rgb(0.5, 0.5, 0.5)),
+                                        );
+                                    }
+
+                                    if let Some(desc) = &arg.description {
+                                        if !desc.is_empty() {
+                                            arg_row = arg_row.push(
+                                                text(format!("  ({})", desc))
+                                                    .size(9)
+                                                    .color(Color::from_rgb(0.4, 0.4, 0.4)),
+                                            );
+                                        }
+                                    }
+
+                                    args_col = args_col.push(arg_row);
+                                }
+                                field_col = field_col.push(
+                                    container(args_col).padding(12),
                                 );
                             }
 
-                            detail = detail.push(field_text);
+                            detail = detail.push(field_col);
                         }
                     }
 
                     if !selected_type.input_fields.is_empty() {
                         detail = detail.push(rule::horizontal(5));
                         detail = detail.push(
-                            text("Input Fields:")
+                            text(format!("Input Fields ({}):", selected_type.input_fields.len()))
                                 .size(13)
                                 .color(Color::from_rgb(0.5, 0.5, 0.5)),
                         );
                         for field in &selected_type.input_fields {
-                            detail = detail.push(
+                            let mut field_col = column![].spacing(1);
+                            field_col = field_col.push(
                                 row![
                                     text(&field.name).size(12),
                                     text(": ").size(12).color(Color::from_rgb(0.5, 0.5, 0.5)),
                                     text(&field.field_type)
                                         .size(12)
-                                        .color(Color::from_rgb(0.2, 0.6, 0.9,)),
+                                        .color(Color::from_rgb(0.2, 0.6, 0.9)),
                                 ]
                                 .spacing(4),
                             );
+                            if let Some(desc) = &field.description {
+                                if !desc.is_empty() {
+                                    field_col = field_col.push(
+                                        text(format!("  {}", desc))
+                                            .size(10)
+                                            .color(Color::from_rgb(0.5, 0.5, 0.5)),
+                                    );
+                                }
+                            }
+                            if let Some(default) = &field.default_value {
+                                field_col = field_col.push(
+                                    text(format!("  Default: {}", default))
+                                        .size(10)
+                                        .color(Color::from_rgb(0.4, 0.4, 0.4)),
+                                );
+                            }
+                            detail = detail.push(field_col);
                         }
                     }
 
@@ -1296,10 +1409,71 @@ impl GraphQLView {
                         .color(Color::from_rgb(0.8, 0.3, 0.3)),
                 );
                 for (i, err) in response.errors.iter().enumerate() {
-                    items = items.push(
+                    let mut err_col = column![].spacing(2);
+
+                    err_col = err_col.push(
                         text(format!("{}. {}", i + 1, err.message))
                             .size(13)
                             .color(Color::from_rgb(0.8, 0.3, 0.3)),
+                    );
+
+                    if !err.locations.is_empty() {
+                        let locs: Vec<String> = err
+                            .locations
+                            .iter()
+                            .map(|l| format!("line {} col {}", l.line, l.column))
+                            .collect();
+                        err_col = err_col.push(
+                            text(format!("  at {}", locs.join(", ")))
+                                .size(11)
+                                .color(Color::from_rgb(0.6, 0.4, 0.4)),
+                        );
+                    }
+
+                    if !err.path.is_empty() {
+                        let path: String = err
+                            .path
+                            .iter()
+                            .map(|p| p.to_string())
+                            .collect::<Vec<_>>()
+                            .join(".");
+                        err_col = err_col.push(
+                            row![
+                                text("  path: ").size(11).color(Color::from_rgb(0.5, 0.5, 0.5)),
+                                text(path)
+                                    .size(11)
+                                    .color(Color::from_rgb(0.9, 0.7, 0.3))
+                                    .font(iced::Font::MONOSPACE),
+                            ]
+                            .spacing(2),
+                        );
+                    }
+
+                    if let Some(extensions) = &err.extensions {
+                        if let Some(code) = extensions.get("code").and_then(|v| v.as_str()) {
+                            err_col = err_col.push(
+                                row![
+                                    text("  code: ").size(11).color(Color::from_rgb(0.5, 0.5, 0.5)),
+                                    text(code.to_string())
+                                        .size(11)
+                                        .color(Color::from_rgb(0.8, 0.6, 0.2))
+                                        .font(iced::Font::MONOSPACE),
+                                ]
+                                .spacing(2),
+                            );
+                        }
+                    }
+
+                    items = items.push(
+                        container(err_col)
+                            .padding(iced::Padding::from([4, 8]))
+                            .style(move |_: &Theme| iced::widget::container::Style {
+                                background: Some(iced::Color::from_rgba(0.8, 0.1, 0.1, 0.1).into()),
+                                border: iced::Border::default()
+                                    .rounded(4)
+                                    .color(iced::Color::from_rgba(0.8, 0.2, 0.2, 0.3)),
+                                ..iced::widget::container::Style::default()
+                            }),
                     );
                 }
             }
