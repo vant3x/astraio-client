@@ -300,12 +300,12 @@ pub async fn send_request(
         loop {
             let req_builder =
                 match build_request_builder(client, &request, &current_url, &request.url).await {
-                Ok(b) => b,
-                Err(e) => {
-                    last_error = e.to_string();
-                    break;
-                }
-            };
+                    Ok(b) => b,
+                    Err(e) => {
+                        last_error = e.to_string();
+                        break;
+                    }
+                };
 
             log::info!(
                 "Sending {} request to: {} (attempt {}/{})",
