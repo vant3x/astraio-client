@@ -23,7 +23,7 @@ pub struct RequestConfig {
 }
 
 fn default_user_agent() -> String {
-    "AstraNova/0.2.5".to_string()
+    "Astraio/0.3.0".to_string()
 }
 
 fn default_true() -> bool {
