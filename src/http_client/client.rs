@@ -161,17 +161,49 @@ async fn build_multipart_form(
     Ok(form)
 }
 
+/// Headers that must never be forwarded automatically to a different origin
+/// when following a redirect (mirrors browser/reqwest-default behavior).
+const SENSITIVE_REDIRECT_HEADERS: [&str; 3] = ["authorization", "cookie", "proxy-authorization"];
+
+/// Returns true if `a` and `b` share scheme + host + (explicit or default) port.
+fn same_origin(a: &str, b: &str) -> bool {
+    match (reqwest::Url::parse(a), reqwest::Url::parse(b)) {
+        (Ok(ua), Ok(ub)) => {
+            ua.scheme() == ub.scheme()
+                && ua.host_str() == ub.host_str()
+                && ua.port_or_known_default() == ub.port_or_known_default()
+        }
+        // If either URL fails to parse, don't assume same-origin: fail closed.
+        _ => false,
+    }
+}
+
 async fn build_request_builder(
     client: &reqwest::Client,
     request: &HttpRequest,
     current_url: &str,
+    original_url: &str,
 ) -> Result<reqwest::RequestBuilder, AppError> {
     let method: reqwest::Method = request.method.to_string().parse()?;
     let mut req_builder = client.request(method, current_url.to_string());
 
     req_builder = req_builder.timeout(request.config.timeout);
 
+    // If a redirect took us to a different origin, drop credential-bearing
+    // headers so they aren't leaked to a host the user didn't explicitly
+    // target with them.
+    let cross_origin = current_url != original_url && !same_origin(original_url, current_url);
+
     for (key, value) in &request.headers {
+        if cross_origin && SENSITIVE_REDIRECT_HEADERS.contains(&key.to_lowercase().as_str()) {
+            log::warn!(
+                "Stripping '{}' header on cross-origin redirect ({} -> {})",
+                key,
+                original_url,
+                current_url
+            );
+            continue;
+        }
         req_builder = req_builder.header(key, value);
     }
 
@@ -266,7 +298,8 @@ pub async fn send_request(
         let total_start = Instant::now();
 
         loop {
-            let req_builder = match build_request_builder(client, &request, &current_url).await {
+            let req_builder =
+                match build_request_builder(client, &request, &current_url, &request.url).await {
                 Ok(b) => b,
                 Err(e) => {
                     last_error = e.to_string();
