@@ -83,8 +83,8 @@ deb_depends = [
 ]
 
 license = "MIT" 
-homepage = "https://astranova-client.vercel.app/"
-repository = "https://github.com/vant3x/astranova-client-rust" 
+homepage = "https://astraio.vercel.app/"
+repository = "https://github.com/vant3x/astraio-client" 
 
 [profile.release]
 opt-level = 3

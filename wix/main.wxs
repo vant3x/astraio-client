@@ -124,7 +124,7 @@
                                 Id='exe0'
                                 Name='astranova-client.exe'
                                 DiskId='1'
-                                Source='$(var.CargoTargetBinDir)\astranova-client.exe'
+                                Source='$(var.CargoTargetBinDir)\astraio-client.exe'
                                 KeyPath='yes'/>
                         </Component>
                     </Directory>
