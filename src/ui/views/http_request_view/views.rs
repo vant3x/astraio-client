@@ -374,6 +374,36 @@ impl HttpRequestView {
         )
         .size(14);
 
+        let http_warning: Element<'_, Message, Theme, iced::Renderer> = {
+            let has_auth = !matches!(self.auth, crate::data::auth::Auth::None);
+            let is_http = self.url_input.starts_with("http://");
+            if is_http && has_auth {
+                container(
+                    row![
+                        lucide::triangle_alert()
+                            .size(14)
+                            .color(Color::from_rgb(1.0, 0.8, 0.0)),
+                        text("Warning: Sending credentials over plaintext HTTP")
+                            .size(12)
+                            .color(Color::from_rgb(1.0, 0.8, 0.0)),
+                    ]
+                    .spacing(8),
+                )
+                .padding(8)
+                .style(|_theme: &Theme| iced::widget::container::Style {
+                    background: Some(iced::Color::from_rgba(1.0, 0.8, 0.0, 0.15).into()),
+                    border: iced::Border::default()
+                        .color(iced::Color::from_rgba(1.0, 0.8, 0.0, 0.4))
+                        .width(1)
+                        .rounded(4),
+                    ..Default::default()
+                })
+                .into()
+            } else {
+                column![].into()
+            }
+        };
+
         let main_column = column![
             iced::widget::image::Image::new(self.logo_handle.clone())
                 .width(Length::Fixed(100.0))
@@ -420,6 +450,7 @@ impl HttpRequestView {
             }
             .spacing(10)
             .padding(10),
+            http_warning,
             tabs.height(Length::Fixed(280.0)),
             rule::horizontal(10),
             column![

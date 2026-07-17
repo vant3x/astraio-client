@@ -498,11 +498,17 @@ pub fn get_autocomplete_suggestions(
     cursor_offset: usize,
 ) -> Vec<String> {
     let mut suggestions = Vec::new();
-    let before_cursor = if cursor_offset <= query.len() {
-        &query[..cursor_offset]
+    // Find a valid char boundary at or before cursor_offset
+    let safe_offset = if cursor_offset <= query.len() {
+        let mut offset = cursor_offset;
+        while offset > 0 && !query.is_char_boundary(offset) {
+            offset -= 1;
+        }
+        offset
     } else {
-        query
+        query.len()
     };
+    let before_cursor = &query[..safe_offset];
 
     let last_word = before_cursor
         .rsplit_once(|c: char| c.is_whitespace() || c == '{' || c == '(' || c == ':')

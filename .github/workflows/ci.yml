@@ -1,4 +1,4 @@
-name: CI/CD AstraNova
+name: CI/CD Astraio
 
 on:
   push:
@@ -100,21 +100,21 @@ jobs:
       if: matrix.os != 'windows-latest'
       run: |
         cd target/${{ matrix.target }}/release
-        tar -czf ../../../astranova-client-${{ matrix.name }}-binary.tar.gz astranova-client
+        tar -czf ../../../astraio-client-${{ matrix.name }}-binary.tar.gz astraio-client
     
     - name: Package binary (Windows)
       if: matrix.os == 'windows-latest'
       run: |
         cd target/${{ matrix.target }}/release
-        7z a ../../../astranova-client-${{ matrix.name }}-binary.zip astranova-client.exe
+        7z a ../../../astraio-client-${{ matrix.name }}-binary.zip astraio-client.exe
     
     - name: Upload binary artifacts
       uses: actions/upload-artifact@v4
       with:
         name: binaries-${{ matrix.name }}
         path: |
-          astranova-client-*-binary.tar.gz
-          astranova-client-*-binary.zip
+          astraio-client-*-binary.tar.gz
+          astraio-client-*-binary.zip
 
   # Build native packages (para ramas release/* y releases oficiales)
   build-packages:
@@ -182,13 +182,13 @@ jobs:
 
     - name: Fix macOS quarantine attribute
       if: matrix.os == 'macos-latest'
-      run: xattr -cr target/release/bundle/osx/AstraNova.app
+      run: xattr -cr target/release/bundle/osx/Astraio.app
 
     - name: Package macOS bundle
       if: matrix.os == 'macos-latest'
       run: |
         cd target/release/bundle/osx
-        tar -czf AstraNova.app.tgz AstraNova.app
+        tar -czf Astraio.app.tgz Astraio.app
 
     - name: Upload package artifacts
       uses: actions/upload-artifact@v4

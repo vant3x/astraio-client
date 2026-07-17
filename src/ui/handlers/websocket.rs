@@ -262,6 +262,7 @@ fn handle_disconnect(app: &mut AstraNovaApp) -> Task<Message> {
 
     app.ws_sender = None;
     app.ws_receiver = None;
+    app.websocket_view.ws_sender = None;
     app.websocket_view.status = WsStatus::Disconnected;
     app.websocket_view.current_retries = 0;
     Task::none()
@@ -317,6 +318,7 @@ fn handle_disconnected(app: &mut AstraNovaApp, reason: String) -> Task<Message> 
 
     app.ws_sender = None;
     app.ws_receiver = None;
+    app.websocket_view.ws_sender = None;
     app.websocket_view.status = WsStatus::Disconnected;
 
     if app.websocket_view.auto_reconnect
@@ -420,6 +422,7 @@ pub fn handle_ws_event(
                 }
                 app.ws_sender = None;
                 app.ws_receiver = None;
+                app.websocket_view.ws_sender = None;
                 return handle_disconnected(app, e);
             }
 
@@ -456,7 +459,8 @@ pub fn handle_ws_connected(
         }
     }
 
-    app.ws_sender = Some(sender);
+    app.ws_sender = Some(sender.clone());
+    app.websocket_view.ws_sender = Some(sender);
     app.ws_receiver = Some(receiver);
     app.ws_shutdown = shutdown_tx;
     app.ws_write_handle = Some(write_handle);

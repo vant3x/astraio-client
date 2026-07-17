@@ -361,6 +361,7 @@ pub async fn connect_ws(request: &WsRequest) -> Result<WsConnection, AppError> {
     let (mut write, mut read) = ws_stream.split();
 
     let (tx_out, mut rx_out) = mpsc::unbounded_channel::<Message>();
+    let tx_out_for_read = tx_out.clone();
     let (tx_event, rx_event) = mpsc::unbounded_channel::<WsEvent>();
     let (shutdown_tx, mut shutdown_rx) = mpsc::unbounded_channel::<()>();
 
@@ -398,6 +399,11 @@ pub async fn connect_ws(request: &WsRequest) -> Result<WsConnection, AppError> {
             match result {
                 Ok(msg) => {
                     let is_ping = matches!(&msg, Message::Ping(_));
+                    let ping_data = if let Message::Ping(data) = &msg {
+                        data.clone()
+                    } else {
+                        vec![]
+                    };
 
                     if let Some(ws_msg) = parse_ws_message(msg) {
                         if tx_event_for_read.send(WsEvent::Message(ws_msg)).is_err() {
@@ -406,6 +412,9 @@ pub async fn connect_ws(request: &WsRequest) -> Result<WsConnection, AppError> {
                     }
 
                     if is_ping {
+                        // Send actual pong frame back to server
+                        let _ = tx_out_for_read.send(Message::Pong(ping_data));
+                        // Also add to UI
                         let _ = tx_event_for_read.send(WsEvent::Message(WsMessage::incoming(
                             WsMessageType::Pong,
                             "auto-reply".to_string(),

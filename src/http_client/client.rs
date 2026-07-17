@@ -64,7 +64,19 @@ async fn read_response_body(
 pub fn build_client(config: &RequestConfig) -> Result<reqwest::Client, AppError> {
     let mut builder = reqwest::Client::builder();
 
-    // Proxy: prefer ProxyConfig (with auth) over flat proxy_url
+    // User-Agent
+    if !config.user_agent.is_empty() {
+        builder = builder.user_agent(&config.user_agent);
+    }
+
+    // Cookie store
+    if config.cookie_store {
+        builder = builder.cookie_store(true);
+    }
+
+    // Proxy: prefer ProxyConfig (with auth) over flat proxy_url.
+    // If no proxy is configured, reqwest automatically reads HTTP_PROXY/HTTPS_PROXY/NO_PROXY
+    // from the environment.
     if let Some(proxy_config) = &config.proxy {
         let proxy = if let Some(auth) = &proxy_config.auth {
             let proxy_url = &proxy_config.url;

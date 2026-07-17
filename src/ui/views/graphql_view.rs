@@ -97,6 +97,7 @@ pub enum Message {
     AutocompleteSelected(String),
     TimeoutChanged(String),
     ThemeSelected(highlighter::Theme),
+    PrettifyQuery,
 }
 
 #[derive(Debug)]
@@ -115,6 +116,7 @@ pub struct GraphQLView {
     pub response_body_editor: text_editor::Content,
     pub status_code: Option<u16>,
     pub content_type: Option<String>,
+    pub response_headers: Vec<(String, String)>,
     pub response_duration: Option<std::time::Duration>,
     pub response_size: Option<u64>,
     pub highlighter_theme: highlighter::Theme,
@@ -148,6 +150,7 @@ impl Clone for GraphQLView {
             ),
             status_code: self.status_code,
             content_type: self.content_type.clone(),
+            response_headers: self.response_headers.clone(),
             response_duration: self.response_duration,
             response_size: self.response_size,
             highlighter_theme: self.highlighter_theme,
@@ -189,6 +192,7 @@ impl Default for GraphQLView {
             response_body_editor: text_editor::Content::new(),
             status_code: None,
             content_type: None,
+            response_headers: Vec::new(),
             response_duration: None,
             response_size: None,
             highlighter_theme: highlighter::Theme::SolarizedDark,
@@ -305,7 +309,13 @@ impl GraphQLView {
             .map(|h| (h.key.clone(), h.value.clone()))
             .collect();
 
-        headers.push(("Content-Type".to_string(), "application/json".to_string()));
+        // Add Content-Type only if not already set by user
+        if !headers
+            .iter()
+            .any(|(k, _)| k.eq_ignore_ascii_case("content-type"))
+        {
+            headers.push(("Content-Type".to_string(), "application/json".to_string()));
+        }
 
         let mut final_url = self.url_input.clone();
 
@@ -364,7 +374,13 @@ impl GraphQLView {
             .map(|h| (h.key.clone(), h.value.clone()))
             .collect();
 
-        headers.push(("Content-Type".to_string(), "application/json".to_string()));
+        // Add Content-Type only if not already set by user
+        if !headers
+            .iter()
+            .any(|(k, _)| k.eq_ignore_ascii_case("content-type"))
+        {
+            headers.push(("Content-Type".to_string(), "application/json".to_string()));
+        }
 
         let mut final_url = self.url_input.clone();
 
@@ -461,6 +477,11 @@ impl GraphQLView {
                     self.status_code = Some(status);
                     self.response_duration = Some(duration);
                     self.response_size = Some(size);
+                    self.response_headers = headers
+                        .iter()
+                        .filter(|(k, _)| !k.eq_ignore_ascii_case("content-type"))
+                        .cloned()
+                        .collect();
                     let ct = headers
                         .iter()
                         .find(|(k, _)| k.eq_ignore_ascii_case("content-type"))
@@ -492,11 +513,15 @@ impl GraphQLView {
                 }
             }
             Message::CopyHeaders => {
-                if let Some(response) = &self.last_response {
-                    if let Ok(json) = serde_json::to_string_pretty(response) {
-                        if let Ok(mut clipboard) = arboard::Clipboard::new() {
-                            let _ = clipboard.set_text(&json);
-                        }
+                if !self.response_headers.is_empty() {
+                    let text: String = self
+                        .response_headers
+                        .iter()
+                        .map(|(k, v)| format!("{}: {}", k, v))
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    if let Ok(mut clipboard) = arboard::Clipboard::new() {
+                        let _ = clipboard.set_text(&text);
                     }
                 }
             }
@@ -627,6 +652,11 @@ impl GraphQLView {
             Message::ThemeSelected(theme) => {
                 self.highlighter_theme = theme;
             }
+            Message::PrettifyQuery => {
+                let query = self.query_input.text();
+                let formatted = prettify_graphql(&query);
+                self.query_input = text_editor::Content::with_text(&formatted);
+            }
         }
     }
 
@@ -637,8 +667,15 @@ impl GraphQLView {
             .width(Length::Fixed(60.0))
             .padding(5);
 
+        const DARK_THEMES: &[highlighter::Theme] = &[
+            highlighter::Theme::SolarizedDark,
+            highlighter::Theme::Base16Mocha,
+            highlighter::Theme::Base16Ocean,
+            highlighter::Theme::Base16Eighties,
+        ];
+
         let theme_selector = pick_list(
-            highlighter::Theme::ALL,
+            DARK_THEMES,
             Some(self.highlighter_theme),
             Message::ThemeSelected,
         )
@@ -655,6 +692,8 @@ impl GraphQLView {
                 .on_press(Message::SendRequest),
             button(row![lucide::database().size(14), text(" Introspect")].spacing(4))
                 .on_press(Message::IntrospectSchema),
+            button(row![lucide::braces().size(14), text(" Prettify")].spacing(4))
+                .on_press(Message::PrettifyQuery),
             {
                 let save_button: Element<'_, Message, Theme, Renderer> =
                     button(row![lucide::save().size(14), text(" Save")].spacing(4))
@@ -972,8 +1011,39 @@ impl GraphQLView {
                     .into()
             };
 
+        let graphql_warning: Element<'_, Message, Theme, Renderer> = {
+            let has_auth = !matches!(self.auth, crate::data::auth::Auth::None);
+            let is_http = self.url_input.starts_with("http://");
+            if is_http && has_auth {
+                container(
+                    row![
+                        lucide::triangle_alert()
+                            .size(14)
+                            .color(Color::from_rgb(1.0, 0.8, 0.0)),
+                        text("Warning: Sending credentials over plaintext HTTP")
+                            .size(12)
+                            .color(Color::from_rgb(1.0, 0.8, 0.0)),
+                    ]
+                    .spacing(8),
+                )
+                .padding(8)
+                .style(|_theme: &Theme| iced::widget::container::Style {
+                    background: Some(iced::Color::from_rgba(1.0, 0.8, 0.0, 0.15).into()),
+                    border: iced::Border::default()
+                        .color(iced::Color::from_rgba(1.0, 0.8, 0.0, 0.4))
+                        .width(1)
+                        .rounded(4),
+                    ..Default::default()
+                })
+                .into()
+            } else {
+                column![].into()
+            }
+        };
+
         let main_column = column![
             url_bar,
+            graphql_warning,
             row![
                 text_input("Operation name (optional)", &self.operation_name)
                     .on_input(Message::OperationNameChanged)
@@ -1128,7 +1198,11 @@ impl GraphQLView {
                                 )
                                 .on_press(Message::InsertFieldIntoQuery(
                                     field.name.clone(),
-                                    field.args.iter().map(|a| (a.name.clone(), a.arg_type.clone())).collect(),
+                                    field
+                                        .args
+                                        .iter()
+                                        .map(|a| (a.name.clone(), a.arg_type.clone()))
+                                        .collect(),
                                     field.return_type.clone(),
                                 ))
                                 .padding(0),
@@ -1165,9 +1239,13 @@ impl GraphQLView {
                                 let mut args_col = column![].spacing(1);
                                 for arg in &field.args {
                                     let mut arg_row = row![
-                                        text(&arg.name).size(10).color(Color::from_rgb(0.7, 0.5, 0.9)),
+                                        text(&arg.name)
+                                            .size(10)
+                                            .color(Color::from_rgb(0.7, 0.5, 0.9)),
                                         text(": ").size(10).color(Color::from_rgb(0.5, 0.5, 0.5)),
-                                        text(&arg.arg_type).size(10).color(Color::from_rgb(0.2, 0.6, 0.9)),
+                                        text(&arg.arg_type)
+                                            .size(10)
+                                            .color(Color::from_rgb(0.2, 0.6, 0.9)),
                                     ]
                                     .spacing(2);
 
@@ -1191,9 +1269,7 @@ impl GraphQLView {
 
                                     args_col = args_col.push(arg_row);
                                 }
-                                field_col = field_col.push(
-                                    container(args_col).padding(12),
-                                );
+                                field_col = field_col.push(container(args_col).padding(12));
                             }
 
                             detail = detail.push(field_col);
@@ -1203,9 +1279,12 @@ impl GraphQLView {
                     if !selected_type.input_fields.is_empty() {
                         detail = detail.push(rule::horizontal(5));
                         detail = detail.push(
-                            text(format!("Input Fields ({}):", selected_type.input_fields.len()))
-                                .size(13)
-                                .color(Color::from_rgb(0.5, 0.5, 0.5)),
+                            text(format!(
+                                "Input Fields ({}):",
+                                selected_type.input_fields.len()
+                            ))
+                            .size(13)
+                            .color(Color::from_rgb(0.5, 0.5, 0.5)),
                         );
                         for field in &selected_type.input_fields {
                             let mut field_col = column![].spacing(1);
@@ -1439,7 +1518,9 @@ impl GraphQLView {
                             .join(".");
                         err_col = err_col.push(
                             row![
-                                text("  path: ").size(11).color(Color::from_rgb(0.5, 0.5, 0.5)),
+                                text("  path: ")
+                                    .size(11)
+                                    .color(Color::from_rgb(0.5, 0.5, 0.5)),
                                 text(path)
                                     .size(11)
                                     .color(Color::from_rgb(0.9, 0.7, 0.3))
@@ -1453,7 +1534,9 @@ impl GraphQLView {
                         if let Some(code) = extensions.get("code").and_then(|v| v.as_str()) {
                             err_col = err_col.push(
                                 row![
-                                    text("  code: ").size(11).color(Color::from_rgb(0.5, 0.5, 0.5)),
+                                    text("  code: ")
+                                        .size(11)
+                                        .color(Color::from_rgb(0.5, 0.5, 0.5)),
                                     text(code.to_string())
                                         .size(11)
                                         .color(Color::from_rgb(0.8, 0.6, 0.2))
@@ -1492,4 +1575,79 @@ impl GraphQLView {
                 .into()
         }
     }
+}
+
+fn prettify_graphql(query: &str) -> String {
+    let mut result = String::new();
+    let mut indent = 0;
+    let chars: Vec<char> = query.chars().collect();
+    let len = chars.len();
+    let mut i = 0;
+
+    while i < len {
+        let c = chars[i];
+
+        match c {
+            '{' | '(' => {
+                result.push(c);
+                indent += 1;
+                result.push('\n');
+                result.push_str(&"  ".repeat(indent));
+            }
+            '}' | ')' => {
+                indent = indent.saturating_sub(1);
+                result.push('\n');
+                result.push_str(&"  ".repeat(indent));
+                result.push(c);
+            }
+            ',' => {
+                result.push(c);
+                result.push('\n');
+                result.push_str(&"  ".repeat(indent));
+            }
+            '"' => {
+                result.push(c);
+                i += 1;
+                while i < len && chars[i] != '"' {
+                    if chars[i] == '\\' {
+                        result.push(chars[i]);
+                        i += 1;
+                        if i < len {
+                            result.push(chars[i]);
+                        }
+                    } else {
+                        result.push(chars[i]);
+                    }
+                    i += 1;
+                }
+                if i < len {
+                    result.push('"');
+                }
+            }
+            '#' => {
+                while i < len && chars[i] != '\n' {
+                    result.push(chars[i]);
+                    i += 1;
+                }
+                continue;
+            }
+            ' ' | '\t' | '\r' => {
+                if !result.ends_with('\n') && !result.ends_with(' ') && !result.is_empty() {
+                    result.push(' ');
+                }
+            }
+            '\n' => {
+                if !result.ends_with('\n') && !result.is_empty() {
+                    result.push('\n');
+                    result.push_str(&"  ".repeat(indent));
+                }
+            }
+            _ => {
+                result.push(c);
+            }
+        }
+        i += 1;
+    }
+
+    result.trim().to_string()
 }

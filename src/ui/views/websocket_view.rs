@@ -600,10 +600,36 @@ impl WebSocketView {
         ]
         .spacing(4);
 
+        let ws_warning: Element<'_, Message, Theme, Renderer> = {
+            let is_ws = self.url.starts_with("ws://");
+            if is_ws && !self.url.is_empty() {
+                container(
+                    row![
+                        lucide::triangle_alert().size(14).color(Color::from_rgb(1.0, 0.8, 0.0)),
+                        text("Warning: Using plaintext WebSocket (ws://). Use wss:// for secure connections.").size(12).color(Color::from_rgb(1.0, 0.8, 0.0)),
+                    ]
+                    .spacing(8)
+                )
+                .padding(8)
+                .style(|_theme: &Theme| iced::widget::container::Style {
+                    background: Some(iced::Color::from_rgba(1.0, 0.8, 0.0, 0.15).into()),
+                    border: iced::Border::default()
+                        .color(iced::Color::from_rgba(1.0, 0.8, 0.0, 0.4))
+                        .width(1)
+                        .rounded(4),
+                    ..Default::default()
+                })
+                .into()
+            } else {
+                column![].into()
+            }
+        };
+
         container(
             column![
                 header,
                 url_row,
+                ws_warning,
                 headers_section,
                 stats_row,
                 search_row,

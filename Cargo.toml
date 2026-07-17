@@ -1,5 +1,5 @@
 [package]
-name = "astranova-client"
+name = "astraio-client"
 version = "0.2.5-beta.0"
 edition = "2021"
 authors = ["vant3x"]
@@ -13,7 +13,7 @@ iced_aw = { version = "0.13.1", features = ["tabs", "tab_bar", "context_menu", "
 
 bytes = "1.0.0"
 tokio = { version = "1.38.0", features = ["full"] }
-reqwest = { version = "0.12.5", features = ["json", "multipart", "rustls-tls"] }
+reqwest = { version = "0.12.5", features = ["json", "multipart", "rustls-tls", "cookies"] }
 serde = { version = "1.0.203", features = ["derive"] }
 serde_json = "1.0.118"
 serde_yaml = "0.9"
@@ -85,3 +85,10 @@ deb_depends = [
 license = "MIT" 
 homepage = "https://astranova-client.vercel.app/"
 repository = "https://github.com/vant3x/astranova-client-rust" 
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true
+panic = "abort"

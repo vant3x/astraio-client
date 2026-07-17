@@ -16,6 +16,18 @@ pub struct RequestConfig {
     pub proxy: Option<ProxyConfig>,
     #[serde(default)]
     pub tls: TlsConfig,
+    #[serde(default = "default_user_agent")]
+    pub user_agent: String,
+    #[serde(default = "default_true")]
+    pub cookie_store: bool,
+}
+
+fn default_user_agent() -> String {
+    "AstraNova/0.2.5".to_string()
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Default for RequestConfig {
@@ -28,6 +40,8 @@ impl Default for RequestConfig {
             proxy_url: None,
             proxy: None,
             tls: TlsConfig::default(),
+            user_agent: default_user_agent(),
+            cookie_store: true,
         }
     }
 }
@@ -103,6 +117,39 @@ impl Default for TlsConfig {
             client_key_path: None,
             verify_ssl: true,
         }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GlobalConfig {
+    pub request_config: RequestConfig,
+    pub max_body_size: usize,
+}
+
+impl Default for GlobalConfig {
+    fn default() -> Self {
+        Self {
+            request_config: RequestConfig::default(),
+            max_body_size: 10 * 1024 * 1024,
+        }
+    }
+}
+
+impl GlobalConfig {
+    const SETTINGS_KEY: &'static str = "global_config";
+
+    pub fn load(conn: &rusqlite::Connection) -> Self {
+        crate::persistence::database::get_app_setting(conn, Self::SETTINGS_KEY)
+            .and_then(|json| serde_json::from_str(&json).ok())
+            .unwrap_or_default()
+    }
+
+    #[allow(dead_code)]
+    pub fn save(&self, conn: &rusqlite::Connection) -> Result<(), crate::error::AppError> {
+        let json = serde_json::to_string(self)
+            .map_err(|e| crate::error::AppError::Serialization(e.to_string()))?;
+        crate::persistence::database::set_app_setting(conn, Self::SETTINGS_KEY, &json)?;
+        Ok(())
     }
 }
 

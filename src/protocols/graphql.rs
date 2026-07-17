@@ -93,18 +93,39 @@ pub fn validate_query(query: &str) -> Result<(), AppError> {
         return Err(AppError::Validation("Query cannot be empty".to_string()));
     }
 
-    let has_operation = trimmed.starts_with("query")
-        || trimmed.starts_with("mutation")
-        || trimmed.starts_with("subscription")
-        || trimmed.starts_with("fragment")
+    let has_operation = trimmed.starts_with("query ")
+        || trimmed.starts_with("query{")
+        || trimmed.starts_with("query(")
+        || trimmed.starts_with("mutation ")
+        || trimmed.starts_with("mutation{")
+        || trimmed.starts_with("mutation(")
+        || trimmed.starts_with("subscription ")
+        || trimmed.starts_with("subscription{")
+        || trimmed.starts_with("subscription(")
+        || trimmed.starts_with("fragment ")
         || trimmed.starts_with("{");
 
     if !has_operation {
         return Err(AppError::Validation("Query must start with a valid operation: query, mutation, subscription, fragment, or shorthand { }".to_string()));
     }
 
-    let open_braces = trimmed.bytes().filter(|b| *b == b'{').count();
-    let close_braces = trimmed.bytes().filter(|b| *b == b'}').count();
+    // Count braces, skipping string literals
+    let mut open_braces = 0;
+    let mut close_braces = 0;
+    let mut in_string = false;
+    let mut chars = trimmed.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '"' if !in_string => in_string = true,
+            '"' if in_string => in_string = false,
+            '\\' if in_string => {
+                chars.next();
+            } // skip escaped char
+            '{' if !in_string => open_braces += 1,
+            '}' if !in_string => close_braces += 1,
+            _ => {}
+        }
+    }
     if open_braces != close_braces {
         return Err(AppError::Validation(format!(
             "Unbalanced braces: {} opening, {} closing",

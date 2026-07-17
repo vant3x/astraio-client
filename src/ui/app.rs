@@ -137,7 +137,7 @@ pub enum View {
 
 pub fn main() -> iced::Result {
     iced::application(AstraNovaApp::new, AstraNovaApp::update, AstraNovaApp::view)
-        .title("AstraNova Client")
+        .title("Astraio Client")
         .subscription(AstraNovaApp::subscription)
         .theme(AstraNovaApp::theme)
         .font(iced_fonts::LUCIDE_FONT_BYTES)
@@ -172,6 +172,7 @@ pub(crate) struct AstraNovaApp {
     pub(crate) toast_manager: ToastManager,
     pub(crate) dark_mode: bool,
     pub(crate) secret_store: crate::services::secret_store::SecretStore,
+    pub(crate) global_config: crate::http_client::config::GlobalConfig,
 }
 
 #[derive(Debug, Clone)]
@@ -288,8 +289,16 @@ impl AstraNovaApp {
             .map(|v| v != "light")
             .unwrap_or(true);
 
+        // Load global config
+        let global_config = crate::http_client::config::GlobalConfig::load(&db_conn);
+
+        let default_tab = HttpRequestView {
+            request_config: global_config.request_config.clone(),
+            ..HttpRequestView::default()
+        };
+
         let app = Self {
-            request_tabs: vec![HttpRequestView::default()],
+            request_tabs: vec![default_tab],
             active_request_tab_index: 0,
             http_client: Arc::new(reqwest::Client::new()),
             custom_clients: HashMap::new(),
@@ -320,6 +329,7 @@ impl AstraNovaApp {
             toast_manager: ToastManager::new(),
             dark_mode,
             secret_store,
+            global_config,
         };
         (app, Task::none())
     }
@@ -331,7 +341,10 @@ impl AstraNovaApp {
                 super::handlers::http_request::handle_http_request_msg(self, index, msg)
             }
             Message::AddRequestTab => {
-                let mut new_view = HttpRequestView::default();
+                let mut new_view = HttpRequestView {
+                    request_config: self.global_config.request_config.clone(),
+                    ..HttpRequestView::default()
+                };
                 if let Some(env) = &self.active_environment {
                     if let Some(url) = &env.default_endpoint {
                         if !url.is_empty() {

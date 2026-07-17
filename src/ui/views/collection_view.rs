@@ -424,7 +424,7 @@ impl CollectionView {
                 .spacing(4)
                 .padding(8),
             )
-            .style(|_theme| iced::widget::container::Style {
+            .style(|_theme: &Theme| iced::widget::container::Style {
                 background: Some(iced::Background::Color(Color::from_rgb(0.14, 0.14, 0.18))),
                 border: iced::Border::default().rounded(4),
                 ..iced::widget::container::Style::default()
@@ -542,98 +542,28 @@ impl CollectionView {
             let context_menu = ContextMenu::new(row_button, move || {
                 container(
                     column![
-                        button(
-                            text("New Folder")
-                                .size(11)
-                                .color(Color::from_rgb(1.0, 1.0, 1.0))
-                        )
-                        .width(Length::Fill)
-                        .style(|_theme, status| {
-                            let bg = match status {
-                                button::Status::Hovered => {
-                                    Some(iced::Background::Color(Color::from_rgb(0.6, 0.6, 1.0)))
-                                }
-                                _ => Some(iced::Background::Color(Color::from_rgb(0.5, 0.5, 0.9))),
-                            };
-                            button::Style {
-                                background: bg,
-                                text_color: Color::from_rgb(1.0, 1.0, 1.0),
-                                ..button::Style::default()
-                            }
-                        })
-                        .on_press(Message::ShowNewFolderInput(col_id, None)),
-                        button(
-                            text("Rename")
-                                .size(11)
-                                .color(Color::from_rgb(1.0, 1.0, 1.0))
-                        )
-                        .width(Length::Fill)
-                        .style(|_theme, status| {
-                            let bg = match status {
-                                button::Status::Hovered => {
-                                    Some(iced::Background::Color(Color::from_rgb(0.6, 0.6, 1.0)))
-                                }
-                                _ => Some(iced::Background::Color(Color::from_rgb(0.5, 0.5, 0.9))),
-                            };
-                            button::Style {
-                                background: bg,
-                                text_color: Color::from_rgb(1.0, 1.0, 1.0),
-                                ..button::Style::default()
-                            }
-                        })
-                        .on_press(Message::StartRenameCollection(col_idx)),
-                        button(
-                            text("Export")
-                                .size(11)
-                                .color(Color::from_rgb(1.0, 1.0, 1.0))
-                        )
-                        .width(Length::Fill)
-                        .style(|_theme, status| {
-                            let bg = match status {
-                                button::Status::Hovered => {
-                                    Some(iced::Background::Color(Color::from_rgb(0.6, 0.6, 1.0)))
-                                }
-                                _ => Some(iced::Background::Color(Color::from_rgb(0.5, 0.5, 0.9))),
-                            };
-                            button::Style {
-                                background: bg,
-                                text_color: Color::from_rgb(1.0, 1.0, 1.0),
-                                ..button::Style::default()
-                            }
-                        })
-                        .on_press(Message::ExportCollection(col_idx)),
-                        button(
-                            text("Delete")
-                                .size(11)
-                                .color(Color::from_rgb(1.0, 1.0, 1.0))
-                        )
-                        .width(Length::Fill)
-                        .style(|_theme, status| {
-                            let bg = match status {
-                                button::Status::Hovered => {
-                                    Some(iced::Background::Color(Color::from_rgb(0.85, 0.25, 0.25)))
-                                }
-                                _ => {
-                                    Some(iced::Background::Color(Color::from_rgb(0.70, 0.18, 0.18)))
-                                }
-                            };
-                            button::Style {
-                                background: bg,
-                                text_color: Color::from_rgb(1.0, 1.0, 1.0),
-                                ..button::Style::default()
-                            }
-                        })
-                        .on_press(Message::RequestDeleteCollection(col_idx)),
+                        button(text("New Folder").size(11))
+                            .width(Length::Fill)
+                            .on_press(Message::ShowNewFolderInput(col_id, None)),
+                        button(text("Rename").size(11))
+                            .width(Length::Fill)
+                            .on_press(Message::StartRenameCollection(col_idx)),
+                        button(text("Export").size(11))
+                            .width(Length::Fill)
+                            .on_press(Message::ExportCollection(col_idx)),
+                        button(text("Delete").size(11))
+                            .width(Length::Fill)
+                            .on_press(Message::RequestDeleteCollection(col_idx)),
                     ]
                     .spacing(2)
                     .padding(4),
                 )
-                .style(|_theme| iced::widget::container::Style {
+                .style(|theme: &Theme| iced::widget::container::Style {
                     background: Some(iced::Background::Color(Color::from_rgb(0.16, 0.16, 0.20))),
                     border: iced::Border::default()
                         .rounded(6)
                         .width(1)
-                        .color(Color::from_rgb(0.5, 0.5, 0.9)),
+                        .color(theme.extended_palette().primary.strong.color),
                     ..iced::widget::container::Style::default()
                 })
                 .width(Length::Fixed(170.0))
@@ -769,78 +699,25 @@ impl CollectionView {
             let context_menu = ContextMenu::new(row_button, move || {
                 container(
                     column![
-                        button(
-                            text("New Sub-folder")
-                                .size(11)
-                                .color(Color::from_rgb(1.0, 1.0, 1.0))
-                        )
-                        .width(Length::Fill)
-                        .style(|_theme, status| {
-                            let bg = match status {
-                                button::Status::Hovered => {
-                                    Some(iced::Background::Color(Color::from_rgb(0.6, 0.6, 1.0)))
-                                }
-                                _ => Some(iced::Background::Color(Color::from_rgb(0.5, 0.5, 0.9))),
-                            };
-                            button::Style {
-                                background: bg,
-                                text_color: Color::from_rgb(1.0, 1.0, 1.0),
-                                ..button::Style::default()
-                            }
-                        })
-                        .on_press(Message::ShowNewFolderInput(col_id, Some(folder_id))),
-                        button(
-                            text("Rename")
-                                .size(11)
-                                .color(Color::from_rgb(1.0, 1.0, 1.0))
-                        )
-                        .width(Length::Fill)
-                        .style(|_theme, status| {
-                            let bg = match status {
-                                button::Status::Hovered => {
-                                    Some(iced::Background::Color(Color::from_rgb(0.6, 0.6, 1.0)))
-                                }
-                                _ => Some(iced::Background::Color(Color::from_rgb(0.5, 0.5, 0.9))),
-                            };
-                            button::Style {
-                                background: bg,
-                                text_color: Color::from_rgb(1.0, 1.0, 1.0),
-                                ..button::Style::default()
-                            }
-                        })
-                        .on_press(Message::StartRenameFolder(folder_id)),
-                        button(
-                            text("Delete")
-                                .size(11)
-                                .color(Color::from_rgb(1.0, 1.0, 1.0))
-                        )
-                        .width(Length::Fill)
-                        .style(|_theme, status| {
-                            let bg = match status {
-                                button::Status::Hovered => {
-                                    Some(iced::Background::Color(Color::from_rgb(0.85, 0.25, 0.25)))
-                                }
-                                _ => {
-                                    Some(iced::Background::Color(Color::from_rgb(0.70, 0.18, 0.18)))
-                                }
-                            };
-                            button::Style {
-                                background: bg,
-                                text_color: Color::from_rgb(1.0, 1.0, 1.0),
-                                ..button::Style::default()
-                            }
-                        })
-                        .on_press(Message::RequestDeleteFolder(folder_id)),
+                        button(text("New Sub-folder").size(11))
+                            .width(Length::Fill)
+                            .on_press(Message::ShowNewFolderInput(col_id, Some(folder_id))),
+                        button(text("Rename").size(11))
+                            .width(Length::Fill)
+                            .on_press(Message::StartRenameFolder(folder_id)),
+                        button(text("Delete").size(11))
+                            .width(Length::Fill)
+                            .on_press(Message::RequestDeleteFolder(folder_id)),
                     ]
                     .spacing(2)
                     .padding(4),
                 )
-                .style(|_theme| iced::widget::container::Style {
+                .style(|theme: &Theme| iced::widget::container::Style {
                     background: Some(iced::Background::Color(Color::from_rgb(0.16, 0.16, 0.20))),
                     border: iced::Border::default()
                         .rounded(6)
                         .width(1)
-                        .color(Color::from_rgb(0.5, 0.5, 0.9)),
+                        .color(theme.extended_palette().primary.strong.color),
                     ..iced::widget::container::Style::default()
                 })
                 .width(Length::Fixed(170.0))
@@ -1012,126 +889,39 @@ impl CollectionView {
             let context_menu = ContextMenu::new(row_button, move || {
                 container(
                     column![
-                        button(
-                            text("Move Up")
-                                .size(11)
-                                .color(Color::from_rgb(1.0, 1.0, 1.0))
-                        )
-                        .width(Length::Fill)
-                        .style(|_theme, status| {
-                            let bg = match status {
-                                button::Status::Hovered => {
-                                    Some(iced::Background::Color(Color::from_rgb(0.6, 0.6, 1.0)))
-                                }
-                                _ => Some(iced::Background::Color(Color::from_rgb(0.5, 0.5, 0.9))),
-                            };
-                            button::Style {
-                                background: bg,
-                                text_color: Color::from_rgb(1.0, 1.0, 1.0),
-                                ..button::Style::default()
-                            }
-                        })
-                        .on_press(Message::MoveRequestUp(req_id)),
-                        button(
-                            text("Move Down")
-                                .size(11)
-                                .color(Color::from_rgb(1.0, 1.0, 1.0))
-                        )
-                        .width(Length::Fill)
-                        .style(|_theme, status| {
-                            let bg = match status {
-                                button::Status::Hovered => {
-                                    Some(iced::Background::Color(Color::from_rgb(0.6, 0.6, 1.0)))
-                                }
-                                _ => Some(iced::Background::Color(Color::from_rgb(0.5, 0.5, 0.9))),
-                            };
-                            button::Style {
-                                background: bg,
-                                text_color: Color::from_rgb(1.0, 1.0, 1.0),
-                                ..button::Style::default()
-                            }
-                        })
-                        .on_press(Message::MoveRequestDown(req_id)),
-                        button(
-                            text("Move to Folder...")
-                                .size(11)
-                                .color(Color::from_rgb(1.0, 1.0, 1.0))
-                        )
-                        .width(Length::Fill)
-                        .style(|_theme, status| {
-                            let bg = match status {
-                                button::Status::Hovered => {
-                                    Some(iced::Background::Color(Color::from_rgb(0.6, 0.6, 1.0)))
-                                }
-                                _ => Some(iced::Background::Color(Color::from_rgb(0.5, 0.5, 0.9))),
-                            };
-                            button::Style {
-                                background: bg,
-                                text_color: Color::from_rgb(1.0, 1.0, 1.0),
-                                ..button::Style::default()
-                            }
-                        })
-                        .on_press(Message::StartMoveToFolder(req_id)),
+                        button(text("Move Up").size(11))
+                            .width(Length::Fill)
+                            .on_press(Message::MoveRequestUp(req_id)),
+                        button(text("Move Down").size(11))
+                            .width(Length::Fill)
+                            .on_press(Message::MoveRequestDown(req_id)),
+                        button(text("Move to Folder...").size(11))
+                            .width(Length::Fill)
+                            .on_press(Message::StartMoveToFolder(req_id)),
                         container(text("").height(Length::Fixed(1.0)))
                             .width(Length::Fill)
-                            .style(|_theme| iced::widget::container::Style {
+                            .style(|_theme: &Theme| iced::widget::container::Style {
                                 background: Some(iced::Background::Color(Color::from_rgb(
                                     0.25, 0.45, 0.80,
                                 ))),
                                 ..iced::widget::container::Style::default()
                             }),
-                        button(
-                            text("Rename")
-                                .size(11)
-                                .color(Color::from_rgb(1.0, 1.0, 1.0))
-                        )
-                        .width(Length::Fill)
-                        .style(|_theme, status| {
-                            let bg = match status {
-                                button::Status::Hovered => {
-                                    Some(iced::Background::Color(Color::from_rgb(0.6, 0.6, 1.0)))
-                                }
-                                _ => Some(iced::Background::Color(Color::from_rgb(0.5, 0.5, 0.9))),
-                            };
-                            button::Style {
-                                background: bg,
-                                text_color: Color::from_rgb(1.0, 1.0, 1.0),
-                                ..button::Style::default()
-                            }
-                        })
-                        .on_press(Message::StartRenameRequest(req_id)),
-                        button(
-                            text("Delete")
-                                .size(11)
-                                .color(Color::from_rgb(1.0, 1.0, 1.0))
-                        )
-                        .width(Length::Fill)
-                        .style(|_theme, status| {
-                            let bg = match status {
-                                button::Status::Hovered => {
-                                    Some(iced::Background::Color(Color::from_rgb(0.85, 0.25, 0.25)))
-                                }
-                                _ => {
-                                    Some(iced::Background::Color(Color::from_rgb(0.70, 0.18, 0.18)))
-                                }
-                            };
-                            button::Style {
-                                background: bg,
-                                text_color: Color::from_rgb(1.0, 1.0, 1.0),
-                                ..button::Style::default()
-                            }
-                        })
-                        .on_press(Message::RequestDeleteRequest(req_id)),
+                        button(text("Rename").size(11))
+                            .width(Length::Fill)
+                            .on_press(Message::StartRenameRequest(req_id)),
+                        button(text("Delete").size(11))
+                            .width(Length::Fill)
+                            .on_press(Message::RequestDeleteRequest(req_id)),
                     ]
                     .spacing(2)
                     .padding(4),
                 )
-                .style(|_theme| iced::widget::container::Style {
+                .style(|theme: &Theme| iced::widget::container::Style {
                     background: Some(iced::Background::Color(Color::from_rgb(0.16, 0.16, 0.20))),
                     border: iced::Border::default()
                         .rounded(6)
                         .width(1)
-                        .color(Color::from_rgb(0.5, 0.5, 0.9)),
+                        .color(theme.extended_palette().primary.strong.color),
                     ..iced::widget::container::Style::default()
                 })
                 .width(Length::Fixed(170.0))
