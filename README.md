@@ -1,12 +1,12 @@
-# AstraNova Client
+# Astraio Client
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Commercial License](https://img.shields.io/badge/License-Commercial-green.svg)](LICENSING.md)
 
 <img src="assets/astra-bg.png" alt="AstraNova Logo" width="300">
 
-[Web](https://astranova-client.vercel.app/) -
-[Download installer](https://astranova-client.vercel.app/) -
+[Web](https://astraio.vercel.app/) -
+[Download installer](https://astraio.vercel.app/) -
 
 AstraNova Client is a desktop application built with Rust and Iced, designed to provide a user-friendly interface for making HTTP requests. It allows users to specify URLs, HTTP methods, headers, and request bodies, and then displays the response.
 
@@ -34,8 +34,8 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 1.  **Clone the repository:**
 
     ```bash
-    git clone https://github.com/vant3x/astranova-client-rust.git
-    cd astranova-client
+    git clone https://github.com/vant3x/astraio-client.git
+    cd astraio-client
     ```
 
 2.  **Run the application:**
@@ -53,7 +53,7 @@ If you downloaded the app from GitHub Releases and macOS won't let you open it (
 
 
 ```bash
-xattr -cr /Applications/AstraNova.app
+xattr -cr /Applications/Astraio.app
 ```
 
 This removes the “quarantine” label that macOS applies to apps downloaded from the web. You don't need to compile anything with `cargo`.
