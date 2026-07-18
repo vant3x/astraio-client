@@ -201,24 +201,23 @@ impl WebSocketView {
         .spacing(8)
         .align_y(Alignment::Center);
 
-        let auto_reconnect_label = if self.auto_reconnect {
-            "[x] Auto-reconnect"
-        } else {
-            "[ ] Auto-reconnect"
-        };
         let auto_reconnect_toggle =
-            button(text(auto_reconnect_label).size(12)).on_press(Message::ToggleAutoReconnect);
+            iced::widget::toggler(self.auto_reconnect)
+                .label("Auto-reconnect")
+                .on_toggle(|_checked| Message::ToggleAutoReconnect)
+                .text_size(12);
 
-        let advanced_toggle_label = if self.show_advanced {
-            "[-] Advanced"
-        } else {
-            "[+] Advanced"
-        };
         let advanced_toggle =
-            button(text(advanced_toggle_label).size(12)).on_press(Message::ToggleShowAdvanced);
+            iced::widget::toggler(self.show_advanced)
+                .label("Advanced")
+                .on_toggle(|_checked| Message::ToggleShowAdvanced)
+                .text_size(12);
 
-        let tls_toggle_label = if self.show_tls { "[-] TLS" } else { "[+] TLS" };
-        let tls_toggle = button(text(tls_toggle_label).size(12)).on_press(Message::ToggleShowTls);
+        let tls_toggle =
+            iced::widget::toggler(self.show_tls)
+                .label("TLS")
+                .on_toggle(|_checked| Message::ToggleShowTls)
+                .text_size(12);
 
         let reconnect_config = if self.auto_reconnect {
             let delay_input = text_input("Delay (ms)", &self.reconnect_delay_ms.to_string())
@@ -286,13 +285,11 @@ impl WebSocketView {
         };
 
         let tls_section = if self.show_tls {
-            let skip_verify_label = if self.config.tls.skip_verify {
-                "[x] Skip certificate verification"
-            } else {
-                "[ ] Skip certificate verification"
-            };
-            let skip_verify_btn =
-                button(text(skip_verify_label).size(12)).on_press(Message::ToggleSkipVerify);
+            let skip_verify_toggle =
+                iced::widget::toggler(self.config.tls.skip_verify)
+                    .label("Skip certificate verification")
+                    .on_toggle(|_checked| Message::ToggleSkipVerify)
+                    .text_size(12);
 
             let status_info = match &self.status {
                 WsStatus::Connected => {
@@ -309,7 +306,7 @@ impl WebSocketView {
                 _ => text("").size(11),
             };
 
-            column![skip_verify_btn, status_info,].spacing(4)
+            column![skip_verify_toggle, status_info,].spacing(4)
         } else {
             column![]
         };

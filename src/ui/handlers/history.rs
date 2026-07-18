@@ -17,8 +17,23 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: history_view::Message) -> Tas
                 if let Some(new_view) =
                     crate::services::request_restoration::build_view_from_history(&entry)
                 {
-                    app.request_tabs.push(new_view);
-                    app.active_request_tab_index = app.request_tabs.len() - 1;
+                    if let Some(active_tab) = app.request_tabs.get_mut(app.active_request_tab_index)
+                    {
+                        active_tab.url_input = new_view.url_input;
+                        active_tab.method = new_view.method;
+                        active_tab.headers_editor = new_view.headers_editor;
+                        active_tab.body_input = new_view.body_input;
+                        active_tab.body_type = new_view.body_type;
+                        active_tab.auth = new_view.auth;
+                        active_tab.params_editor = new_view.params_editor;
+                        active_tab.form_entries = new_view.form_entries;
+                        active_tab.multipart_entries = new_view.multipart_entries;
+                        active_tab.request_status = crate::ui::request_status::RequestStatus::Idle;
+                        active_tab.last_response = None;
+                    } else {
+                        app.request_tabs.push(new_view);
+                        app.active_request_tab_index = app.request_tabs.len() - 1;
+                    }
                 }
             }
             app.history_view.update(msg);

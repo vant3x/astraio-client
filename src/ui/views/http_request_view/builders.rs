@@ -75,6 +75,35 @@ impl HttpRequestView {
         }
     }
 
+    pub fn has_unresolved_variables(&self) -> Vec<String> {
+        let mut unresolved = Vec::new();
+        let check = |s: &str| -> Vec<String> {
+            let mut vars = Vec::new();
+            let mut remaining = s;
+            while let Some(start) = remaining.find("{{") {
+                if let Some(end) = remaining[start + 2..].find("}}") {
+                    let var_name = &remaining[start + 2..start + 2 + end];
+                    vars.push(var_name.to_string());
+                    remaining = &remaining[start + 2 + end + 2..];
+                } else {
+                    break;
+                }
+            }
+            vars
+        };
+
+        unresolved.extend(check(&self.url_input));
+        for entry in &self.headers_editor.entries {
+            unresolved.extend(check(&entry.value));
+        }
+        for entry in &self.params_editor.entries {
+            unresolved.extend(check(&entry.value));
+        }
+        unresolved.sort();
+        unresolved.dedup();
+        unresolved
+    }
+
     pub fn build_request(&self) -> Result<crate::http_client::request::HttpRequest, AppError> {
         let params: Vec<(String, String)> = self
             .params_editor

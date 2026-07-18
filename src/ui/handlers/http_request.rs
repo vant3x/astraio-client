@@ -45,6 +45,13 @@ pub fn handle_http_request_msg(
             let mut temp_view = view.clone();
             if let Some(env) = &app.active_environment {
                 temp_view.apply_environment(env);
+                let unresolved = temp_view.has_unresolved_variables();
+                if !unresolved.is_empty() {
+                    app.toast_manager.warning(format!(
+                        "Unresolved variables: {}",
+                        unresolved.join(", ")
+                    ));
+                }
             }
 
             // Validate URL before sending

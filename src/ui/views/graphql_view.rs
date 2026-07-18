@@ -464,7 +464,9 @@ impl GraphQLView {
             }
             Message::SendRequest => {}
             Message::SetLoading => {
-                self.request_status = RequestStatus::Loading;
+                self.request_status = RequestStatus::Loading {
+                    started_at: std::time::Instant::now(),
+                };
                 self.last_response = None;
                 self.response_body_editor = text_editor::Content::new();
                 self.status_code = None;
@@ -840,19 +842,27 @@ impl GraphQLView {
                     .align_y(Alignment::Center)
                     .into()
             }
-            RequestStatus::Loading => container(
-                column![
-                    iced_aw::Spinner::new().width(32).height(32),
-                    text("Sending request...").size(14),
-                ]
-                .spacing(8)
-                .align_x(Alignment::Center),
-            )
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .align_x(Alignment::Center)
-            .align_y(Alignment::Center)
-            .into(),
+            RequestStatus::Loading { started_at } => {
+                let elapsed = started_at.elapsed().as_millis();
+                let elapsed_text = if elapsed < 1000 {
+                    format!("{}ms", elapsed)
+                } else {
+                    format!("{:.1}s", elapsed as f64 / 1000.0)
+                };
+                container(
+                    column![
+                        iced_aw::Spinner::new().width(32).height(32),
+                        text(format!("Sending request... ({})", elapsed_text)).size(14),
+                    ]
+                    .spacing(8)
+                    .align_x(Alignment::Center),
+                )
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .align_x(Alignment::Center)
+                .align_y(Alignment::Center)
+                .into()
+            }
             RequestStatus::Success => {
                 let response_tabs = Tabs::new(Message::ResponseTabSelected)
                     .push(ResponseTab::Body, TabLabel::Text("Body".to_string()), {

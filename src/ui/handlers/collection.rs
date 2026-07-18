@@ -529,47 +529,70 @@ fn load_collection_request(app: &mut AstraNovaApp, req_id: i32) {
 }
 
 fn save_current_to_collection(app: &mut AstraNovaApp) {
-    if let Some(view) = app.request_tabs.get(app.active_request_tab_index) {
-        let col_id = match &app.collection_view.selected_item {
-            Some(collection_view::TreeItemId::Collection(idx)) => {
-                app.collection_view.collections.get(*idx).map(|c| c.id)
+    let col_id = match &app.collection_view.selected_item {
+        Some(collection_view::TreeItemId::Collection(idx)) => {
+            app.collection_view.collections.get(*idx).map(|c| c.id)
+        }
+        Some(collection_view::TreeItemId::Folder(folder_id)) => app
+            .collection_view
+            .folders
+            .iter()
+            .find(|f| f.id == *folder_id)
+            .map(|f| f.collection_id),
+        Some(collection_view::TreeItemId::Request(req_id)) => app
+            .collection_view
+            .requests
+            .iter()
+            .find(|r| r.id == *req_id)
+            .map(|r| r.collection_id),
+        None => app.collection_view.collections.first().map(|c| c.id),
+    };
+
+    let col_id = match col_id {
+        Some(id) => id,
+        None => {
+            match crate::services::collection_service::create_and_refresh(
+                &app.db_conn,
+                "My Collection",
+            ) {
+                Ok(cols) => {
+                    if let Some(new_col) = cols.last() {
+                        let new_id = new_col.id;
+                        refresh_all_data(app);
+                        new_id
+                    } else {
+                        return;
+                    }
+                }
+                Err(e) => {
+                    log::error!("Failed to create default collection: {}", e);
+                    return;
+                }
             }
-            Some(collection_view::TreeItemId::Folder(folder_id)) => app
-                .collection_view
-                .folders
-                .iter()
-                .find(|f| f.id == *folder_id)
-                .map(|f| f.collection_id),
-            Some(collection_view::TreeItemId::Request(req_id)) => app
-                .collection_view
-                .requests
-                .iter()
-                .find(|r| r.id == *req_id)
-                .map(|r| r.collection_id),
-            None => app.collection_view.collections.first().map(|c| c.id),
-        };
+        }
+    };
 
-        let col_id = match col_id {
-            Some(id) => id,
-            None => return,
-        };
+    let folder_id = match &app.collection_view.selected_item {
+        Some(collection_view::TreeItemId::Folder(folder_id)) => Some(*folder_id),
+        Some(collection_view::TreeItemId::Request(req_id)) => app
+            .collection_view
+            .requests
+            .iter()
+            .find(|r| r.id == *req_id)
+            .and_then(|r| r.folder_id),
+        _ => None,
+    };
 
-        let folder_id = match &app.collection_view.selected_item {
-            Some(collection_view::TreeItemId::Folder(folder_id)) => Some(*folder_id),
-            Some(collection_view::TreeItemId::Request(req_id)) => app
-                .collection_view
-                .requests
-                .iter()
-                .find(|r| r.id == *req_id)
-                .and_then(|r| r.folder_id),
-            _ => None,
-        };
+    let view = match app.request_tabs.get(app.active_request_tab_index) {
+        Some(v) => v,
+        None => return,
+    };
 
-        let request = match view.build_request() {
-            Ok(r) => r,
-            Err(_) => return,
-        };
-        let auth_type = match &view.auth {
+    let request = match view.build_request() {
+        Ok(r) => r,
+        Err(_) => return,
+    };
+    let auth_type = match &view.auth {
             crate::data::auth::Auth::BearerToken(_) => {
                 crate::persistence::database::CollectionAuthType::Bearer
             }
@@ -611,7 +634,7 @@ fn save_current_to_collection(app: &mut AstraNovaApp) {
         };
 
         let name = if request.url.len() > 40 {
-            format!("{} {}", request.method, &request.url[..40])
+            format!("{} {}", request.method, request.url.chars().take(40).collect::<String>())
         } else {
             format!("{} {}", request.method, request.url)
         };
@@ -641,5 +664,4 @@ fn save_current_to_collection(app: &mut AstraNovaApp) {
         );
 
         refresh_collection_data(app, col_id);
-    }
 }

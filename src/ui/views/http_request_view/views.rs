@@ -69,25 +69,43 @@ impl HttpRequestView {
             .width(Length::Fill);
 
         let response_area: Element<Message> = match &self.request_status {
-            RequestStatus::Idle => container(text("Enter URL and send request."))
+            RequestStatus::Idle => {
+                let idle_content = column![
+                    text("Ready to send").size(18).color(Color::from_rgb(0.6, 0.6, 0.6)),
+                    text("Enter a URL above and click Send, or paste a cURL command in the URL bar").size(13)
+                        .color(Color::from_rgb(0.45, 0.45, 0.45)),
+                ]
+                .spacing(12)
+                .align_x(Alignment::Center);
+
+                container(idle_content)
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .align_x(Alignment::Center)
+                    .align_y(Alignment::Center)
+                    .into()
+            }
+            RequestStatus::Loading { started_at } => {
+                let elapsed = started_at.elapsed().as_millis();
+                let elapsed_text = if elapsed < 1000 {
+                    format!("{}ms", elapsed)
+                } else {
+                    format!("{:.1}s", elapsed as f64 / 1000.0)
+                };
+                container(
+                    column![
+                        iced_aw::Spinner::new().width(32).height(32),
+                        text(format!("Sending request... ({})", elapsed_text)).size(14),
+                    ]
+                    .spacing(8)
+                    .align_x(Alignment::Center),
+                )
                 .width(Length::Fill)
                 .height(Length::Fill)
                 .align_x(Alignment::Center)
                 .align_y(Alignment::Center)
-                .into(),
-            RequestStatus::Loading => container(
-                column![
-                    iced_aw::Spinner::new().width(32).height(32),
-                    text("Sending request...").size(14),
-                ]
-                .spacing(8)
-                .align_x(Alignment::Center),
-            )
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .align_x(Alignment::Center)
-            .align_y(Alignment::Center)
-            .into(),
+                .into()
+            }
             RequestStatus::Success => {
                 let search_bar = if self.show_response_search {
                     let match_info = if self.response_search_matches.is_empty() {
@@ -215,7 +233,21 @@ impl HttpRequestView {
                     .into()
             }
             RequestStatus::Error(error_message) => {
-                container(text(format!("Error: {}", error_message)))
+                let error_content = column![
+                    text("Request Failed").size(16).color(Color::from_rgb(0.8, 0.2, 0.2)),
+                    text(error_message.clone()).size(13),
+                    row![
+                        button(row![lucide::copy().size(12), text(" Copy Error")].spacing(4))
+                            .on_press(Message::CopyError(error_message.clone())),
+                        button(row![lucide::refresh_cw().size(12), text(" Retry")].spacing(4))
+                            .on_press(Message::SendRequest),
+                    ]
+                    .spacing(8),
+                ]
+                .spacing(12)
+                .align_x(Alignment::Center);
+
+                container(error_content)
                     .width(Length::Fill)
                     .height(Length::Fill)
                     .align_x(Alignment::Center)
@@ -416,7 +448,7 @@ impl HttpRequestView {
                 let code_btn = button(row![lucide::code().size(14), text(" Code")].spacing(4))
                     .on_press(Message::ShowSnippets);
 
-                if matches!(self.request_status, RequestStatus::Loading) {
+                if matches!(self.request_status, RequestStatus::Loading { .. }) {
                     row![
                         pick_list(
                             &super::HTTP_METHODS[..],
@@ -1217,38 +1249,67 @@ impl HttpRequestView {
         )
         .padding(8);
 
+        let import_btn = button(row![lucide::download().size(12), text(" Import cURL")].spacing(4))
+            .on_press(Message::ImportCurlToggle);
+
         let close_button = button(lucide::x().size(14))
             .on_press(Message::HideSnippets)
             .width(Length::Fixed(35.0));
 
         let header = row![
-            text("Code Snippets").size(16),
+            text("Code").size(16),
             format_selector,
+            import_btn,
             close_button,
         ]
         .spacing(10)
         .align_y(Alignment::Center);
 
-        let syntax = match self.snippet_format {
-            SnippetFormat::Curl => "sh",
-            SnippetFormat::Python => "python",
-            SnippetFormat::JavaScript => "javascript",
-            SnippetFormat::Rust => "rust",
+        let content: Element<Message> = if self.show_import_curl {
+            let curl_input = text_input("Paste cURL command here...", &self.import_curl_input)
+                .on_input(Message::ImportCurlChanged)
+                .padding(8)
+                .width(Length::Fill);
+
+            let import_button = button(row![lucide::download().size(12), text(" Import")].spacing(4))
+                .on_press(Message::ImportCurlSubmit);
+
+            column![
+                text("Import from cURL").size(14),
+                curl_input,
+                import_button,
+            ]
+            .spacing(8)
+            .padding(10)
+            .into()
+        } else {
+            let syntax = match self.snippet_format {
+                SnippetFormat::Curl => "sh",
+                SnippetFormat::Python => "python",
+                SnippetFormat::JavaScript => "javascript",
+                SnippetFormat::Rust => "rust",
+            };
+
+            let editor = text_editor(&self.snippet_content)
+                .highlight(syntax, self.highlighter_theme)
+                .height(Length::Fill);
+
+            let copy_button = button(row![lucide::copy().size(14), text(" Copy")].spacing(4))
+                .on_press(Message::CopySnippet);
+
+            column![
+                scrollable(editor).height(Length::Fill),
+                copy_button,
+            ]
+            .spacing(8)
+            .into()
         };
-
-        let editor = text_editor(&self.snippet_content)
-            .highlight(syntax, self.highlighter_theme)
-            .height(Length::Fill);
-
-        let copy_button = button(row![lucide::copy().size(14), text(" Copy")].spacing(4))
-            .on_press(Message::CopySnippet);
 
         container(
             column![
                 header,
                 rule::horizontal(5),
-                scrollable(editor).height(Length::Fill),
-                copy_button,
+                content,
             ]
             .spacing(10)
             .padding(10),

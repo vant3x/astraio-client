@@ -234,6 +234,7 @@ pub enum Message {
     ToggleResponseSearch,
     WsSendFromKeyboard,
     SendActiveRequest,
+    EscapePressed,
     ClearKeychainSecrets,
     KeychainCleared(Result<u32, crate::error::AppError>),
 }
@@ -569,6 +570,26 @@ impl AstraNovaApp {
                 }
                 Task::none()
             }
+            Message::EscapePressed => {
+                if self.show_env_info {
+                    self.show_env_info = false;
+                } else if let Some(view) = self.request_tabs.get(self.active_request_tab_index) {
+                    if view.show_response_search {
+                        return super::handlers::http_request::handle_http_request_msg(
+                            self,
+                            self.active_request_tab_index,
+                            http_request_view::Message::ToggleResponseSearch,
+                        );
+                    } else if view.show_snippets {
+                        return super::handlers::http_request::handle_http_request_msg(
+                            self,
+                            self.active_request_tab_index,
+                            http_request_view::Message::ShowSnippets,
+                        );
+                    }
+                }
+                Task::none()
+            }
             Message::ClearKeychainSecrets => {
                 let store = self.secret_store.clone();
                 let conn = &self.db_conn;
@@ -682,6 +703,11 @@ impl AstraNovaApp {
                         iced::keyboard::Key::Character(ref c) if c.as_ref() == "e" => {
                             Some(Message::ToggleEnvironmentManager)
                         }
+                        iced::keyboard::Key::Character(ref c) if c.as_ref() == "s" => {
+                            Some(Message::CollectionMsg(
+                                super::views::collection_view::Message::SaveCurrentRequest,
+                            ))
+                        }
                         iced::keyboard::Key::Named(iced::keyboard::key::Named::Enter) => {
                             Some(Message::SendActiveRequest)
                         }
@@ -689,6 +715,8 @@ impl AstraNovaApp {
                     }
                 } else if key == iced::keyboard::Key::Named(iced::keyboard::key::Named::Enter) {
                     Some(Message::WsSendFromKeyboard)
+                } else if key == iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape) {
+                    Some(Message::EscapePressed)
                 } else {
                     None
                 }

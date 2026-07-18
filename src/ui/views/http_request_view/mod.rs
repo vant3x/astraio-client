@@ -124,6 +124,7 @@ pub enum Message {
     CopyResponse,
     CopyHeaders,
     CopyBody,
+    CopyError(String),
     ResponseContentChanged(text_editor::Action),
     CopySelection,
     TimeoutChanged(String),
@@ -155,6 +156,9 @@ pub enum Message {
     HideSnippets,
     SnippetFormatSelected(SnippetFormat),
     CopySnippet,
+    ImportCurlToggle,
+    ImportCurlChanged(String),
+    ImportCurlSubmit,
     ResetSettings,
     ToggleWordWrap,
     OAuth2StartAuth,
@@ -236,6 +240,8 @@ pub struct HttpRequestView {
     pub(crate) form_next_id: usize,
     pub highlighter_theme: highlighter::Theme,
     pub show_snippets: bool,
+    pub show_import_curl: bool,
+    pub import_curl_input: String,
     pub snippet_format: SnippetFormat,
     pub snippet_content: text_editor::Content,
     pub word_wrap: bool,
@@ -283,6 +289,8 @@ impl Clone for HttpRequestView {
             form_next_id: self.form_next_id,
             highlighter_theme: self.highlighter_theme,
             show_snippets: self.show_snippets,
+            show_import_curl: self.show_import_curl,
+            import_curl_input: self.import_curl_input.clone(),
             snippet_format: self.snippet_format,
             snippet_content: text_editor::Content::with_text(&self.snippet_content.text()),
             word_wrap: self.word_wrap,
@@ -344,6 +352,8 @@ impl Default for HttpRequestView {
             form_next_id: 1,
             highlighter_theme: highlighter::Theme::SolarizedDark,
             show_snippets: false,
+            show_import_curl: false,
+            import_curl_input: String::new(),
             snippet_format: SnippetFormat::Curl,
             snippet_content: text_editor::Content::new(),
             word_wrap: false,
@@ -478,7 +488,9 @@ impl HttpRequestView {
             }
             Message::SendRequest => {}
             Message::SetLoading => {
-                self.request_status = RequestStatus::Loading;
+                self.request_status = RequestStatus::Loading {
+                    started_at: std::time::Instant::now(),
+                };
                 self.last_response = None;
                 self.response_body_editor = text_editor::Content::new();
                 self.status_code = None;
@@ -592,6 +604,11 @@ impl HttpRequestView {
                     if let Ok(mut clipboard) = arboard::Clipboard::new() {
                         let _ = clipboard.set_text(text_to_copy);
                     }
+                }
+            }
+            Message::CopyError(error_text) => {
+                if let Ok(mut clipboard) = arboard::Clipboard::new() {
+                    let _ = clipboard.set_text(error_text);
                 }
             }
             Message::ResponseContentChanged(action) => {
@@ -774,6 +791,46 @@ impl HttpRequestView {
                 let text = self.snippet_content.text();
                 if let Ok(mut clipboard) = arboard::Clipboard::new() {
                     let _ = clipboard.set_text(text);
+                }
+            }
+            Message::ImportCurlToggle => {
+                self.show_import_curl = !self.show_import_curl;
+                if self.show_import_curl {
+                    self.import_curl_input.clear();
+                    self.show_snippets = true;
+                }
+            }
+            Message::ImportCurlChanged(input) => {
+                self.import_curl_input = input;
+            }
+            Message::ImportCurlSubmit => {
+                let curl_input = self.import_curl_input.clone();
+                match crate::import::curl::parse_curl(&curl_input) {
+                    Ok(result) => {
+                        self.url_input = result.url;
+                        self.method = result.method;
+                        self.headers_editor = KeyValueEditor::new("Add Header".to_string());
+                        for (key, value) in result.headers {
+                            self.headers_editor.update(
+                                crate::ui::components::key_value_editor::Message::AddEntry,
+                            );
+                            let entry_id = self.headers_editor.entries.last().map(|e| e.id).unwrap_or(0);
+                            self.headers_editor.update(
+                                crate::ui::components::key_value_editor::Message::EntryKeyChanged(entry_id, key),
+                            );
+                            self.headers_editor.update(
+                                crate::ui::components::key_value_editor::Message::EntryValueChanged(entry_id, value),
+                            );
+                        }
+                        if let Some(body) = result.body {
+                            self.body_input = text_editor::Content::with_text(&body);
+                        }
+                        self.show_import_curl = false;
+                        self.import_curl_input.clear();
+                    }
+                    Err(e) => {
+                        log::error!("Failed to parse cURL: {}", e);
+                    }
                 }
             }
             Message::MultipartBrowseFile(_) => {
