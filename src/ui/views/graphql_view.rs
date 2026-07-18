@@ -98,6 +98,8 @@ pub enum Message {
     TimeoutChanged(String),
     ThemeSelected(highlighter::Theme),
     PrettifyQuery,
+    ToggleBearerTokenVisible,
+    ToggleApiKeyValueVisible,
 }
 
 #[derive(Debug)]
@@ -129,6 +131,8 @@ pub struct GraphQLView {
     pub show_save_menu: bool,
     pub last_save_status: Option<String>,
     pub autocomplete_suggestions: Vec<String>,
+    pub show_bearer_token: bool,
+    pub show_api_key_value: bool,
 }
 
 impl Clone for GraphQLView {
@@ -163,6 +167,8 @@ impl Clone for GraphQLView {
             show_save_menu: self.show_save_menu,
             last_save_status: self.last_save_status.clone(),
             autocomplete_suggestions: self.autocomplete_suggestions.clone(),
+            show_bearer_token: self.show_bearer_token,
+            show_api_key_value: self.show_api_key_value,
         }
     }
 }
@@ -205,6 +211,8 @@ impl Default for GraphQLView {
             show_save_menu: false,
             last_save_status: None,
             autocomplete_suggestions: Vec::new(),
+            show_bearer_token: false,
+            show_api_key_value: false,
         }
     }
 }
@@ -659,6 +667,12 @@ impl GraphQLView {
                 let formatted = prettify_graphql(&query);
                 self.query_input = text_editor::Content::with_text(&formatted);
             }
+            Message::ToggleBearerTokenVisible => {
+                self.show_bearer_token = !self.show_bearer_token;
+            }
+            Message::ToggleApiKeyValueVisible => {
+                self.show_api_key_value = !self.show_api_key_value;
+            }
         }
     }
 
@@ -683,6 +697,8 @@ impl GraphQLView {
         )
         .padding(5);
 
+        let is_loading = matches!(self.request_status, RequestStatus::Loading { .. });
+
         let url_bar = row![
             text("POST").size(14).color(method_color("POST")),
             text_input("GraphQL endpoint URL", &self.url_input)
@@ -690,10 +706,18 @@ impl GraphQLView {
                 .padding(10),
             timeout_input,
             theme_selector,
-            button(row![lucide::send().size(14), text(" Send")].spacing(4))
-                .on_press(Message::SendRequest),
-            button(row![lucide::database().size(14), text(" Introspect")].spacing(4))
-                .on_press(Message::IntrospectSchema),
+            if is_loading {
+                button(row![lucide::loader().size(14), text(" Sending...")].spacing(4))
+            } else {
+                button(row![lucide::send().size(14), text(" Send")].spacing(4))
+                    .on_press(Message::SendRequest)
+            },
+            if self.schema_loading {
+                button(row![lucide::loader().size(14), text(" Loading...")].spacing(4))
+            } else {
+                button(row![lucide::database().size(14), text(" Introspect")].spacing(4))
+                    .on_press(Message::IntrospectSchema)
+            },
             button(row![lucide::braces().size(14), text(" Prettify")].spacing(4))
                 .on_press(Message::PrettifyQuery),
             {
@@ -1465,13 +1489,17 @@ impl GraphQLView {
 
         crate::ui::components::auth_panel::auth_panel(
             &self.auth,
+            self.show_bearer_token,
+            self.show_api_key_value,
             Message::AuthTypeSelected,
             |t| Message::AuthInputChanged(AuthInput::BearerToken(t)),
+            |_| Message::ToggleBearerTokenVisible,
             |u| Message::AuthInputChanged(AuthInput::BasicUser(u)),
             |p| Message::AuthInputChanged(AuthInput::BasicPass(p)),
             |k| Message::AuthInputChanged(AuthInput::ApiKeyKey(k)),
             |v| Message::AuthInputChanged(AuthInput::ApiKeyValue(v)),
             |loc| Message::AuthInputChanged(AuthInput::ApiKeyLocation(loc)),
+            |_| Message::ToggleApiKeyValueVisible,
             |u| Message::AuthInputChanged(AuthInput::DigestUser(u)),
             |p| Message::AuthInputChanged(AuthInput::DigestPass(p)),
             oauth2_content,
@@ -1636,6 +1664,24 @@ fn prettify_graphql(query: &str) -> String {
             }
             '#' => {
                 while i < len && chars[i] != '\n' {
+                    result.push(chars[i]);
+                    i += 1;
+                }
+                continue;
+            }
+            '.' if i + 2 < len && chars[i + 1] == '.' && chars[i + 2] == '.' => {
+                result.push_str("...");
+                i += 2;
+                while i < len && chars[i] == ' ' {
+                    result.push(chars[i]);
+                    i += 1;
+                }
+                continue;
+            }
+            '@' => {
+                result.push('@');
+                i += 1;
+                while i < len && (chars[i].is_alphanumeric() || chars[i] == '_') {
                     result.push(chars[i]);
                     i += 1;
                 }

@@ -38,6 +38,7 @@ pub enum Message {
     ToggleSkipVerify,
     ToggleShowTls,
     ToggleShowAdvanced,
+    ToggleMessageExpand(usize),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -88,6 +89,7 @@ pub struct WebSocketView {
     pub show_tls: bool,
     pub show_advanced: bool,
     pub max_messages: usize,
+    pub expanded_message: Option<usize>,
 }
 
 impl Clone for WebSocketView {
@@ -116,6 +118,7 @@ impl Clone for WebSocketView {
             show_tls: self.show_tls,
             show_advanced: self.show_advanced,
             max_messages: self.max_messages,
+            expanded_message: self.expanded_message,
         }
     }
 }
@@ -146,6 +149,7 @@ impl Default for WebSocketView {
             show_tls: false,
             show_advanced: false,
             max_messages: 10000,
+            expanded_message: None,
         }
     }
 }
@@ -444,7 +448,7 @@ impl WebSocketView {
                     .align_y(Alignment::Center),
             );
         } else {
-            for msg in &filtered_messages {
+            for (idx, msg) in filtered_messages.iter().enumerate() {
                 let dir_color = if msg.direction == ">" {
                     Color::from_rgb(0.2, 0.4, 0.8)
                 } else {
@@ -468,11 +472,16 @@ impl WebSocketView {
                 };
 
                 let formatted = msg.formatted_data();
-                let data_display: String = formatted.chars().take(200).collect();
-                let truncated = if formatted.len() > 200 {
-                    format!("{}...", data_display)
+                let is_expanded = self.expanded_message == Some(idx);
+                let data_display = if is_expanded {
+                    formatted.clone()
                 } else {
-                    data_display
+                    let truncated: String = formatted.chars().take(200).collect();
+                    if formatted.len() > 200 {
+                        format!("{}...", truncated)
+                    } else {
+                        truncated
+                    }
                 };
 
                 let byte_size = msg.data.len();
@@ -494,19 +503,53 @@ impl WebSocketView {
                 };
 
                 let dir_clone = msg.direction.clone();
-                message_list = message_list.push(
+                let expand_icon = if is_expanded { "\u{25BC}" } else { "\u{25B6}" };
+                let content = if is_expanded {
                     column![
                         row![
                             text(dir_clone).size(13).color(dir_color),
                             text(type_label).size(10).color(type_color),
-                            text(truncated).size(13),
+                            text(data_display.clone()).size(12),
                         ]
                         .spacing(6),
                         row![text(format!("  {} - {}", time_display, size_label))
                             .size(10)
                             .color(Color::from_rgb(0.4, 0.4, 0.4)),],
                     ]
-                    .spacing(2),
+                    .spacing(2)
+                } else {
+                    column![
+                        row![
+                            text(dir_clone).size(13).color(dir_color),
+                            text(type_label).size(10).color(type_color),
+                            text(data_display).size(13),
+                        ]
+                        .spacing(6),
+                        row![text(format!("  {} - {}", time_display, size_label))
+                            .size(10)
+                            .color(Color::from_rgb(0.4, 0.4, 0.4)),],
+                    ]
+                    .spacing(2)
+                };
+                message_list = message_list.push(
+                    button(
+                        row![
+                            text(expand_icon).size(10).color(Color::from_rgb(0.5, 0.5, 0.5)),
+                            content,
+                        ]
+                        .spacing(6)
+                        .align_y(Alignment::Start),
+                    )
+                    .on_press(Message::ToggleMessageExpand(idx))
+                    .width(Length::Fill)
+                    .style(move |_: &Theme, _: iced::widget::button::Status| {
+                        iced::widget::button::Style {
+                            background: Some(iced::Color::TRANSPARENT.into()),
+                            text_color: Color::WHITE,
+                            border: iced::Border::default().rounded(4),
+                            ..iced::widget::button::Style::default()
+                        }
+                    }),
                 );
             }
         }

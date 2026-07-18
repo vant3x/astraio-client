@@ -527,23 +527,70 @@ impl HttpRequestView {
 
     fn create_response_headers_view(&self) -> Element<'_, Message, Theme, iced::Renderer> {
         if let Some(response) = &self.last_response {
-            let mut headers_col = column![].spacing(4);
-            for (key, value) in &response.headers {
-                headers_col = headers_col.push(
-                    row![
-                        text(format!("{}:", key))
-                            .size(14)
-                            .color(Color::from_rgb(0.4, 0.6, 0.9)),
-                        text(value).size(14),
-                    ]
-                    .spacing(8),
-                );
+            if response.headers.is_empty() {
+                return container(text("No headers available."))
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .align_x(Alignment::Center)
+                    .align_y(Alignment::Center)
+                    .into();
             }
-            container(scrollable(headers_col))
-                .padding(10)
-                .width(Length::Fill)
-                .height(Length::Fill)
-                .into()
+
+            let header_count = text(format!("{} headers", response.headers.len()))
+                .size(11)
+                .color(Color::from_rgb(0.5, 0.5, 0.5));
+
+            let header_row = row![
+                container(text("Name").size(11).color(Color::from_rgb(0.6, 0.6, 0.6)))
+                    .width(Length::FillPortion(2)),
+                container(text("Value").size(11).color(Color::from_rgb(0.6, 0.6, 0.6)))
+                    .width(Length::FillPortion(3)),
+            ]
+            .spacing(1)
+            .padding(iced::Padding::from([6, 8]));
+
+            let mut rows = column![header_row].spacing(0);
+            for (i, (key, value)) in response.headers.iter().enumerate() {
+                let bg = if i % 2 == 0 {
+                    Color::from_rgb(0.12, 0.12, 0.15)
+                } else {
+                    Color::from_rgb(0.10, 0.10, 0.13)
+                };
+                let row = row![
+                    container(text(key).size(13).color(Color::from_rgb(0.4, 0.6, 0.9)))
+                        .width(Length::FillPortion(2))
+                        .padding(iced::Padding::from([5, 8]))
+                        .style(move |_: &Theme| iced::widget::container::Style {
+                            background: Some(bg.into()),
+                            ..iced::widget::container::Style::default()
+                        }),
+                    container(text(value).size(13))
+                        .width(Length::FillPortion(3))
+                        .padding(iced::Padding::from([5, 8]))
+                        .style(move |_: &Theme| iced::widget::container::Style {
+                            background: Some(bg.into()),
+                            ..iced::widget::container::Style::default()
+                        }),
+                ]
+                .spacing(1);
+                rows = rows.push(row);
+            }
+
+            column![
+                header_count,
+                container(scrollable(rows).width(Length::Fill).height(Length::Fill))
+                    .padding(1)
+                    .style(|_: &Theme| iced::widget::container::Style {
+                        border: iced::Border::default()
+                            .rounded(4)
+                            .color(Color::from_rgb(0.3, 0.3, 0.35)),
+                        ..iced::widget::container::Style::default()
+                    }),
+            ]
+            .spacing(6)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into()
         } else {
             container(text("No headers available."))
                 .width(Length::Fill)
@@ -845,13 +892,17 @@ impl HttpRequestView {
 
         let panel = auth_panel::auth_panel(
             &self.auth,
+            self.show_bearer_token,
+            self.show_api_key_value,
             Message::AuthTypeSelected,
             |t| Message::AuthInputChanged(AuthInput::BearerToken(t)),
+            |_| Message::ToggleBearerTokenVisible,
             |u| Message::AuthInputChanged(AuthInput::BasicUser(u)),
             |p| Message::AuthInputChanged(AuthInput::BasicPass(p)),
             |k| Message::AuthInputChanged(AuthInput::ApiKeyKey(k)),
             |v| Message::AuthInputChanged(AuthInput::ApiKeyValue(v)),
             |loc| Message::AuthInputChanged(AuthInput::ApiKeyLocation(loc)),
+            |_| Message::ToggleApiKeyValueVisible,
             |u| Message::AuthInputChanged(AuthInput::DigestUser(u)),
             |p| Message::AuthInputChanged(AuthInput::DigestPass(p)),
             oauth2_content,

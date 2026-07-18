@@ -177,6 +177,8 @@ pub enum Message {
     ResponseFileSaved(Result<String, String>),
     ToggleImagePreview,
     CancelRequest,
+    ToggleBearerTokenVisible,
+    ToggleApiKeyValueVisible,
     SetIdle,
     ClearKeychainSecrets,
     ScriptTabSelected(ScriptTab),
@@ -253,6 +255,8 @@ pub struct HttpRequestView {
     pub response_search_index: usize,
     pub show_image_preview: bool,
     pub image_preview_handle: Option<ImageHandle>,
+    pub show_bearer_token: bool,
+    pub show_api_key_value: bool,
     pub abort_handle: Option<iced::task::Handle>,
     pub scripts: RequestScripts,
     pub pre_request_script_editor: text_editor::Content,
@@ -302,6 +306,8 @@ impl Clone for HttpRequestView {
             response_search_index: self.response_search_index,
             show_image_preview: self.show_image_preview,
             image_preview_handle: self.image_preview_handle.clone(),
+            show_bearer_token: self.show_bearer_token,
+            show_api_key_value: self.show_api_key_value,
             abort_handle: None,
             scripts: self.scripts.clone(),
             pre_request_script_editor: text_editor::Content::with_text(
@@ -365,6 +371,8 @@ impl Default for HttpRequestView {
             response_search_index: 0,
             show_image_preview: false,
             image_preview_handle: None,
+            show_bearer_token: false,
+            show_api_key_value: false,
             abort_handle: None,
             scripts: RequestScripts::default(),
             pre_request_script_editor: text_editor::Content::new(),
@@ -918,6 +926,12 @@ impl HttpRequestView {
             Message::CancelRequest => {
                 // Handled in app.rs via handle_http_request_msg:
                 // aborts the in-flight Task and resets status to Idle.
+            }
+            Message::ToggleBearerTokenVisible => {
+                self.show_bearer_token = !self.show_bearer_token;
+            }
+            Message::ToggleApiKeyValueVisible => {
+                self.show_api_key_value = !self.show_api_key_value;
             }
             Message::ClearKeychainSecrets => {
                 // Handled at app level - no view state change needed.

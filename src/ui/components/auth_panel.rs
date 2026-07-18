@@ -1,6 +1,6 @@
 use crate::data::auth::{Auth, AuthType};
-use iced::widget::{column, pick_list, text, text_input};
-use iced::{Element, Renderer, Theme};
+use iced::widget::{column, pick_list, row, text, text_input};
+use iced::{Alignment, Element, Renderer, Theme};
 
 pub fn auth_type_selector<'a, M: Clone + 'a>(
     current: AuthType,
@@ -30,27 +30,44 @@ pub fn basic_auth_inputs<'a, M: Clone + 'a>(
 
 pub fn bearer_token_input<'a, M: Clone + 'a>(
     token: &'a str,
+    secure: bool,
     on_change: impl Fn(String) -> M + 'a,
+    on_toggle_secure: impl Fn(bool) -> M + 'a,
 ) -> Element<'a, M, Theme, Renderer> {
-    column![text_input("Bearer Token", token)
+    let input = text_input("Bearer Token", token)
         .on_input(on_change)
         .padding(10)
-        .secure(true),]
-    .spacing(10)
-    .into()
+        .secure(secure);
+    let toggle = iced::widget::toggler(!secure)
+        .label(if secure { "Show" } else { "Hide" })
+        .on_toggle(on_toggle_secure)
+        .text_size(12);
+    column![row![input, toggle].spacing(8).align_y(Alignment::Center)]
+        .spacing(10)
+        .into()
 }
 
 pub fn api_key_inputs<'a, M: Clone + 'a>(
     key: &'a str,
     value: &'a str,
     location: crate::data::auth::ApiKeyLocation,
+    secure: bool,
     on_key: impl Fn(String) -> M + 'a,
     on_value: impl Fn(String) -> M + 'a,
     on_location: impl Fn(crate::data::auth::ApiKeyLocation) -> M + 'a,
+    on_toggle_secure: impl Fn(bool) -> M + 'a,
 ) -> Element<'a, M, Theme, Renderer> {
+    let value_input = text_input("Value", value)
+        .on_input(on_value)
+        .padding(10)
+        .secure(secure);
+    let toggle = iced::widget::toggler(!secure)
+        .label(if secure { "Show" } else { "Hide" })
+        .on_toggle(on_toggle_secure)
+        .text_size(12);
     column![
         text_input("Key Name", key).on_input(on_key).padding(10),
-        text_input("Value", value).on_input(on_value).padding(10),
+        row![value_input, toggle].spacing(8).align_y(Alignment::Center),
         pick_list(
             &crate::data::auth::ApiKeyLocation::ALL[..],
             Some(location),
@@ -83,13 +100,17 @@ pub fn digest_auth_inputs<'a, M: Clone + 'a>(
 #[allow(clippy::too_many_arguments)]
 pub fn auth_panel<'a, M: Clone + 'a>(
     auth: &'a Auth,
+    show_bearer_token: bool,
+    show_api_key_value: bool,
     on_type_select: impl Fn(AuthType) -> M + 'a,
     on_bearer_token: impl Fn(String) -> M + 'a,
+    on_toggle_bearer_token: impl Fn(bool) -> M + 'a,
     on_basic_user: impl Fn(String) -> M + 'a,
     on_basic_pass: impl Fn(String) -> M + 'a,
     on_api_key_key: impl Fn(String) -> M + 'a,
     on_api_key_value: impl Fn(String) -> M + 'a,
     on_api_key_location: impl Fn(crate::data::auth::ApiKeyLocation) -> M + 'a,
+    on_toggle_api_key_value: impl Fn(bool) -> M + 'a,
     on_digest_user: impl Fn(String) -> M + 'a,
     on_digest_pass: impl Fn(String) -> M + 'a,
     oauth2_content: Element<'a, M, Theme, Renderer>,
@@ -97,7 +118,9 @@ pub fn auth_panel<'a, M: Clone + 'a>(
     let current_auth_type = auth.auth_type();
 
     let auth_inputs = match auth {
-        Auth::BearerToken(token) => bearer_token_input(token, on_bearer_token),
+        Auth::BearerToken(token) => {
+            bearer_token_input(token, show_bearer_token, on_bearer_token, on_toggle_bearer_token)
+        }
         Auth::Basic { user, pass } => basic_auth_inputs(user, pass, on_basic_user, on_basic_pass),
         Auth::ApiKey {
             key,
@@ -107,9 +130,11 @@ pub fn auth_panel<'a, M: Clone + 'a>(
             key,
             value,
             *location,
+            show_api_key_value,
             on_api_key_key,
             on_api_key_value,
             on_api_key_location,
+            on_toggle_api_key_value,
         ),
         Auth::Digest { user, pass } => {
             digest_auth_inputs(user, pass, on_digest_user, on_digest_pass)
