@@ -682,7 +682,7 @@ impl AstraNovaApp {
                         iced::keyboard::Key::Character(ref c) if c.as_ref() == "e" => {
                             Some(Message::ToggleEnvironmentManager)
                         }
-                        iced::keyboard::Key::Character(ref c) if c.as_ref() == "Enter" => {
+                        iced::keyboard::Key::Named(iced::keyboard::key::Named::Enter) => {
                             Some(Message::SendActiveRequest)
                         }
                         _ => None,

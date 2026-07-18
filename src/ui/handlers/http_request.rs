@@ -123,6 +123,9 @@ pub fn handle_http_request_msg(
                 if let Some(cached) = app.custom_clients.get(&cache_key) {
                     Arc::clone(cached)
                 } else {
+                    if app.custom_clients.len() >= 20 {
+                        app.custom_clients.clear();
+                    }
                     match client::build_client(&request.config) {
                         Ok(c) => {
                             let c = Arc::new(c);

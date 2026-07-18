@@ -117,6 +117,10 @@ pub fn handle_message(app: &mut AstraNovaApp, message: websocket_view::Message) 
             app.websocket_view.input = input;
             Task::none()
         }
+        websocket_view::Message::CloseReasonChanged(reason) => {
+            app.websocket_view.close_reason = reason;
+            Task::none()
+        }
         websocket_view::Message::HexInputChanged(hex) => {
             app.websocket_view.hex_input = hex;
             Task::none()

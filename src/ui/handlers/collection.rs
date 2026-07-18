@@ -247,6 +247,8 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: collection_view::Message) -> 
                     ) {
                         Ok(cols) => {
                             if let Some(new_col) = cols.last() {
+                                let mut folder_id_map: std::collections::HashMap<String, i32> = std::collections::HashMap::new();
+
                                 for folder in &generated.folders {
                                     match crate::services::collection_service::create_folder(
                                         &app.db_conn,
@@ -254,36 +256,26 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: collection_view::Message) -> 
                                         &folder.name,
                                     ) {
                                         Ok(created_folder) => {
-                                            for req in &generated.requests {
-                                                let _ = crate::services::collection_service::save_request(
-                                                    &app.db_conn,
-                                                    &crate::persistence::database::SaveRequestParams {
-                                                        collection_id: new_col.id,
-                                                        folder_id: Some(created_folder.id),
-                                                        name: req.name.clone(),
-                                                        method: req.method.clone(),
-                                                        url: req.url.clone(),
-                                                        headers: req.headers.clone(),
-                                                        body: req.body.clone(),
-                                                        body_type: crate::persistence::database::CollectionBodyType::Text,
-                                                        auth_type: crate::persistence::database::CollectionAuthType::None,
-                                                        auth_data: None,
-                                                        params: req.params.clone(),
-                                                        config_json: None,
-                                                        scripts: None,
-                                                    },
-                                                );
-                                            }
+                                            folder_id_map.insert(folder.name.clone(), created_folder.id);
                                         }
                                         Err(e) => log::error!("Error creating folder: {}", e),
                                     }
                                 }
+
                                 for req in &generated.requests {
+                                    let folder_id = req.folder_id.and_then(|fid| {
+                                        generated.folders.iter().find(|f| f.id == fid).map(|f| {
+                                            folder_id_map.get(&f.name).copied().unwrap_or(fid)
+                                        })
+                                    }).or_else(|| {
+                                        req.folder_name.as_ref().and_then(|name| folder_id_map.get(name).copied())
+                                    });
+
                                     let _ = crate::services::collection_service::save_request(
                                         &app.db_conn,
                                         &crate::persistence::database::SaveRequestParams {
                                             collection_id: new_col.id,
-                                            folder_id: None,
+                                            folder_id,
                                             name: req.name.clone(),
                                             method: req.method.clone(),
                                             url: req.url.clone(),

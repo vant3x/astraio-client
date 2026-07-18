@@ -17,7 +17,7 @@ pub fn handle_start_auth(app: &mut AstraNovaApp, index: usize) -> Task<Message> 
             config.pkce_verifier = pkce_verifier.clone();
 
             if let Some(ref verifier) = pkce_verifier {
-                let identifier = format!("{}_{}", index, config.client_id);
+                let identifier = config.client_id.clone();
                 if let Err(e) = app.secret_store.store_pkce_verifier(&identifier, verifier) {
                     log::warn!("Failed to store PKCE verifier in keyring: {}", e);
                 }
@@ -120,7 +120,7 @@ pub fn handle_token_received(
                             Some(expiry_time.format("%Y-%m-%dT%H:%M:%SZ").to_string());
                     }
 
-                    let identifier = format!("{}_{}", index, config.client_id);
+                    let identifier = config.client_id.clone();
                     if let Err(e) = app.secret_store.store_oauth2_tokens(
                         &identifier,
                         &token_response.access_token,
@@ -282,7 +282,7 @@ pub fn handle_device_token_poll(
                         config.verification_uri.clear();
                         config.auto_polling = false;
 
-                        let identifier = format!("{}_{}", index, config.client_id);
+                        let identifier = config.client_id.clone();
                         if let Err(e) = app.secret_store.store_oauth2_tokens(
                             &identifier,
                             &access_token,
@@ -297,7 +297,9 @@ pub fn handle_device_token_poll(
                         if error == "authorization_pending" {
                             log::info!("Authorization pending, polling again...");
                         } else if error == "slow_down" {
-                            log::warn!("Slow down detected, increasing interval");
+                            let current = config.device_code_interval.unwrap_or(5);
+                            config.device_code_interval = Some(current + 5);
+                            log::warn!("Slow down detected, increased interval to {}s", current + 5);
                         } else {
                             log::error!("Device token error: {}", error);
                             config.device_code.clear();

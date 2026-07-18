@@ -21,6 +21,7 @@ impl KeyValueEntry {
         }
     }
 
+    #[allow(dead_code)]
     fn display_value(&self) -> String {
         if self.secret {
             "••••••••".to_string()
@@ -97,13 +98,8 @@ impl KeyValueEditor {
                 } else {
                     "\u{1f513}"
                 };
-                let value_input = if entry.secret {
-                    text_input("••••••••", &entry.display_value())
-                        .on_input(move |v| Message::EntryValueChanged(entry.id, v))
-                } else {
-                    text_input("Value", &entry.value)
-                        .on_input(move |v| Message::EntryValueChanged(entry.id, v))
-                };
+                let value_input = text_input("Value", &entry.value)
+                    .on_input(move |v| Message::EntryValueChanged(entry.id, v));
                 col.push(
                     row![
                         text_input("Key", &entry.key)

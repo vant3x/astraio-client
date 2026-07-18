@@ -161,11 +161,16 @@ impl ToastManager {
         };
 
         for toast in &self.toasts {
-            let _opacity = toast.opacity();
+            let opacity = toast.opacity().clamp(0.0, 1.0);
 
             let icon_element = toast.toast_type.icon_element(16.0);
 
-            let message_text = text(&toast.message).size(13).color(text_color);
+            let message_text = text(&toast.message)
+                .size(13)
+                .color(Color {
+                    a: opacity,
+                    ..text_color
+                });
 
             let toast_content = row![icon_element, message_text,]
                 .spacing(8)
@@ -176,9 +181,15 @@ impl ToastManager {
                     .padding(12)
                     .max_width(400)
                     .style(move |_theme| container::Style {
-                        background: Some(bg_color.into()),
+                        background: Some(iced::Background::Color(Color {
+                            a: opacity,
+                            ..bg_color
+                        })),
                         border: Border {
-                            color: toast.toast_type.color(),
+                            color: Color {
+                                a: opacity,
+                                ..toast.toast_type.color()
+                            },
                             width: 1.0,
                             radius: 8.0.into(),
                         },

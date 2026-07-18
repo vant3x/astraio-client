@@ -286,6 +286,38 @@ pub fn init_schema(conn: &Connection) -> std::result::Result<(), AppError> {
         )",
         [],
     )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_collection_folders_collection_id ON collection_folders(collection_id)",
+        [],
+    )
+    .ok();
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_collection_folders_parent ON collection_folders(parent_folder_id)",
+        [],
+    )
+    .ok();
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_collection_requests_collection ON collection_requests(collection_id, folder_id)",
+        [],
+    )
+    .ok();
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_collection_requests_sort ON collection_requests(collection_id, folder_id, sort_order)",
+        [],
+    )
+    .ok();
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_request_history_timestamp ON request_history(timestamp)",
+        [],
+    )
+    .ok();
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_request_history_url ON request_history(url)",
+        [],
+    )
+    .ok();
+
     Ok(())
 }
 
@@ -828,11 +860,6 @@ pub fn delete_collection_request(conn: &Connection, id: i32) -> Result<()> {
 }
 
 pub fn swap_request_sort_order(conn: &Connection, id_a: i32, id_b: i32) -> Result<()> {
-    conn.execute_batch(
-        "UPDATE collection_requests SET sort_order = (
-            SELECT sort_order FROM collection_requests WHERE id = CASE ?1 WHEN collection_requests.id THEN ?2 ELSE ?1 END
-        ) WHERE id IN (?1, ?2);",
-    )?;
     let order_a: i32 = conn
         .query_row(
             "SELECT sort_order FROM collection_requests WHERE id = ?1",

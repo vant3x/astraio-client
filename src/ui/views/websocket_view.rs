@@ -24,6 +24,7 @@ pub enum Message {
     SendClose(String),
     InputChanged(String),
     HexInputChanged(String),
+    CloseReasonChanged(String),
     MessageTypeSelected(MessageTypeFilter),
     ToggleHeaders,
     ToggleAutoReconnect,
@@ -72,6 +73,7 @@ pub struct WebSocketView {
     pub messages: Vec<WsMessage>,
     pub input: String,
     pub hex_input: String,
+    pub close_reason: String,
     pub message_type_filter: MessageTypeFilter,
     pub show_headers: bool,
     pub auto_reconnect: bool,
@@ -99,6 +101,7 @@ impl Clone for WebSocketView {
             messages: self.messages.clone(),
             input: self.input.clone(),
             hex_input: self.hex_input.clone(),
+            close_reason: self.close_reason.clone(),
             message_type_filter: self.message_type_filter,
             show_headers: self.show_headers,
             auto_reconnect: self.auto_reconnect,
@@ -128,6 +131,7 @@ impl Default for WebSocketView {
             messages: Vec::new(),
             input: String::new(),
             hex_input: String::new(),
+            close_reason: String::new(),
             message_type_filter: MessageTypeFilter::All,
             show_headers: false,
             auto_reconnect: false,
@@ -562,13 +566,13 @@ impl WebSocketView {
             } else {
                 button(row![lucide::radio().size(12), text(" Ping")].spacing(4))
             },
-            text_input("Close reason...", &self.input)
-                .on_input(Message::InputChanged)
+            text_input("Close reason...", &self.close_reason)
+                .on_input(Message::CloseReasonChanged)
                 .padding(5)
                 .width(Length::FillPortion(2)),
             if is_connected {
                 button(row![lucide::octagon().size(12), text(" Close")].spacing(4))
-                    .on_press(Message::SendClose(self.input.clone()))
+                    .on_press(Message::SendClose(self.close_reason.clone()))
             } else {
                 button(row![lucide::octagon().size(12), text(" Close")].spacing(4))
             },

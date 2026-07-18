@@ -686,17 +686,17 @@ impl CollectionView {
                     );
             }
 
-            let full_row = row![folder_content, actions]
-                .spacing(4)
-                .align_y(Alignment::Center);
-
-            let row_button = button(full_row)
-                .width(Length::Fill)
+            let row_button = button(folder_content)
                 .on_press(Message::ToggleFolder(folder.id));
+
+            let full_row = row![row_button, actions]
+                .spacing(4)
+                .align_y(Alignment::Center)
+                .width(Length::Fill);
 
             let folder_id = folder.id;
             let col_id = folder.collection_id;
-            let context_menu = ContextMenu::new(row_button, move || {
+            let context_menu = ContextMenu::new(full_row, move || {
                 container(
                     column![
                         button(text("New Sub-folder").size(11))
@@ -873,20 +873,21 @@ impl CollectionView {
                     );
             }
 
-            let full_row = row![req_content, actions]
-                .spacing(4)
-                .align_y(Alignment::Center);
-
-            let row_button = button(full_row)
-                .width(Length::Fill)
+            let row_button = button(req_content)
                 .on_press(Message::LoadRequest(req.id))
+                .width(Length::Fill)
                 .style(|_theme, _status| button::Style {
                     background: Some(iced::Background::Color(Color::from_rgb(0.12, 0.12, 0.16))),
                     ..button::Style::default()
                 });
 
+            let full_row = row![row_button, actions]
+                .spacing(4)
+                .align_y(Alignment::Center)
+                .width(Length::Fill);
+
             let req_id = req.id;
-            let context_menu = ContextMenu::new(row_button, move || {
+            let context_menu = ContextMenu::new(full_row, move || {
                 container(
                     column![
                         button(text("Move Up").size(11))

@@ -20,6 +20,7 @@ pub struct GeneratedRequest {
     pub body: Option<String>,
     pub params: Vec<(String, String)>,
     pub folder_name: Option<String>,
+    pub folder_id: Option<i32>,
 }
 
 pub fn generate_collection(spec: &ParsedSpec, collection_id: i32) -> GeneratedCollection {
@@ -74,7 +75,7 @@ pub fn generate_collection(spec: &ParsedSpec, collection_id: i32) -> GeneratedCo
 fn endpoint_to_request(
     endpoint: &ParsedEndpoint,
     _collection_id: i32,
-    _folder_id: Option<i32>,
+    folder_id: Option<i32>,
     base_url: &Option<String>,
 ) -> GeneratedRequest {
     let name = generate_request_name(endpoint);
@@ -91,6 +92,7 @@ fn endpoint_to_request(
         body,
         params,
         folder_name: None,
+        folder_id,
     }
 }
 
@@ -185,7 +187,7 @@ pub fn to_collection_requests(
         .iter()
         .enumerate()
         .map(|(i, req)| {
-            let folder_id = generated.folders.first().map(|f| f.id);
+            let folder_id = req.folder_id;
 
             let collection_req = CollectionRequest {
                 id: (i + 1) as i32,

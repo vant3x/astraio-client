@@ -400,7 +400,9 @@ pub async fn send_request(
                         redirect_chain.push(current_url.clone());
                         log::debug!("Redirect {} -> {}", status, location);
 
-                        current_url = if location.starts_with("http") {
+                        current_url = if location.starts_with("http://")
+                            || location.starts_with("https://")
+                        {
                             location.to_string()
                         } else {
                             match reqwest::Url::parse(&current_url) {

@@ -61,7 +61,7 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: graphql_view::Message) -> Tas
                                                 errors: vec![crate::protocols::graphql::GraphQLError {
                                                     message: format!(
                                                         "Failed to parse GraphQL response: {}",
-                                                        &http_response.body[..http_response.body.len().min(200)]
+                                                        http_response.body.chars().take(200).collect::<String>()
                                                     ),
                                                     locations: vec![],
                                                     path: vec![],

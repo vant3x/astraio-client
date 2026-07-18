@@ -14,7 +14,6 @@ pub enum HttpMethod {
     Head,
     Options,
     Trace,
-    Connect,
     Other(String),
 }
 
@@ -42,7 +41,6 @@ impl fmt::Display for HttpMethod {
             HttpMethod::Head => write!(f, "HEAD"),
             HttpMethod::Options => write!(f, "OPTIONS"),
             HttpMethod::Trace => write!(f, "TRACE"),
-            HttpMethod::Connect => write!(f, "CONNECT"),
             HttpMethod::Other(method) => write!(f, "{}", method),
         }
     }
@@ -61,7 +59,6 @@ impl FromStr for HttpMethod {
             "HEAD" => Ok(HttpMethod::Head),
             "OPTIONS" => Ok(HttpMethod::Options),
             "TRACE" => Ok(HttpMethod::Trace),
-            "CONNECT" => Ok(HttpMethod::Connect),
             other => Ok(HttpMethod::Other(other.to_string())),
         }
     }

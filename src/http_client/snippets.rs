@@ -1,5 +1,29 @@
 use super::request::{HttpMethod, HttpRequest};
 
+fn escape_python_string(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r")
+        .replace('\t', "\\t")
+}
+
+fn escape_js_string(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r")
+        .replace('\t', "\\t")
+}
+
+fn escape_rust_string(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r")
+        .replace('\t', "\\t")
+}
+
 pub fn to_curl(request: &HttpRequest) -> String {
     let mut parts = vec!["curl".to_string()];
 
@@ -54,7 +78,7 @@ pub fn to_python(request: &HttpRequest) -> String {
         let headers: Vec<String> = request
             .headers
             .iter()
-            .map(|(k, v)| format!("    \"{}\": \"{}\"", k, v))
+            .map(|(k, v)| format!("    \"{}\": \"{}\"", escape_python_string(k), escape_python_string(v)))
             .collect();
         lines.push("headers = {".to_string());
         lines.extend(headers);
@@ -71,7 +95,7 @@ pub fn to_python(request: &HttpRequest) -> String {
         } else {
             lines.push(format!(
                 "data = \"{}\"",
-                body.replace('\\', "\\\\").replace('"', "\\\"")
+                escape_python_string(body)
             ));
             lines.push(String::new());
             kwargs.push("data=data");
@@ -85,7 +109,7 @@ pub fn to_python(request: &HttpRequest) -> String {
             .filter(|f| !f.name.is_empty())
             .map(|f| match &f.value {
                 super::request::MultipartValue::Text(text) => {
-                    format!("    \"{}\": (None, \"{}\")", f.name, text)
+                    format!("    \"{}\": (None, \"{}\")", escape_python_string(&f.name), escape_python_string(text))
                 }
                 super::request::MultipartValue::File { path, .. } => {
                     format!("    \"{}\": open(\"{}\", \"rb\")", f.name, path)
@@ -127,7 +151,7 @@ pub fn to_javascript(request: &HttpRequest) -> String {
         let headers: Vec<String> = request
             .headers
             .iter()
-            .map(|(k, v)| format!("    \"{}\": \"{}\"", k, v))
+            .map(|(k, v)| format!("    \"{}\": \"{}\"", escape_js_string(k), escape_js_string(v)))
             .collect();
         options.push("    headers: {".to_string());
         for h in &headers {
@@ -140,7 +164,7 @@ pub fn to_javascript(request: &HttpRequest) -> String {
         if is_json(body) {
             options.push(format!("    body: JSON.stringify({})", body));
         } else {
-            options.push(format!("    body: \"{}\"", body.replace('"', "\\\"")));
+            options.push(format!("    body: \"{}\"", escape_js_string(body)));
         }
     }
 
@@ -151,7 +175,7 @@ pub fn to_javascript(request: &HttpRequest) -> String {
                 super::request::MultipartValue::Text(text) => {
                     lines.push(format!(
                         "formData.append(\"{}\", \"{}\");",
-                        field.name, text
+                        escape_js_string(&field.name), escape_js_string(text)
                     ));
                 }
                 super::request::MultipartValue::File { path, .. } => {
@@ -203,13 +227,13 @@ pub fn to_rust(request: &HttpRequest) -> String {
             method, request.url
         ));
         for (key, value) in &request.headers {
-            lines.push(format!("        .header(\"{}\", \"{}\")", key, value));
+            lines.push(format!("        .header(\"{}\", \"{}\")", escape_rust_string(key), escape_rust_string(value)));
         }
         if let Some(body) = &request.body {
             if is_json(body) {
                 lines.push(format!("        .json(&{})", body));
             } else {
-                lines.push(format!("        .body(\"{}\")", body.replace('"', "\\\"")));
+                lines.push(format!("        .body(\"{}\")", escape_rust_string(body)));
             }
         }
         lines.push("        .send()".to_string());
