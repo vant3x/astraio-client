@@ -47,6 +47,7 @@ pub fn bearer_token_input<'a, M: Clone + 'a>(
         .into()
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn api_key_inputs<'a, M: Clone + 'a>(
     key: &'a str,
     value: &'a str,
@@ -67,7 +68,9 @@ pub fn api_key_inputs<'a, M: Clone + 'a>(
         .text_size(12);
     column![
         text_input("Key Name", key).on_input(on_key).padding(10),
-        row![value_input, toggle].spacing(8).align_y(Alignment::Center),
+        row![value_input, toggle]
+            .spacing(8)
+            .align_y(Alignment::Center),
         pick_list(
             &crate::data::auth::ApiKeyLocation::ALL[..],
             Some(location),
@@ -118,9 +121,12 @@ pub fn auth_panel<'a, M: Clone + 'a>(
     let current_auth_type = auth.auth_type();
 
     let auth_inputs = match auth {
-        Auth::BearerToken(token) => {
-            bearer_token_input(token, show_bearer_token, on_bearer_token, on_toggle_bearer_token)
-        }
+        Auth::BearerToken(token) => bearer_token_input(
+            token,
+            show_bearer_token,
+            on_bearer_token,
+            on_toggle_bearer_token,
+        ),
         Auth::Basic { user, pass } => basic_auth_inputs(user, pass, on_basic_user, on_basic_pass),
         Auth::ApiKey {
             key,

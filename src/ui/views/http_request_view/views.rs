@@ -71,9 +71,14 @@ impl HttpRequestView {
         let response_area: Element<Message> = match &self.request_status {
             RequestStatus::Idle => {
                 let idle_content = column![
-                    text("Ready to send").size(18).color(Color::from_rgb(0.6, 0.6, 0.6)),
-                    text("Enter a URL above and click Send, or paste a cURL command in the URL bar").size(13)
-                        .color(Color::from_rgb(0.45, 0.45, 0.45)),
+                    text("Ready to send")
+                        .size(18)
+                        .color(Color::from_rgb(0.6, 0.6, 0.6)),
+                    text(
+                        "Enter a URL above and click Send, or paste a cURL command in the URL bar"
+                    )
+                    .size(13)
+                    .color(Color::from_rgb(0.45, 0.45, 0.45)),
                 ]
                 .spacing(12)
                 .align_x(Alignment::Center);
@@ -234,7 +239,9 @@ impl HttpRequestView {
             }
             RequestStatus::Error(error_message) => {
                 let error_content = column![
-                    text("Request Failed").size(16).color(Color::from_rgb(0.8, 0.2, 0.2)),
+                    text("Request Failed")
+                        .size(16)
+                        .color(Color::from_rgb(0.8, 0.2, 0.2)),
                     text(error_message.clone()).size(13),
                     row![
                         button(row![lucide::copy().size(12), text(" Copy Error")].spacing(4))
@@ -1322,17 +1329,14 @@ impl HttpRequestView {
                 .padding(8)
                 .width(Length::Fill);
 
-            let import_button = button(row![lucide::download().size(12), text(" Import")].spacing(4))
-                .on_press(Message::ImportCurlSubmit);
+            let import_button =
+                button(row![lucide::download().size(12), text(" Import")].spacing(4))
+                    .on_press(Message::ImportCurlSubmit);
 
-            column![
-                text("Import from cURL").size(14),
-                curl_input,
-                import_button,
-            ]
-            .spacing(8)
-            .padding(10)
-            .into()
+            column![text("Import from cURL").size(14), curl_input, import_button,]
+                .spacing(8)
+                .padding(10)
+                .into()
         } else {
             let syntax = match self.snippet_format {
                 SnippetFormat::Curl => "sh",
@@ -1348,22 +1352,15 @@ impl HttpRequestView {
             let copy_button = button(row![lucide::copy().size(14), text(" Copy")].spacing(4))
                 .on_press(Message::CopySnippet);
 
-            column![
-                scrollable(editor).height(Length::Fill),
-                copy_button,
-            ]
-            .spacing(8)
-            .into()
+            column![scrollable(editor).height(Length::Fill), copy_button,]
+                .spacing(8)
+                .into()
         };
 
         container(
-            column![
-                header,
-                rule::horizontal(5),
-                content,
-            ]
-            .spacing(10)
-            .padding(10),
+            column![header, rule::horizontal(5), content,]
+                .spacing(10)
+                .padding(10),
         )
         .width(Length::Fill)
         .height(Length::Fill)

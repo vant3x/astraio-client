@@ -165,12 +165,10 @@ impl ToastManager {
 
             let icon_element = toast.toast_type.icon_element(16.0);
 
-            let message_text = text(&toast.message)
-                .size(13)
-                .color(Color {
-                    a: opacity,
-                    ..text_color
-                });
+            let message_text = text(&toast.message).size(13).color(Color {
+                a: opacity,
+                ..text_color
+            });
 
             let toast_content = row![icon_element, message_text,]
                 .spacing(8)

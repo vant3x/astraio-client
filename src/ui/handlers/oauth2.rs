@@ -299,7 +299,10 @@ pub fn handle_device_token_poll(
                         } else if error == "slow_down" {
                             let current = config.device_code_interval.unwrap_or(5);
                             config.device_code_interval = Some(current + 5);
-                            log::warn!("Slow down detected, increased interval to {}s", current + 5);
+                            log::warn!(
+                                "Slow down detected, increased interval to {}s",
+                                current + 5
+                            );
                         } else {
                             log::error!("Device token error: {}", error);
                             config.device_code.clear();

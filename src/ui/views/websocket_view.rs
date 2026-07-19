@@ -205,23 +205,20 @@ impl WebSocketView {
         .spacing(8)
         .align_y(Alignment::Center);
 
-        let auto_reconnect_toggle =
-            iced::widget::toggler(self.auto_reconnect)
-                .label("Auto-reconnect")
-                .on_toggle(|_checked| Message::ToggleAutoReconnect)
-                .text_size(12);
+        let auto_reconnect_toggle = iced::widget::toggler(self.auto_reconnect)
+            .label("Auto-reconnect")
+            .on_toggle(|_checked| Message::ToggleAutoReconnect)
+            .text_size(12);
 
-        let advanced_toggle =
-            iced::widget::toggler(self.show_advanced)
-                .label("Advanced")
-                .on_toggle(|_checked| Message::ToggleShowAdvanced)
-                .text_size(12);
+        let advanced_toggle = iced::widget::toggler(self.show_advanced)
+            .label("Advanced")
+            .on_toggle(|_checked| Message::ToggleShowAdvanced)
+            .text_size(12);
 
-        let tls_toggle =
-            iced::widget::toggler(self.show_tls)
-                .label("TLS")
-                .on_toggle(|_checked| Message::ToggleShowTls)
-                .text_size(12);
+        let tls_toggle = iced::widget::toggler(self.show_tls)
+            .label("TLS")
+            .on_toggle(|_checked| Message::ToggleShowTls)
+            .text_size(12);
 
         let reconnect_config = if self.auto_reconnect {
             let delay_input = text_input("Delay (ms)", &self.reconnect_delay_ms.to_string())
@@ -289,11 +286,10 @@ impl WebSocketView {
         };
 
         let tls_section = if self.show_tls {
-            let skip_verify_toggle =
-                iced::widget::toggler(self.config.tls.skip_verify)
-                    .label("Skip certificate verification")
-                    .on_toggle(|_checked| Message::ToggleSkipVerify)
-                    .text_size(12);
+            let skip_verify_toggle = iced::widget::toggler(self.config.tls.skip_verify)
+                .label("Skip certificate verification")
+                .on_toggle(|_checked| Message::ToggleSkipVerify)
+                .text_size(12);
 
             let status_info = match &self.status {
                 WsStatus::Connected => {
@@ -448,7 +444,7 @@ impl WebSocketView {
                     .align_y(Alignment::Center),
             );
         } else {
-            for (_idx, msg) in filtered_messages.iter().enumerate() {
+            for msg in filtered_messages.iter() {
                 let dir_color = if msg.direction == ">" {
                     Color::from_rgb(0.2, 0.4, 0.8)
                 } else {
@@ -472,7 +468,8 @@ impl WebSocketView {
                 };
 
                 let formatted = msg.formatted_data();
-                let is_expanded = self.expanded_message.as_ref() == Some(&(msg.timestamp.clone(), msg.direction.clone()));
+                let is_expanded = self.expanded_message.as_ref()
+                    == Some(&(msg.timestamp.clone(), msg.direction.clone()));
                 let data_display = if is_expanded {
                     formatted.clone()
                 } else {
@@ -534,22 +531,29 @@ impl WebSocketView {
                 message_list = message_list.push(
                     button(
                         row![
-                            text(expand_icon).size(10).color(Color::from_rgb(0.5, 0.5, 0.5)),
+                            text(expand_icon)
+                                .size(10)
+                                .color(Color::from_rgb(0.5, 0.5, 0.5)),
                             content,
                         ]
                         .spacing(6)
                         .align_y(Alignment::Start),
                     )
-                    .on_press(Message::ToggleMessageExpand(msg.timestamp.clone(), msg.direction.clone()))
+                    .on_press(Message::ToggleMessageExpand(
+                        msg.timestamp.clone(),
+                        msg.direction.clone(),
+                    ))
                     .width(Length::Fill)
-                    .style(move |_: &Theme, _: iced::widget::button::Status| {
-                        iced::widget::button::Style {
-                            background: Some(iced::Color::TRANSPARENT.into()),
-                            text_color: Color::WHITE,
-                            border: iced::Border::default().rounded(4),
-                            ..iced::widget::button::Style::default()
-                        }
-                    }),
+                    .style(
+                        move |_: &Theme, _: iced::widget::button::Status| {
+                            iced::widget::button::Style {
+                                background: Some(iced::Color::TRANSPARENT.into()),
+                                text_color: Color::WHITE,
+                                border: iced::Border::default().rounded(4),
+                                ..iced::widget::button::Style::default()
+                            }
+                        },
+                    ),
                 );
             }
         }

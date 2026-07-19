@@ -126,7 +126,9 @@ pub fn build_view_from_collection_request(req: &CollectionRequest) -> HttpReques
     }
 
     if let Some(config_data) = &req.config_json {
-        if let Ok(config) = serde_json::from_str::<crate::http_client::config::RequestConfig>(config_data) {
+        if let Ok(config) =
+            serde_json::from_str::<crate::http_client::config::RequestConfig>(config_data)
+        {
             view.request_config = config;
         }
     }

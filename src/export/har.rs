@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::http_client::request::HttpRequest;
 use crate::http_client::response::HttpResponse;
 use serde::{Deserialize, Serialize};
@@ -93,7 +95,8 @@ fn now_iso() -> String {
         .unwrap_or_default();
     let secs = duration.as_secs();
     // Simple ISO 8601 without external dependency
-    format!("{}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
+    format!(
+        "{}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
         1970 + (secs / 31536000) as u32,
         ((secs % 31536000) / 2592000) % 12 + 1,
         ((secs % 2592000) / 86400) + 1,
@@ -181,7 +184,9 @@ pub fn export_entries(entries: &[(&HttpRequest, &HttpResponse)]) -> String {
                     content: HarContent {
                         size: resp.size,
                         mime_type: content_type,
-                        text: if resp.body_encoding == crate::http_client::response::BodyEncoding::Text {
+                        text: if resp.body_encoding
+                            == crate::http_client::response::BodyEncoding::Text
+                        {
                             Some(resp.body.clone())
                         } else {
                             None
@@ -277,7 +282,10 @@ mod tests {
 
         let entry = &parsed["log"]["entries"][0];
         assert_eq!(entry["request"]["method"], "GET");
-        assert_eq!(entry["request"]["url"], "https://api.example.com/users?page=1");
+        assert_eq!(
+            entry["request"]["url"],
+            "https://api.example.com/users?page=1"
+        );
         assert_eq!(entry["response"]["status"], 200);
         assert_eq!(entry["response"]["content"]["text"], r#"{"users": []}"#);
         assert_eq!(entry["time"], 150);
@@ -288,9 +296,7 @@ mod tests {
         let req = HttpRequest {
             method: HttpMethod::Post,
             url: "https://api.example.com/users".to_string(),
-            headers: vec![
-                ("Content-Type".to_string(), "application/json".to_string()),
-            ],
+            headers: vec![("Content-Type".to_string(), "application/json".to_string())],
             body: Some(r#"{"name": "John"}"#.to_string()),
             config: RequestConfig::default(),
             multipart_fields: vec![],
@@ -313,9 +319,7 @@ mod tests {
         let entry = &parsed["log"]["entries"][0];
 
         assert_eq!(entry["request"]["method"], "POST");
-        assert_eq!(entry["request"]["postData"]["text"],
-            r#"{"name": "John"}"#
-        );
+        assert_eq!(entry["request"]["postData"]["text"], r#"{"name": "John"}"#);
         assert_eq!(entry["response"]["status"], 201);
     }
 

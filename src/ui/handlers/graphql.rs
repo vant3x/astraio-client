@@ -40,8 +40,10 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: graphql_view::Message) -> Tas
                             match crate::http_client::client::build_client(&http_request.config) {
                                 Ok(c) => {
                                     let c = std::sync::Arc::new(c);
-                                    app.custom_clients
-                                        .insert(cache_key, (std::sync::Arc::clone(&c), std::time::Instant::now()));
+                                    app.custom_clients.insert(
+                                        cache_key,
+                                        (std::sync::Arc::clone(&c), std::time::Instant::now()),
+                                    );
                                     c
                                 }
                                 Err(e) => {
@@ -124,8 +126,10 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: graphql_view::Message) -> Tas
                     match crate::http_client::client::build_client(&http_request.config) {
                         Ok(c) => {
                             let c = std::sync::Arc::new(c);
-                            app.custom_clients
-                                .insert(cache_key, (std::sync::Arc::clone(&c), std::time::Instant::now()));
+                            app.custom_clients.insert(
+                                cache_key,
+                                (std::sync::Arc::clone(&c), std::time::Instant::now()),
+                            );
                             c
                         }
                         Err(e) => {

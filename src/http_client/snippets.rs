@@ -78,7 +78,13 @@ pub fn to_python(request: &HttpRequest) -> String {
         let headers: Vec<String> = request
             .headers
             .iter()
-            .map(|(k, v)| format!("    \"{}\": \"{}\"", escape_python_string(k), escape_python_string(v)))
+            .map(|(k, v)| {
+                format!(
+                    "    \"{}\": \"{}\"",
+                    escape_python_string(k),
+                    escape_python_string(v)
+                )
+            })
             .collect();
         lines.push("headers = {".to_string());
         lines.extend(headers);
@@ -93,10 +99,7 @@ pub fn to_python(request: &HttpRequest) -> String {
             lines.push(String::new());
             kwargs.push("json=json_data");
         } else {
-            lines.push(format!(
-                "data = \"{}\"",
-                escape_python_string(body)
-            ));
+            lines.push(format!("data = \"{}\"", escape_python_string(body)));
             lines.push(String::new());
             kwargs.push("data=data");
         }
@@ -109,7 +112,11 @@ pub fn to_python(request: &HttpRequest) -> String {
             .filter(|f| !f.name.is_empty())
             .map(|f| match &f.value {
                 super::request::MultipartValue::Text(text) => {
-                    format!("    \"{}\": (None, \"{}\")", escape_python_string(&f.name), escape_python_string(text))
+                    format!(
+                        "    \"{}\": (None, \"{}\")",
+                        escape_python_string(&f.name),
+                        escape_python_string(text)
+                    )
                 }
                 super::request::MultipartValue::File { path, .. } => {
                     format!("    \"{}\": open(\"{}\", \"rb\")", f.name, path)
@@ -151,7 +158,13 @@ pub fn to_javascript(request: &HttpRequest) -> String {
         let headers: Vec<String> = request
             .headers
             .iter()
-            .map(|(k, v)| format!("    \"{}\": \"{}\"", escape_js_string(k), escape_js_string(v)))
+            .map(|(k, v)| {
+                format!(
+                    "    \"{}\": \"{}\"",
+                    escape_js_string(k),
+                    escape_js_string(v)
+                )
+            })
             .collect();
         options.push("    headers: {".to_string());
         for h in &headers {
@@ -175,7 +188,8 @@ pub fn to_javascript(request: &HttpRequest) -> String {
                 super::request::MultipartValue::Text(text) => {
                     lines.push(format!(
                         "formData.append(\"{}\", \"{}\");",
-                        escape_js_string(&field.name), escape_js_string(text)
+                        escape_js_string(&field.name),
+                        escape_js_string(text)
                     ));
                 }
                 super::request::MultipartValue::File { path, .. } => {
@@ -227,7 +241,11 @@ pub fn to_rust(request: &HttpRequest) -> String {
             method, request.url
         ));
         for (key, value) in &request.headers {
-            lines.push(format!("        .header(\"{}\", \"{}\")", escape_rust_string(key), escape_rust_string(value)));
+            lines.push(format!(
+                "        .header(\"{}\", \"{}\")",
+                escape_rust_string(key),
+                escape_rust_string(value)
+            ));
         }
         if let Some(body) = &request.body {
             if is_json(body) {

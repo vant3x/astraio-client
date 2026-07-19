@@ -1,5 +1,5 @@
 #[cfg(test)]
-mod tests {
+mod view_tests {
     use crate::data::auth::Auth;
     use crate::persistence::database::Environment;
     use crate::ui::components::key_value_editor::KeyValueEntry;

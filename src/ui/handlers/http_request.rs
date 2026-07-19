@@ -45,29 +45,45 @@ pub fn handle_http_request_msg(
             let mut temp_view = view.clone();
 
             // Collect collection variables if a collection is selected
-            let collection_vars: Vec<(String, String)> = if let Some(selected) = &app.collection_view.selected_item {
-                match selected {
-                    crate::ui::views::collection_view::TreeItemId::Collection(idx) => {
-                        app.collection_view.collections.get(*idx).map(|c| c.variables.clone()).unwrap_or_default()
-                    }
-                    crate::ui::views::collection_view::TreeItemId::Folder(folder_id) => {
-                        app.collection_view.folders.iter()
+            let collection_vars: Vec<(String, String)> =
+                if let Some(selected) = &app.collection_view.selected_item {
+                    match selected {
+                        crate::ui::views::collection_view::TreeItemId::Collection(idx) => app
+                            .collection_view
+                            .collections
+                            .get(*idx)
+                            .map(|c| c.variables.clone())
+                            .unwrap_or_default(),
+                        crate::ui::views::collection_view::TreeItemId::Folder(folder_id) => app
+                            .collection_view
+                            .folders
+                            .iter()
                             .find(|f| f.id == *folder_id)
-                            .and_then(|f| app.collection_view.collections.iter().find(|c| c.id == f.collection_id))
+                            .and_then(|f| {
+                                app.collection_view
+                                    .collections
+                                    .iter()
+                                    .find(|c| c.id == f.collection_id)
+                            })
                             .map(|c| c.variables.clone())
-                            .unwrap_or_default()
-                    }
-                    crate::ui::views::collection_view::TreeItemId::Request(req_id) => {
-                        app.collection_view.requests.iter()
+                            .unwrap_or_default(),
+                        crate::ui::views::collection_view::TreeItemId::Request(req_id) => app
+                            .collection_view
+                            .requests
+                            .iter()
                             .find(|r| r.id == *req_id)
-                            .and_then(|r| app.collection_view.collections.iter().find(|c| c.id == r.collection_id))
+                            .and_then(|r| {
+                                app.collection_view
+                                    .collections
+                                    .iter()
+                                    .find(|c| c.id == r.collection_id)
+                            })
                             .map(|c| c.variables.clone())
-                            .unwrap_or_default()
+                            .unwrap_or_default(),
                     }
-                }
-            } else {
-                Vec::new()
-            };
+                } else {
+                    Vec::new()
+                };
 
             if let Some(env) = &app.active_environment {
                 // Merge: collection vars first, then environment vars override
@@ -82,10 +98,8 @@ pub fn handle_http_request_msg(
                 temp_view.apply_environment(&merged_env);
                 let unresolved = temp_view.has_unresolved_variables();
                 if !unresolved.is_empty() {
-                    app.toast_manager.warning(format!(
-                        "Unresolved variables: {}",
-                        unresolved.join(", ")
-                    ));
+                    app.toast_manager
+                        .warning(format!("Unresolved variables: {}", unresolved.join(", ")));
                 }
             } else if !collection_vars.is_empty() {
                 // Apply collection variables even without an environment
@@ -143,7 +157,13 @@ pub fn handle_http_request_msg(
             }
 
             let pre_request_script = temp_view.scripts.pre_request.clone();
+            let mut delay_ms: Option<u64> = None;
             if !pre_request_script.actions.is_empty() {
+                for action in &pre_request_script.actions {
+                    if let crate::protocols::scripts::ScriptAction::Delay { ms } = action {
+                        delay_ms = Some(ms.saturating_add(delay_ms.unwrap_or(0)));
+                    }
+                }
                 if let Err(e) = ScriptEngine::execute_pre_request(
                     &pre_request_script,
                     &mut request,
@@ -177,7 +197,8 @@ pub fn handle_http_request_msg(
                     Arc::clone(cached)
                 } else {
                     if app.custom_clients.len() >= 20 {
-                        if let Some(oldest_key) = app.custom_clients
+                        if let Some(oldest_key) = app
+                            .custom_clients
                             .iter()
                             .min_by_key(|(_, (_, t))| *t)
                             .map(|(k, _)| k.clone())
@@ -188,7 +209,8 @@ pub fn handle_http_request_msg(
                     match client::build_client(&request.config) {
                         Ok(c) => {
                             let c = Arc::new(c);
-                            app.custom_clients.insert(cache_key, (Arc::clone(&c), std::time::Instant::now()));
+                            app.custom_clients
+                                .insert(cache_key, (Arc::clone(&c), std::time::Instant::now()));
                             c
                         }
                         Err(e) => {
@@ -204,37 +226,41 @@ pub fn handle_http_request_msg(
             let post_response_script = view.scripts.post_response.clone();
             let (task, handle) = Task::perform(
                 async move {
+                    if let Some(ms) = delay_ms {
+                        tokio::time::sleep(std::time::Duration::from_millis(ms)).await;
+                    }
+
                     let response = client::send_request(&http_client, request).await;
 
                     match response {
                         Ok(mut resp) => {
-                            let mut post_ctx = ScriptContext::new();
+                            let mut warnings: Vec<String> = Vec::new();
+                            let mut post_ctx = script_context;
+                            post_ctx.logs.clear();
+                            post_ctx.errors.clear();
                             if let Err(e) = ScriptEngine::execute_post_response(
                                 &post_response_script,
                                 &resp,
                                 &mut post_ctx,
                             ) {
-                                return Err(crate::error::AppError::Validation(format!(
-                                    "Post-response script error: {}",
-                                    e
-                                )));
+                                warnings.push(format!("Post-response script error: {}", e));
                             }
                             for log in &post_ctx.logs {
-                                log::info!("[Post-response] {}", log);
+                                warnings.push(log.clone());
                             }
                             resp.url = request_url;
                             resp.method = request_method
                                 .parse()
                                 .unwrap_or(crate::http_client::request::HttpMethod::Get);
-                            Ok(resp)
+                            (Ok(resp), warnings)
                         }
-                        Err(e) => Err(e),
+                        Err(e) => (Err(e), Vec::new()),
                     }
                 },
-                move |result| {
+                move |(result, warnings)| {
                     Message::HttpRequestViewMsg(
                         index,
-                        http_request_view::Message::ResponseReceived(result),
+                        http_request_view::Message::ResponseReceived(result, warnings),
                     )
                 },
             )
@@ -242,10 +268,14 @@ pub fn handle_http_request_msg(
             view.abort_handle = Some(handle);
             task
         }
-        http_request_view::Message::ResponseReceived(ref result) => {
+        http_request_view::Message::ResponseReceived(ref result, ref warnings) => {
             let Some(view) = app.request_tabs.get_mut(index) else {
                 return Task::none();
             };
+            for warning in warnings {
+                app.toast_manager
+                    .warning(format!("[Post-response] {}", warning));
+            }
             match result {
                 Ok(response) => {
                     let request_data = view.pending_request_data.take();
@@ -429,11 +459,12 @@ pub fn handle_http_request_msg(
             Task::none()
         }
         http_request_view::Message::SaveScripts => {
-            let Some(view) = app.request_tabs.get(index) else {
+            let Some(view) = app.request_tabs.get_mut(index) else {
                 return Task::none();
             };
             match view.parse_scripts_from_editors() {
-                Ok(_scripts) => {
+                Ok(scripts) => {
+                    view.scripts = scripts;
                     app.toast_manager.success("Scripts saved".to_string());
                     Task::perform(async move { Ok::<(), String>(()) }, move |_| {
                         Message::HttpRequestViewMsg(

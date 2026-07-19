@@ -74,8 +74,7 @@ pub fn parse_curl(curl: &str) -> Result<CurlParseResult, AppError> {
                         let eq_pos = tokens[i].find('=').unwrap();
                         let key = &tokens[i][..eq_pos];
                         let value = &tokens[i][eq_pos + 1..];
-                        let encoded_value = if value.starts_with('@') {
-                            let file_path = &value[1..];
+                        let encoded_value = if let Some(file_path) = value.strip_prefix('@') {
                             match std::fs::read_to_string(file_path) {
                                 Ok(content) => {
                                     let trimmed = content.trim().to_string();

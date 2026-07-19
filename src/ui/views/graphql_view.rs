@@ -302,7 +302,9 @@ impl GraphQLView {
         })
     }
 
-    pub fn build_http_request(&self) -> Result<crate::http_client::request::HttpRequest, crate::error::AppError> {
+    pub fn build_http_request(
+        &self,
+    ) -> Result<crate::http_client::request::HttpRequest, crate::error::AppError> {
         let graphql_request = self.build_request()?;
 
         let mut headers: Vec<(String, String)> = self

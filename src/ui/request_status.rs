@@ -1,19 +1,14 @@
 use std::time::Instant;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub enum RequestStatus {
+    #[default]
     Idle,
     Loading {
         started_at: Instant,
     },
     Success,
     Error(String),
-}
-
-impl Default for RequestStatus {
-    fn default() -> Self {
-        RequestStatus::Idle
-    }
 }
 
 impl Clone for RequestStatus {

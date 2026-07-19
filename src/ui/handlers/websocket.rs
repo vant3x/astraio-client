@@ -192,11 +192,12 @@ pub fn handle_message(app: &mut AstraNovaApp, message: websocket_view::Message) 
         }
         websocket_view::Message::ToggleMessageExpand(timestamp, direction) => {
             let key = (timestamp, direction);
-            app.websocket_view.expanded_message = if app.websocket_view.expanded_message.as_ref() == Some(&key) {
-                None
-            } else {
-                Some(key)
-            };
+            app.websocket_view.expanded_message =
+                if app.websocket_view.expanded_message.as_ref() == Some(&key) {
+                    None
+                } else {
+                    Some(key)
+                };
             Task::none()
         }
     }

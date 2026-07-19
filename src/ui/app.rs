@@ -741,13 +741,9 @@ impl AstraNovaApp {
     fn send_ws_message(websocket_view: &mut super::views::websocket_view::WebSocketView) {
         if let Some(sender) = &websocket_view.ws_sender {
             let input = websocket_view.input.clone();
-            if !input.is_empty()
-                && matches!(websocket_view.status, WsStatus::Connected)
-            {
+            if !input.is_empty() && matches!(websocket_view.status, WsStatus::Connected) {
                 let _ = sender.send(&input);
-                websocket_view.add_message(
-                    crate::protocols::websocket::WsMessage::outgoing(input),
-                );
+                websocket_view.add_message(crate::protocols::websocket::WsMessage::outgoing(input));
                 websocket_view.input.clear();
             }
         }

@@ -686,8 +686,7 @@ impl CollectionView {
                     );
             }
 
-            let row_button = button(folder_content)
-                .on_press(Message::ToggleFolder(folder.id));
+            let row_button = button(folder_content).on_press(Message::ToggleFolder(folder.id));
 
             let full_row = row![row_button, actions]
                 .spacing(4)

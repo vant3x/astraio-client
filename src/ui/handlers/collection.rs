@@ -247,7 +247,8 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: collection_view::Message) -> 
                     ) {
                         Ok(cols) => {
                             if let Some(new_col) = cols.last() {
-                                let mut folder_id_map: std::collections::HashMap<String, i32> = std::collections::HashMap::new();
+                                let mut folder_id_map: std::collections::HashMap<String, i32> =
+                                    std::collections::HashMap::new();
 
                                 for folder in &generated.folders {
                                     match crate::services::collection_service::create_folder(
@@ -256,20 +257,31 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: collection_view::Message) -> 
                                         &folder.name,
                                     ) {
                                         Ok(created_folder) => {
-                                            folder_id_map.insert(folder.name.clone(), created_folder.id);
+                                            folder_id_map
+                                                .insert(folder.name.clone(), created_folder.id);
                                         }
                                         Err(e) => log::error!("Error creating folder: {}", e),
                                     }
                                 }
 
                                 for req in &generated.requests {
-                                    let folder_id = req.folder_id.and_then(|fid| {
-                                        generated.folders.iter().find(|f| f.id == fid).map(|f| {
-                                            folder_id_map.get(&f.name).copied().unwrap_or(fid)
+                                    let folder_id = req
+                                        .folder_id
+                                        .and_then(|fid| {
+                                            generated.folders.iter().find(|f| f.id == fid).map(
+                                                |f| {
+                                                    folder_id_map
+                                                        .get(&f.name)
+                                                        .copied()
+                                                        .unwrap_or(fid)
+                                                },
+                                            )
                                         })
-                                    }).or_else(|| {
-                                        req.folder_name.as_ref().and_then(|name| folder_id_map.get(name).copied())
-                                    });
+                                        .or_else(|| {
+                                            req.folder_name
+                                                .as_ref()
+                                                .and_then(|name| folder_id_map.get(name).copied())
+                                        });
 
                                     let _ = crate::services::collection_service::save_request(
                                         &app.db_conn,
@@ -593,81 +605,86 @@ fn save_current_to_collection(app: &mut AstraNovaApp) {
         Err(_) => return,
     };
     let auth_type = match &view.auth {
-            crate::data::auth::Auth::BearerToken(_) => {
-                crate::persistence::database::CollectionAuthType::Bearer
-            }
-            crate::data::auth::Auth::Basic { .. } => {
-                crate::persistence::database::CollectionAuthType::Basic
-            }
-            crate::data::auth::Auth::ApiKey { .. } => {
-                crate::persistence::database::CollectionAuthType::ApiKey
-            }
-            crate::data::auth::Auth::Digest { .. } => {
-                crate::persistence::database::CollectionAuthType::Digest
-            }
-            crate::data::auth::Auth::OAuth2(_) => {
-                crate::persistence::database::CollectionAuthType::Oauth2
-            }
-            crate::data::auth::Auth::None => crate::persistence::database::CollectionAuthType::None,
-        };
-        let auth_data = match &view.auth {
-            crate::data::auth::Auth::None => None,
-            auth => auth.to_safe_json().ok(),
-        };
+        crate::data::auth::Auth::BearerToken(_) => {
+            crate::persistence::database::CollectionAuthType::Bearer
+        }
+        crate::data::auth::Auth::Basic { .. } => {
+            crate::persistence::database::CollectionAuthType::Basic
+        }
+        crate::data::auth::Auth::ApiKey { .. } => {
+            crate::persistence::database::CollectionAuthType::ApiKey
+        }
+        crate::data::auth::Auth::Digest { .. } => {
+            crate::persistence::database::CollectionAuthType::Digest
+        }
+        crate::data::auth::Auth::OAuth2(_) => {
+            crate::persistence::database::CollectionAuthType::Oauth2
+        }
+        crate::data::auth::Auth::None => crate::persistence::database::CollectionAuthType::None,
+    };
+    let auth_data = match &view.auth {
+        crate::data::auth::Auth::None => None,
+        auth => auth.to_safe_json().ok(),
+    };
 
-        let params: Vec<(String, String)> = view
-            .params_editor
-            .entries
-            .iter()
-            .filter(|p| !p.key.is_empty())
-            .map(|p| (p.key.clone(), p.value.clone()))
-            .collect();
+    let params: Vec<(String, String)> = view
+        .params_editor
+        .entries
+        .iter()
+        .filter(|p| !p.key.is_empty())
+        .map(|p| (p.key.clone(), p.value.clone()))
+        .collect();
 
-        let body_type = match view.body_type {
-            crate::ui::views::http_request_view::BodyType::Multipart => {
-                crate::persistence::database::CollectionBodyType::Multipart
-            }
-            crate::ui::views::http_request_view::BodyType::FormUrlencoded => {
-                crate::persistence::database::CollectionBodyType::FormUrlencoded
-            }
-            _ => crate::persistence::database::CollectionBodyType::Text,
-        };
+    let body_type = match view.body_type {
+        crate::ui::views::http_request_view::BodyType::Multipart => {
+            crate::persistence::database::CollectionBodyType::Multipart
+        }
+        crate::ui::views::http_request_view::BodyType::FormUrlencoded => {
+            crate::persistence::database::CollectionBodyType::FormUrlencoded
+        }
+        _ => crate::persistence::database::CollectionBodyType::Text,
+    };
 
-        let name = if request.url.len() > 40 {
-            format!("{} {}", request.method, request.url.chars().take(40).collect::<String>())
-        } else {
-            format!("{} {}", request.method, request.url)
-        };
+    let name = if request.url.len() > 40 {
+        format!(
+            "{} {}",
+            request.method,
+            request.url.chars().take(40).collect::<String>()
+        )
+    } else {
+        format!("{} {}", request.method, request.url)
+    };
 
-        let scripts_json = view
-            .parse_scripts_from_editors()
-            .ok()
-            .and_then(|s| s.to_json().ok());
+    let scripts_json = view
+        .parse_scripts_from_editors()
+        .ok()
+        .and_then(|s| s.to_json().ok());
 
-        let config_json = if view.request_config == crate::http_client::config::RequestConfig::default() {
-            None
-        } else {
-            serde_json::to_string(&view.request_config).ok()
-        };
+    let config_json = if view.request_config == crate::http_client::config::RequestConfig::default()
+    {
+        None
+    } else {
+        serde_json::to_string(&view.request_config).ok()
+    };
 
-        let _ = crate::services::collection_service::save_request(
-            &app.db_conn,
-            &crate::persistence::database::SaveRequestParams {
-                collection_id: col_id,
-                folder_id,
-                name,
-                method: request.method.to_string(),
-                url: request.url,
-                headers: request.headers,
-                body: request.body,
-                body_type,
-                auth_type,
-                auth_data,
-                params,
-                config_json,
-                scripts: scripts_json,
-            },
-        );
+    let _ = crate::services::collection_service::save_request(
+        &app.db_conn,
+        &crate::persistence::database::SaveRequestParams {
+            collection_id: col_id,
+            folder_id,
+            name,
+            method: request.method.to_string(),
+            url: request.url,
+            headers: request.headers,
+            body: request.body,
+            body_type,
+            auth_type,
+            auth_data,
+            params,
+            config_json,
+            scripts: scripts_json,
+        },
+    );
 
-        refresh_collection_data(app, col_id);
+    refresh_collection_data(app, col_id);
 }

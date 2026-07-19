@@ -347,6 +347,10 @@ impl ScriptEngine {
                     .find(|(k, _)| k.eq_ignore_ascii_case(&resolved_header))
                 {
                     context.variables.insert(variable.clone(), value.clone());
+                } else {
+                    context
+                        .errors
+                        .push(format!("Header '{}' not found", resolved_header));
                 }
             }
             ScriptAction::Log { message } => {
@@ -865,7 +869,7 @@ mod tests {
         let mut context = ScriptContext::new();
 
         ScriptEngine::execute_post_response(&script, &response, &mut context).unwrap();
-        assert!(context.variables.get("missing").is_none());
+        assert!(!context.variables.contains_key("missing"));
         assert_eq!(context.errors.len(), 1);
     }
 

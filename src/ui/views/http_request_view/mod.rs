@@ -120,7 +120,7 @@ pub enum Message {
     RequestContentTypeSelected(ContentType),
     SendRequest,
     SetLoading,
-    ResponseReceived(Result<HttpResponse, crate::error::AppError>),
+    ResponseReceived(Result<HttpResponse, crate::error::AppError>, Vec<String>),
     CopyResponse,
     CopyHeaders,
     CopyBody,
@@ -511,7 +511,7 @@ impl HttpRequestView {
             Message::SetIdle => {
                 self.request_status = RequestStatus::Idle;
             }
-            Message::ResponseReceived(result) => match result {
+            Message::ResponseReceived(result, _warnings) => match result {
                 Ok(response) => {
                     self.status_code = Some(response.status);
                     self.response_duration = Some(response.duration);
@@ -819,15 +819,23 @@ impl HttpRequestView {
                         self.method = result.method;
                         self.headers_editor = KeyValueEditor::new("Add Header".to_string());
                         for (key, value) in result.headers {
+                            self.headers_editor
+                                .update(crate::ui::components::key_value_editor::Message::AddEntry);
+                            let entry_id = self
+                                .headers_editor
+                                .entries
+                                .last()
+                                .map(|e| e.id)
+                                .unwrap_or(0);
                             self.headers_editor.update(
-                                crate::ui::components::key_value_editor::Message::AddEntry,
+                                crate::ui::components::key_value_editor::Message::EntryKeyChanged(
+                                    entry_id, key,
+                                ),
                             );
-                            let entry_id = self.headers_editor.entries.last().map(|e| e.id).unwrap_or(0);
                             self.headers_editor.update(
-                                crate::ui::components::key_value_editor::Message::EntryKeyChanged(entry_id, key),
-                            );
-                            self.headers_editor.update(
-                                crate::ui::components::key_value_editor::Message::EntryValueChanged(entry_id, value),
+                                crate::ui::components::key_value_editor::Message::EntryValueChanged(
+                                    entry_id, value,
+                                ),
                             );
                         }
                         if let Some(body) = result.body {

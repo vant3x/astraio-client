@@ -675,8 +675,10 @@ mod tests {
 
     #[test]
     fn autocomplete_suggestions() {
-        let mut schema = GraphQLSchema::default();
-        schema.query_type = Some("Query".to_string());
+        let mut schema = GraphQLSchema {
+            query_type: Some("Query".to_string()),
+            ..Default::default()
+        };
         schema.types.push(SchemaType {
             kind: TypeKind::Object,
             name: "Query".to_string(),
