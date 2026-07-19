@@ -156,7 +156,8 @@ mod tests {
                 id INTEGER PRIMARY KEY,
                 name TEXT NOT NULL,
                 description TEXT,
-                sort_order INTEGER NOT NULL DEFAULT 0
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                variables TEXT NOT NULL DEFAULT '[]'
             )",
             [],
         )

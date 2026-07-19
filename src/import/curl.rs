@@ -52,7 +52,54 @@ pub fn parse_curl(curl: &str) -> Result<CurlParseResult, AppError> {
             "-d" | "--data" | "--data-raw" | "--data-binary" => {
                 i += 1;
                 if i < tokens.len() {
-                    data = Some(tokens[i].clone());
+                    let value = if tokens[i].starts_with('@') {
+                        let file_path = &tokens[i][1..];
+                        match std::fs::read_to_string(file_path) {
+                            Ok(content) => content,
+                            Err(_) => tokens[i].clone(),
+                        }
+                    } else {
+                        tokens[i].clone()
+                    };
+                    data = Some(value);
+                    if method.is_none() {
+                        method = Some("POST".to_string());
+                    }
+                }
+            }
+            "--data-urlencode" => {
+                i += 1;
+                if i < tokens.len() {
+                    let encoded = if tokens[i].contains('=') {
+                        let eq_pos = tokens[i].find('=').unwrap();
+                        let key = &tokens[i][..eq_pos];
+                        let value = &tokens[i][eq_pos + 1..];
+                        let encoded_value = if value.starts_with('@') {
+                            let file_path = &value[1..];
+                            match std::fs::read_to_string(file_path) {
+                                Ok(content) => {
+                                    let trimmed = content.trim().to_string();
+                                    urlencoding::encode(&trimmed).to_string()
+                                }
+                                Err(_) => urlencoding::encode(value).to_string(),
+                            }
+                        } else {
+                            urlencoding::encode(value).to_string()
+                        };
+                        format!("{}={}", key, encoded_value)
+                    } else if tokens[i].starts_with('@') {
+                        let file_path = &tokens[i][1..];
+                        match std::fs::read_to_string(file_path) {
+                            Ok(content) => {
+                                let trimmed = content.trim().to_string();
+                                urlencoding::encode(&trimmed).to_string()
+                            }
+                            Err(_) => tokens[i].clone(),
+                        }
+                    } else {
+                        urlencoding::encode(&tokens[i]).to_string()
+                    };
+                    data = Some(encoded);
                     if method.is_none() {
                         method = Some("POST".to_string());
                     }
@@ -289,5 +336,65 @@ mod tests {
         let curl = "curl";
         let result = parse_curl(curl);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_data_urlencode() {
+        let curl = r#"curl --data-urlencode "comment=hello world" https://api.example.com"#;
+        let result = parse_curl(curl).unwrap();
+        assert_eq!(result.body.as_deref(), Some("comment=hello%20world"));
+        assert_eq!(result.method, "POST");
+    }
+
+    #[test]
+    fn parse_data_at_file() {
+        let dir = std::env::temp_dir().join("curl_test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let file_path = dir.join("body.json");
+        std::fs::write(&file_path, r#"{"key":"value"}"#).unwrap();
+
+        let curl = format!("curl -d @{} https://api.example.com", file_path.display());
+        let result = parse_curl(&curl).unwrap();
+        assert_eq!(result.body.as_deref(), Some(r#"{"key":"value"}"#));
+        assert_eq!(result.method, "POST");
+
+        std::fs::remove_file(&file_path).unwrap();
+        std::fs::remove_dir(&dir).unwrap();
+    }
+
+    #[test]
+    fn parse_data_binary_at_file() {
+        let dir = std::env::temp_dir().join("curl_test2");
+        std::fs::create_dir_all(&dir).unwrap();
+        let file_path = dir.join("payload.txt");
+        std::fs::write(&file_path, "binary data").unwrap();
+
+        let curl = format!(
+            "curl --data-binary @{} https://api.example.com",
+            file_path.display()
+        );
+        let result = parse_curl(&curl).unwrap();
+        assert_eq!(result.body.as_deref(), Some("binary data"));
+
+        std::fs::remove_file(&file_path).unwrap();
+        std::fs::remove_dir(&dir).unwrap();
+    }
+
+    #[test]
+    fn parse_data_urlencode_at_file() {
+        let dir = std::env::temp_dir().join("curl_test3");
+        std::fs::create_dir_all(&dir).unwrap();
+        let file_path = dir.join("query.txt");
+        std::fs::write(&file_path, "search term").unwrap();
+
+        let curl = format!(
+            "curl --data-urlencode @{} https://api.example.com",
+            file_path.display()
+        );
+        let result = parse_curl(&curl).unwrap();
+        assert_eq!(result.body.as_deref(), Some("search%20term"));
+
+        std::fs::remove_file(&file_path).unwrap();
+        std::fs::remove_dir(&dir).unwrap();
     }
 }

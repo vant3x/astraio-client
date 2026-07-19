@@ -38,7 +38,7 @@ pub enum Message {
     ToggleSkipVerify,
     ToggleShowTls,
     ToggleShowAdvanced,
-    ToggleMessageExpand(usize),
+    ToggleMessageExpand(String, String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -89,7 +89,7 @@ pub struct WebSocketView {
     pub show_tls: bool,
     pub show_advanced: bool,
     pub max_messages: usize,
-    pub expanded_message: Option<usize>,
+    pub expanded_message: Option<(String, String)>,
 }
 
 impl Clone for WebSocketView {
@@ -118,7 +118,7 @@ impl Clone for WebSocketView {
             show_tls: self.show_tls,
             show_advanced: self.show_advanced,
             max_messages: self.max_messages,
-            expanded_message: self.expanded_message,
+            expanded_message: self.expanded_message.clone(),
         }
     }
 }
@@ -448,7 +448,7 @@ impl WebSocketView {
                     .align_y(Alignment::Center),
             );
         } else {
-            for (idx, msg) in filtered_messages.iter().enumerate() {
+            for (_idx, msg) in filtered_messages.iter().enumerate() {
                 let dir_color = if msg.direction == ">" {
                     Color::from_rgb(0.2, 0.4, 0.8)
                 } else {
@@ -472,7 +472,7 @@ impl WebSocketView {
                 };
 
                 let formatted = msg.formatted_data();
-                let is_expanded = self.expanded_message == Some(idx);
+                let is_expanded = self.expanded_message.as_ref() == Some(&(msg.timestamp.clone(), msg.direction.clone()));
                 let data_display = if is_expanded {
                     formatted.clone()
                 } else {
@@ -540,7 +540,7 @@ impl WebSocketView {
                         .spacing(6)
                         .align_y(Alignment::Start),
                     )
-                    .on_press(Message::ToggleMessageExpand(idx))
+                    .on_press(Message::ToggleMessageExpand(msg.timestamp.clone(), msg.direction.clone()))
                     .width(Length::Fill)
                     .style(move |_: &Theme, _: iced::widget::button::Status| {
                         iced::widget::button::Style {

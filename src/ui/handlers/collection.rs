@@ -644,6 +644,12 @@ fn save_current_to_collection(app: &mut AstraNovaApp) {
             .ok()
             .and_then(|s| s.to_json().ok());
 
+        let config_json = if view.request_config == crate::http_client::config::RequestConfig::default() {
+            None
+        } else {
+            serde_json::to_string(&view.request_config).ok()
+        };
+
         let _ = crate::services::collection_service::save_request(
             &app.db_conn,
             &crate::persistence::database::SaveRequestParams {
@@ -658,7 +664,7 @@ fn save_current_to_collection(app: &mut AstraNovaApp) {
                 auth_type,
                 auth_data,
                 params,
-                config_json: None,
+                config_json,
                 scripts: scripts_json,
             },
         );

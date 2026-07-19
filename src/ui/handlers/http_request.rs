@@ -43,8 +43,43 @@ pub fn handle_http_request_msg(
     match msg {
         http_request_view::Message::SendRequest => {
             let mut temp_view = view.clone();
+
+            // Collect collection variables if a collection is selected
+            let collection_vars: Vec<(String, String)> = if let Some(selected) = &app.collection_view.selected_item {
+                match selected {
+                    crate::ui::views::collection_view::TreeItemId::Collection(idx) => {
+                        app.collection_view.collections.get(*idx).map(|c| c.variables.clone()).unwrap_or_default()
+                    }
+                    crate::ui::views::collection_view::TreeItemId::Folder(folder_id) => {
+                        app.collection_view.folders.iter()
+                            .find(|f| f.id == *folder_id)
+                            .and_then(|f| app.collection_view.collections.iter().find(|c| c.id == f.collection_id))
+                            .map(|c| c.variables.clone())
+                            .unwrap_or_default()
+                    }
+                    crate::ui::views::collection_view::TreeItemId::Request(req_id) => {
+                        app.collection_view.requests.iter()
+                            .find(|r| r.id == *req_id)
+                            .and_then(|r| app.collection_view.collections.iter().find(|c| c.id == r.collection_id))
+                            .map(|c| c.variables.clone())
+                            .unwrap_or_default()
+                    }
+                }
+            } else {
+                Vec::new()
+            };
+
             if let Some(env) = &app.active_environment {
-                temp_view.apply_environment(env);
+                // Merge: collection vars first, then environment vars override
+                let merged = crate::utils::merge_variables(&collection_vars, &env.variables);
+                let merged_env = crate::persistence::database::Environment {
+                    id: env.id,
+                    name: env.name.clone(),
+                    variables: merged,
+                    secret_keys: env.secret_keys.clone(),
+                    default_endpoint: env.default_endpoint.clone(),
+                };
+                temp_view.apply_environment(&merged_env);
                 let unresolved = temp_view.has_unresolved_variables();
                 if !unresolved.is_empty() {
                     app.toast_manager.warning(format!(
@@ -52,6 +87,16 @@ pub fn handle_http_request_msg(
                         unresolved.join(", ")
                     ));
                 }
+            } else if !collection_vars.is_empty() {
+                // Apply collection variables even without an environment
+                let dummy_env = crate::persistence::database::Environment {
+                    id: 0,
+                    name: "collection".to_string(),
+                    variables: collection_vars,
+                    secret_keys: Vec::new(),
+                    default_endpoint: None,
+                };
+                temp_view.apply_environment(&dummy_env);
             }
 
             // Validate URL before sending
@@ -127,16 +172,23 @@ pub fn handle_http_request_msg(
 
             let http_client = if needs_custom_client {
                 let cache_key = build_client_cache_key(&request.config);
-                if let Some(cached) = app.custom_clients.get(&cache_key) {
+                if let Some((cached, last_used)) = app.custom_clients.get_mut(&cache_key) {
+                    *last_used = std::time::Instant::now();
                     Arc::clone(cached)
                 } else {
                     if app.custom_clients.len() >= 20 {
-                        app.custom_clients.clear();
+                        if let Some(oldest_key) = app.custom_clients
+                            .iter()
+                            .min_by_key(|(_, (_, t))| *t)
+                            .map(|(k, _)| k.clone())
+                        {
+                            app.custom_clients.remove(&oldest_key);
+                        }
                     }
                     match client::build_client(&request.config) {
                         Ok(c) => {
                             let c = Arc::new(c);
-                            app.custom_clients.insert(cache_key, Arc::clone(&c));
+                            app.custom_clients.insert(cache_key, (Arc::clone(&c), std::time::Instant::now()));
                             c
                         }
                         Err(e) => {

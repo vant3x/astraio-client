@@ -134,6 +134,7 @@ mod tests {
             name: name.to_string(),
             description: None,
             sort_order: 0,
+            variables: Vec::new(),
         }
     }
 

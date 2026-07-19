@@ -6,13 +6,22 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: graphql_view::Message) -> Tas
     match msg {
         graphql_view::Message::SendRequest => {
             let mut temp_view = app.graphql_view.clone();
+
+            // Apply collection variables if available
             if let Some(env) = &app.active_environment {
                 temp_view.apply_environment(env);
             }
 
             match temp_view.build_request() {
                 Ok(_graphql_request) => {
-                    let http_request = temp_view.build_http_request();
+                    let http_request = match temp_view.build_http_request() {
+                        Ok(r) => r,
+                        Err(e) => {
+                            app.graphql_view
+                                .update(graphql_view::Message::ResponseReceived(Err(e)));
+                            return Task::none();
+                        }
+                    };
                     app.graphql_view.update(graphql_view::Message::SetLoading);
 
                     let needs_custom_client = http_request.config.proxy_url.is_some()
@@ -24,14 +33,15 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: graphql_view::Message) -> Tas
                     let http_client = if needs_custom_client {
                         let cache_key =
                             super::http_request::build_client_cache_key(&http_request.config);
-                        if let Some(cached) = app.custom_clients.get(&cache_key) {
+                        if let Some((cached, last_used)) = app.custom_clients.get_mut(&cache_key) {
+                            *last_used = std::time::Instant::now();
                             std::sync::Arc::clone(cached)
                         } else {
                             match crate::http_client::client::build_client(&http_request.config) {
                                 Ok(c) => {
                                     let c = std::sync::Arc::new(c);
                                     app.custom_clients
-                                        .insert(cache_key, std::sync::Arc::clone(&c));
+                                        .insert(cache_key, (std::sync::Arc::clone(&c), std::time::Instant::now()));
                                     c
                                 }
                                 Err(e) => {
@@ -107,14 +117,15 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: graphql_view::Message) -> Tas
 
             let http_client = if needs_custom_client {
                 let cache_key = super::http_request::build_client_cache_key(&http_request.config);
-                if let Some(cached) = app.custom_clients.get(&cache_key) {
+                if let Some((cached, last_used)) = app.custom_clients.get_mut(&cache_key) {
+                    *last_used = std::time::Instant::now();
                     std::sync::Arc::clone(cached)
                 } else {
                     match crate::http_client::client::build_client(&http_request.config) {
                         Ok(c) => {
                             let c = std::sync::Arc::new(c);
                             app.custom_clients
-                                .insert(cache_key, std::sync::Arc::clone(&c));
+                                .insert(cache_key, (std::sync::Arc::clone(&c), std::time::Instant::now()));
                             c
                         }
                         Err(e) => {
@@ -231,10 +242,44 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: graphql_view::Message) -> Tas
 
             let auth_json = view.auth.to_safe_json().ok();
 
+            let resolved_collection_id = if collection_id == 0 {
+                match crate::services::collection_service::get_all(&app.db_conn) {
+                    Ok(cols) => {
+                        if let Some(first) = cols.first() {
+                            first.id
+                        } else {
+                            match crate::services::collection_service::create_and_refresh(
+                                &app.db_conn,
+                                "My Collection",
+                            ) {
+                                Ok(new_cols) => {
+                                    if let Some(new_col) = new_cols.last() {
+                                        app.collection_view.sync_collections(&new_cols);
+                                        new_col.id
+                                    } else {
+                                        return Task::none();
+                                    }
+                                }
+                                Err(e) => {
+                                    log::error!("Failed to create collection: {}", e);
+                                    return Task::none();
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        log::error!("Failed to load collections: {}", e);
+                        return Task::none();
+                    }
+                }
+            } else {
+                collection_id
+            };
+
             let result = crate::services::collection_service::save_request(
                 &app.db_conn,
                 &crate::persistence::database::SaveRequestParams {
-                    collection_id,
+                    collection_id: resolved_collection_id,
                     folder_id,
                     name: format!(
                         "GraphQL Request - {}",

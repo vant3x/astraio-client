@@ -34,6 +34,8 @@ pub struct Collection {
     pub name: String,
     pub description: Option<String>,
     pub sort_order: i32,
+    #[serde(default)]
+    pub variables: Vec<(String, String)>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -227,10 +229,17 @@ pub fn init_schema(conn: &Connection) -> std::result::Result<(), AppError> {
         "CREATE TABLE IF NOT EXISTS collections (
             id INTEGER PRIMARY KEY,
             name TEXT NOT NULL,
-            description TEXT
+            description TEXT,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            variables TEXT NOT NULL DEFAULT '[]'
         )",
         [],
     )?;
+    conn.execute(
+        "ALTER TABLE collections ADD COLUMN variables TEXT NOT NULL DEFAULT '[]'",
+        [],
+    )
+    .ok();
     conn.execute(
         "ALTER TABLE collections ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0",
         [],
@@ -392,14 +401,14 @@ pub fn update_environment(conn: &Connection, env: &Environment) -> Result<()> {
             &variables_json.to_string(),
             &env.default_endpoint,
             &secret_keys_json.to_string(),
-            &env.id.to_string(),
+            &env.id,
         ],
     )?;
     Ok(())
 }
 
 pub fn delete_environment(conn: &Connection, id: i32) -> Result<()> {
-    conn.execute("DELETE FROM environments WHERE id = ?1", [&id.to_string()])?;
+    conn.execute("DELETE FROM environments WHERE id = ?1", [id])?;
     Ok(())
 }
 
@@ -568,9 +577,12 @@ pub fn create_collection(
     name: &str,
     description: Option<&str>,
 ) -> Result<Collection> {
+    let variables: Vec<(String, String)> = Vec::new();
+    let variables_json = serde_json::to_value(&variables)
+        .map_err(|e| rusqlite::Error::InvalidParameterName(e.to_string()))?;
     conn.execute(
-        "INSERT INTO collections (name, description) VALUES (?1, ?2)",
-        params![name, description],
+        "INSERT INTO collections (name, description, variables) VALUES (?1, ?2, ?3)",
+        params![name, description, &variables_json.to_string()],
     )?;
     let id = conn.last_insert_rowid();
     let max_order: i32 = conn
@@ -585,28 +597,40 @@ pub fn create_collection(
         name: name.to_string(),
         description: description.map(|s| s.to_string()),
         sort_order: max_order + 1,
+        variables,
     })
 }
 
 pub fn get_collections(conn: &Connection) -> Result<Vec<Collection>> {
     let mut stmt = conn.prepare(
-        "SELECT id, name, description, sort_order FROM collections ORDER BY sort_order, name",
+        "SELECT id, name, description, sort_order, variables FROM collections ORDER BY sort_order, name",
     )?;
     let rows = stmt.query_map([], |row| {
+        let variables_json: String = row.get(4)?;
+        let variables: Vec<(String, String)> =
+            serde_json::from_str(&variables_json).unwrap_or_default();
         Ok(Collection {
             id: row.get(0)?,
             name: row.get(1)?,
             description: row.get(2)?,
             sort_order: row.get(3)?,
+            variables,
         })
     })?;
     rows.collect()
 }
 
 pub fn update_collection(conn: &Connection, collection: &Collection) -> Result<()> {
+    let variables_json = serde_json::to_value(&collection.variables)
+        .map_err(|e| rusqlite::Error::InvalidParameterName(e.to_string()))?;
     conn.execute(
-        "UPDATE collections SET name = ?1, description = ?2 WHERE id = ?3",
-        params![collection.name, collection.description, collection.id],
+        "UPDATE collections SET name = ?1, description = ?2, variables = ?3 WHERE id = ?4",
+        params![
+            collection.name,
+            collection.description,
+            &variables_json.to_string(),
+            collection.id,
+        ],
     )?;
     Ok(())
 }
@@ -938,7 +962,8 @@ mod tests {
                 id INTEGER PRIMARY KEY,
                 name TEXT NOT NULL,
                 description TEXT,
-                sort_order INTEGER NOT NULL DEFAULT 0
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                variables TEXT NOT NULL DEFAULT '[]'
             )",
             [],
         )

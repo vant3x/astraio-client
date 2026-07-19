@@ -125,6 +125,12 @@ pub fn build_view_from_collection_request(req: &CollectionRequest) -> HttpReques
         }
     }
 
+    if let Some(config_data) = &req.config_json {
+        if let Ok(config) = serde_json::from_str::<crate::http_client::config::RequestConfig>(config_data) {
+            view.request_config = config;
+        }
+    }
+
     if let Some(scripts_data) = &req.scripts {
         if let Ok(scripts) = crate::protocols::scripts::RequestScripts::from_json(scripts_data) {
             view.load_scripts(&scripts);

@@ -29,6 +29,7 @@ pub fn generate_collection(spec: &ParsedSpec, collection_id: i32) -> GeneratedCo
         name: format!("{} (OpenAPI)", spec.title),
         description: spec.description.clone(),
         sort_order: 0,
+        variables: Vec::new(),
     };
 
     let by_tag = spec.endpoints_by_tag();

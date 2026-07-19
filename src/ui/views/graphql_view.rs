@@ -302,12 +302,8 @@ impl GraphQLView {
         })
     }
 
-    pub fn build_http_request(&self) -> crate::http_client::request::HttpRequest {
-        let graphql_request = self.build_request().unwrap_or_else(|_| GraphQLRequest {
-            query: String::new(),
-            variables: None,
-            operation_name: None,
-        });
+    pub fn build_http_request(&self) -> Result<crate::http_client::request::HttpRequest, crate::error::AppError> {
+        let graphql_request = self.build_request()?;
 
         let mut headers: Vec<(String, String)> = self
             .headers_editor
@@ -359,7 +355,7 @@ impl GraphQLView {
 
         let body = graphql_request.to_json().unwrap_or_default();
 
-        crate::http_client::request::HttpRequest {
+        Ok(crate::http_client::request::HttpRequest {
             method: crate::http_client::request::HttpMethod::Post,
             url: final_url,
             headers,
@@ -367,7 +363,7 @@ impl GraphQLView {
             config: self.request_config.clone(),
             multipart_fields: vec![],
             auth: Some(self.auth.clone()),
-        }
+        })
     }
 
     pub fn build_introspection_request(&self) -> crate::http_client::request::HttpRequest {

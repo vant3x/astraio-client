@@ -190,11 +190,12 @@ pub fn handle_message(app: &mut AstraNovaApp, message: websocket_view::Message) 
             app.websocket_view.show_advanced = !app.websocket_view.show_advanced;
             Task::none()
         }
-        websocket_view::Message::ToggleMessageExpand(index) => {
-            app.websocket_view.expanded_message = if app.websocket_view.expanded_message == Some(index) {
+        websocket_view::Message::ToggleMessageExpand(timestamp, direction) => {
+            let key = (timestamp, direction);
+            app.websocket_view.expanded_message = if app.websocket_view.expanded_message.as_ref() == Some(&key) {
                 None
             } else {
-                Some(index)
+                Some(key)
             };
             Task::none()
         }

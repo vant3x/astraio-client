@@ -148,7 +148,7 @@ pub(crate) struct AstraNovaApp {
     pub(crate) request_tabs: Vec<HttpRequestView>,
     pub(crate) active_request_tab_index: usize,
     pub(crate) http_client: Arc<reqwest::Client>,
-    pub(crate) custom_clients: HashMap<String, Arc<reqwest::Client>>,
+    pub(crate) custom_clients: HashMap<String, (Arc<reqwest::Client>, std::time::Instant)>,
     pub(crate) db_conn: rusqlite::Connection,
     pub(crate) environments: Vec<Environment>,
     pub(crate) active_environment: Option<Environment>,
@@ -522,37 +522,13 @@ impl AstraNovaApp {
                 Task::none()
             }
             Message::WsSendFromKeyboard => {
-                if self.active_protocol == Protocol::WebSocket {
-                    let input = self.websocket_view.input.clone();
-                    if !input.is_empty()
-                        && matches!(self.websocket_view.status, WsStatus::Connected)
-                    {
-                        if let Some(sender) = &self.websocket_view.ws_sender {
-                            let _ = sender.send(&input);
-                            self.websocket_view.add_message(
-                                crate::protocols::websocket::WsMessage::outgoing(input),
-                            );
-                            self.websocket_view.input.clear();
-                        }
-                    }
-                }
+                Self::send_ws_message(&mut self.websocket_view);
                 Task::none()
             }
             Message::SendActiveRequest => {
                 match self.active_protocol {
                     Protocol::WebSocket => {
-                        let input = self.websocket_view.input.clone();
-                        if !input.is_empty()
-                            && matches!(self.websocket_view.status, WsStatus::Connected)
-                        {
-                            if let Some(sender) = &self.websocket_view.ws_sender {
-                                let _ = sender.send(&input);
-                                self.websocket_view.add_message(
-                                    crate::protocols::websocket::WsMessage::outgoing(input),
-                                );
-                                self.websocket_view.input.clear();
-                            }
-                        }
+                        Self::send_ws_message(&mut self.websocket_view);
                     }
                     Protocol::GraphQL => {
                         return super::handlers::graphql::handle_message(
@@ -670,9 +646,6 @@ impl AstraNovaApp {
                         iced::keyboard::Key::Character(ref c) if c.as_ref() == "w" => {
                             Some(Message::CloseActiveRequestTab)
                         }
-                        iced::keyboard::Key::Character(ref c) if c.as_ref() == "t" => {
-                            Some(Message::AddRequestTab)
-                        }
                         iced::keyboard::Key::Character(ref c) if c.as_ref() == "d" => {
                             Some(Message::ToggleTheme)
                         }
@@ -762,6 +735,21 @@ impl AstraNovaApp {
             iced::Theme::Dark
         } else {
             iced::Theme::Light
+        }
+    }
+
+    fn send_ws_message(websocket_view: &mut super::views::websocket_view::WebSocketView) {
+        if let Some(sender) = &websocket_view.ws_sender {
+            let input = websocket_view.input.clone();
+            if !input.is_empty()
+                && matches!(websocket_view.status, WsStatus::Connected)
+            {
+                let _ = sender.send(&input);
+                websocket_view.add_message(
+                    crate::protocols::websocket::WsMessage::outgoing(input),
+                );
+                websocket_view.input.clear();
+            }
         }
     }
 
