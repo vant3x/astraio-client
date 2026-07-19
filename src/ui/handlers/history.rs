@@ -59,6 +59,7 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: history_view::Message) -> Tas
             return Task::perform(
                 async move {
                     let file = rfd::AsyncFileDialog::new()
+                        .add_filter("HAR (HTTP Archive)", &["har"])
                         .add_filter("JSON", &["json"])
                         .add_filter("CSV", &["csv"])
                         .save_file()
@@ -66,12 +67,14 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: history_view::Message) -> Tas
 
                     if let Some(path) = file {
                         let path = path.path();
-                        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("json");
+                        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("har");
 
                         let content = if ext == "csv" {
                             export_csv(&entries)
-                        } else {
+                        } else if ext == "json" {
                             export_json(&entries)
+                        } else {
+                            crate::export::har::export_history_to_har(&entries)
                         };
 
                         let path_buf = path.to_path_buf();

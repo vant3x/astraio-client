@@ -87,10 +87,14 @@ impl Toast {
 
     pub fn opacity(&self) -> f32 {
         let elapsed = self.created_at.elapsed();
-        let fade_start = self.duration - Duration::from_millis(500);
+        if elapsed >= self.duration {
+            return 0.0;
+        }
+        let fade_duration = Duration::from_millis(500);
+        let fade_start = self.duration.saturating_sub(fade_duration);
         if elapsed >= fade_start {
-            let remaining = self.duration - elapsed;
-            remaining.as_millis() as f32 / 500.0
+            let remaining = self.duration.saturating_sub(elapsed);
+            remaining.as_millis() as f32 / fade_duration.as_millis() as f32
         } else {
             1.0
         }

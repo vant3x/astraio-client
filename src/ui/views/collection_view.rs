@@ -55,6 +55,8 @@ pub enum Message {
     ImportCollectionData(Option<String>),
     ImportOpenApi,
     ImportOpenApiData(Option<String>),
+    ImportHar,
+    ImportHarData(Option<String>),
     ExportCollection(usize),
     ExportCollectionData(()),
     SaveCurrentRequest,
@@ -207,6 +209,8 @@ impl CollectionView {
             Message::ImportCollectionData(_) => None,
             Message::ImportOpenApi => None,
             Message::ImportOpenApiData(_) => None,
+            Message::ImportHar => None,
+            Message::ImportHarData(_) => None,
             Message::ExportCollection(_) => None,
             Message::ExportCollectionData(_) => None,
             Message::SaveCurrentRequest => None,
@@ -334,6 +338,8 @@ impl CollectionView {
                 .on_press(Message::ImportCollection),
             button(row![lucide::file_code().size(13), text(" OpenAPI")].spacing(4))
                 .on_press(Message::ImportOpenApi),
+            button(row![lucide::upload().size(13), text(" HAR")].spacing(4))
+                .on_press(Message::ImportHar),
         ]
         .spacing(8)
         .align_y(Alignment::Center);

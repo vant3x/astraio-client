@@ -640,7 +640,9 @@ impl AstraNovaApp {
             {
                 if modifiers.control() || modifiers.command() {
                     match key {
-                        iced::keyboard::Key::Character(ref c) if c.as_ref() == "n" => {
+                        iced::keyboard::Key::Character(ref c)
+                            if c.as_ref() == "n" || c.as_ref() == "t" =>
+                        {
                             Some(Message::AddRequestTab)
                         }
                         iced::keyboard::Key::Character(ref c) if c.as_ref() == "w" => {

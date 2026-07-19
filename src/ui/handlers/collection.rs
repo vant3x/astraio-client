@@ -200,6 +200,98 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: collection_view::Message) -> 
             }
         }
         collection_view::Message::ImportCollectionData(None) => {}
+        collection_view::Message::ImportHar => {
+            app.collection_view.update(msg);
+            return Task::perform(
+                async move {
+                    let file = rfd::AsyncFileDialog::new()
+                        .add_filter("HTTP Archive (HAR)", &["har", "json"])
+                        .pick_file()
+                        .await;
+                    if let Some(file_handle) = file {
+                        let data = file_handle.read().await;
+                        if let Ok(content) = std::str::from_utf8(&data) {
+                            return Some(content.to_string());
+                        }
+                    }
+                    None
+                },
+                |result| Message::CollectionMsg(collection_view::Message::ImportHarData(result)),
+            );
+        }
+        collection_view::Message::ImportHarData(Some(json)) => {
+            match crate::import::har::parse_har_collection(&json) {
+                Ok(imported) => {
+                    match crate::services::collection_service::create_and_refresh(
+                        &app.db_conn,
+                        &imported.name,
+                    ) {
+                        Ok(cols) => {
+                            if let Some(new_col) = cols.last() {
+                                let mut requests_count = 0;
+                                for folder in &imported.folders {
+                                    match crate::services::collection_service::create_folder(
+                                        &app.db_conn,
+                                        new_col.id,
+                                        &folder.name,
+                                    ) {
+                                        Ok(created_folder) => {
+                                            for req in &folder.requests {
+                                                let _ = crate::services::collection_service::save_request(
+                                                    &app.db_conn,
+                                                    &crate::persistence::database::SaveRequestParams::imported(
+                                                        new_col.id,
+                                                        Some(created_folder.id),
+                                                        &req.name,
+                                                        &req.method,
+                                                        &req.url,
+                                                        &req.headers,
+                                                        req.body.as_deref(),
+                                                        &req.params,
+                                                    ),
+                                                );
+                                                requests_count += 1;
+                                            }
+                                        }
+                                        Err(e) => log::error!("Error creating folder: {}", e),
+                                    }
+                                }
+                                for req in &imported.requests {
+                                    let _ = crate::services::collection_service::save_request(
+                                        &app.db_conn,
+                                        &crate::persistence::database::SaveRequestParams::imported(
+                                            new_col.id,
+                                            None,
+                                            &req.name,
+                                            &req.method,
+                                            &req.url,
+                                            &req.headers,
+                                            req.body.as_deref(),
+                                            &req.params,
+                                        ),
+                                    );
+                                    requests_count += 1;
+                                }
+                                refresh_all_data(app);
+                                app.toast_manager.success(format!(
+                                    "Imported {} requests from HAR into collection '{}'",
+                                    requests_count, imported.name
+                                ));
+                            }
+                        }
+                        Err(e) => {
+                            log::error!("Error creating collection: {}", e);
+                            app.toast_manager.error(format!("Import failed: {}", e));
+                        }
+                    }
+                }
+                Err(e) => {
+                    log::error!("Error parsing HAR collection: {}", e);
+                    app.toast_manager.error(format!("Invalid HAR file: {}", e));
+                }
+            }
+        }
+        collection_view::Message::ImportHarData(None) => {}
         collection_view::Message::ImportOpenApi => {
             app.collection_view.update(msg);
             return Task::perform(

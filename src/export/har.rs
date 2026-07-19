@@ -3,7 +3,6 @@
 use crate::http_client::request::HttpRequest;
 use crate::http_client::response::HttpResponse;
 use serde::{Deserialize, Serialize};
-use std::time::SystemTime;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct HarLog {
@@ -90,20 +89,128 @@ pub struct HarPostData {
 }
 
 fn now_iso() -> String {
-    let duration = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap_or_default();
-    let secs = duration.as_secs();
-    // Simple ISO 8601 without external dependency
-    format!(
-        "{}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
-        1970 + (secs / 31536000) as u32,
-        ((secs % 31536000) / 2592000) % 12 + 1,
-        ((secs % 2592000) / 86400) + 1,
-        (secs % 86400) / 3600,
-        (secs % 3600) / 60,
-        secs % 60,
-    )
+    chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
+}
+
+fn parse_request_cookies(headers: &[(String, String)]) -> Vec<serde_json::Value> {
+    let mut cookies = Vec::new();
+    for (k, v) in headers {
+        if k.eq_ignore_ascii_case("cookie") {
+            for part in v.split(';') {
+                let part = part.trim();
+                if part.is_empty() {
+                    continue;
+                }
+                let mut kv = part.splitn(2, '=');
+                let name = kv.next().unwrap_or("").trim().to_string();
+                let value = kv.next().unwrap_or("").trim().to_string();
+                if !name.is_empty() {
+                    cookies.push(serde_json::json!({
+                        "name": name,
+                        "value": value,
+                    }));
+                }
+            }
+        }
+    }
+    cookies
+}
+
+fn parse_response_cookies(headers: &[(String, String)]) -> Vec<serde_json::Value> {
+    let mut cookies = Vec::new();
+    for (k, v) in headers {
+        if k.eq_ignore_ascii_case("set-cookie") {
+            let mut parts = v.split(';');
+            let first = match parts.next() {
+                Some(p) => p.trim(),
+                None => continue,
+            };
+            if first.is_empty() {
+                continue;
+            }
+            let mut kv = first.splitn(2, '=');
+            let name = kv.next().unwrap_or("").trim().to_string();
+            let value = kv.next().unwrap_or("").trim().to_string();
+            if name.is_empty() {
+                continue;
+            }
+
+            let mut path: Option<String> = None;
+            let mut domain: Option<String> = None;
+            let mut expires: Option<String> = None;
+            let mut http_only = false;
+            let mut secure = false;
+
+            for part in parts {
+                let part = part.trim();
+                if part.is_empty() {
+                    continue;
+                }
+                let mut kv = part.splitn(2, '=');
+                let attr_name = kv.next().unwrap_or("").trim().to_lowercase();
+                let attr_val = kv.next().unwrap_or("").trim().to_string();
+
+                match attr_name.as_str() {
+                    "path" => path = Some(attr_val),
+                    "domain" => domain = Some(attr_val),
+                    "expires" => {
+                        if let Ok(dt) = chrono::DateTime::parse_from_rfc2822(&attr_val) {
+                            expires = Some(dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, true));
+                        } else {
+                            expires = Some(attr_val);
+                        }
+                    }
+                    "httponly" => http_only = true,
+                    "secure" => secure = true,
+                    _ => {}
+                }
+            }
+
+            let mut cookie_obj = serde_json::json!({
+                "name": name,
+                "value": value,
+            });
+
+            if let Some(p) = path {
+                cookie_obj["path"] = serde_json::Value::String(p);
+            }
+            if let Some(d) = domain {
+                cookie_obj["domain"] = serde_json::Value::String(d);
+            }
+            if let Some(e) = expires {
+                cookie_obj["expires"] = serde_json::Value::String(e);
+            }
+            if http_only {
+                cookie_obj["httpOnly"] = serde_json::Value::Bool(true);
+            }
+            if secure {
+                cookie_obj["secure"] = serde_json::Value::Bool(true);
+            }
+
+            cookies.push(cookie_obj);
+        }
+    }
+    cookies
+}
+
+pub fn export_history_to_har(
+    entries: &[crate::persistence::database::RequestHistoryEntry],
+) -> String {
+    let mut requests = Vec::new();
+    let mut responses = Vec::new();
+    for entry in entries {
+        if let (Some(req_str), Some(resp_str)) = (&entry.request_data, &entry.response_data) {
+            if let (Ok(req), Ok(resp)) = (
+                serde_json::from_str::<HttpRequest>(req_str),
+                serde_json::from_str::<HttpResponse>(resp_str),
+            ) {
+                requests.push(req);
+                responses.push(resp);
+            }
+        }
+    }
+    let refs: Vec<(&HttpRequest, &HttpResponse)> = requests.iter().zip(responses.iter()).collect();
+    export_entries(&refs)
 }
 
 pub fn export_entries(entries: &[(&HttpRequest, &HttpResponse)]) -> String {
@@ -170,7 +277,7 @@ pub fn export_entries(entries: &[(&HttpRequest, &HttpResponse)]) -> String {
                     method: req.method.to_string(),
                     url: url.clone(),
                     http_version: "HTTP/1.1".to_string(),
-                    cookies: vec![],
+                    cookies: parse_request_cookies(&req.headers),
                     headers,
                     query_string,
                     post_data,
@@ -179,7 +286,7 @@ pub fn export_entries(entries: &[(&HttpRequest, &HttpResponse)]) -> String {
                     status: resp.status,
                     status_text: status_text(resp.status),
                     http_version: "HTTP/1.1".to_string(),
-                    cookies: vec![],
+                    cookies: parse_response_cookies(&resp.headers),
                     headers: resp_headers,
                     content: HarContent {
                         size: resp.size,
@@ -212,7 +319,6 @@ pub fn export_entries(entries: &[(&HttpRequest, &HttpResponse)]) -> String {
         entries: har_entries,
     };
 
-    // HAR spec wraps everything in a "log" key
     let wrapper = serde_json::json!({ "log": har });
     serde_json::to_string_pretty(&wrapper).unwrap_or_else(|_| "{}".to_string())
 }
@@ -406,5 +512,63 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(&har).unwrap();
         let qs = &parsed["log"]["entries"][0]["request"]["queryString"];
         assert_eq!(qs.as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn test_cookie_parsing_in_har() {
+        let req = HttpRequest {
+            method: HttpMethod::Get,
+            url: "https://api.example.com/search".to_string(),
+            headers: vec![("Cookie".to_string(), "foo=bar; baz=qux".to_string())],
+            body: None,
+            config: RequestConfig::default(),
+            multipart_fields: vec![],
+            auth: None,
+        };
+        let resp = HttpResponse {
+            url: "https://api.example.com/search".to_string(),
+            method: HttpMethod::Get,
+            status: 200,
+            headers: vec![
+                ("Set-Cookie".to_string(), "session=12345; Path=/; Domain=api.example.com; Expires=Sun, 19 Jul 2026 06:51:19 GMT; HttpOnly; Secure".to_string()),
+            ],
+            body: "[]".to_string(),
+            body_encoding: BodyEncoding::Text,
+            duration: Duration::from_millis(100),
+            size: 2,
+            redirect_chain: vec![],
+        };
+
+        let har = export_entries(&[(&req, &resp)]);
+        let parsed: serde_json::Value = serde_json::from_str(&har).unwrap();
+
+        let req_cookies = parsed["log"]["entries"][0]["request"]["cookies"]
+            .as_array()
+            .unwrap();
+        assert_eq!(req_cookies.len(), 2);
+        assert_eq!(req_cookies[0]["name"], "foo");
+        assert_eq!(req_cookies[0]["value"], "bar");
+        assert_eq!(req_cookies[1]["name"], "baz");
+        assert_eq!(req_cookies[1]["value"], "qux");
+
+        let resp_cookies = parsed["log"]["entries"][0]["response"]["cookies"]
+            .as_array()
+            .unwrap();
+        assert_eq!(resp_cookies.len(), 1);
+        assert_eq!(resp_cookies[0]["name"], "session");
+        assert_eq!(resp_cookies[0]["value"], "12345");
+        assert_eq!(resp_cookies[0]["path"], "/");
+        assert_eq!(resp_cookies[0]["domain"], "api.example.com");
+        assert_eq!(resp_cookies[0]["expires"], "2026-07-19T06:51:19.000Z");
+        assert_eq!(resp_cookies[0]["httpOnly"], true);
+        assert_eq!(resp_cookies[0]["secure"], true);
+    }
+
+    #[test]
+    fn test_now_iso_format() {
+        let iso = now_iso();
+        assert!(iso.contains('T'));
+        assert!(iso.ends_with('Z'));
+        assert!(iso.len() >= 20);
     }
 }
