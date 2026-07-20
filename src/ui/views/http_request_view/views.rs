@@ -1283,6 +1283,37 @@ impl HttpRequestView {
                 )
                 .on_press(Message::ClearKeychainSecrets),
                 rule::horizontal(10),
+                text("Cookies").size(16),
+                {
+                    let cookie_info = if self.cookie_count > 0 {
+                        format!(
+                            "{} cookies across {} domains",
+                            self.cookie_count, self.cookie_domain_count
+                        )
+                    } else {
+                        "No cookies stored".to_string()
+                    };
+                    let info_color = if self.cookie_count > 0 {
+                        Color::from_rgb(0.3, 0.7, 0.3)
+                    } else {
+                        Color::from_rgb(0.5, 0.5, 0.5)
+                    };
+                    row![
+                        lucide::cookie().size(14),
+                        text(cookie_info).size(13).color(info_color),
+                    ]
+                    .spacing(6)
+                    .align_y(Alignment::Center)
+                },
+                button(
+                    row![
+                        lucide::trash().size(14),
+                        text(" Clear All Cookies").size(13),
+                    ]
+                    .spacing(4),
+                )
+                .on_press(Message::ClearCookies),
+                rule::horizontal(10),
                 button(row![lucide::rotate_ccw().size(14), text(" Reset to Defaults")].spacing(4))
                     .on_press(Message::ResetSettings),
             ]

@@ -182,6 +182,7 @@ pub enum Message {
     ToggleApiKeyValueVisible,
     SetIdle,
     ClearKeychainSecrets,
+    ClearCookies,
     ScriptTabSelected(ScriptTab),
     PreRequestScriptChanged(text_editor::Action),
     PostResponseScriptChanged(text_editor::Action),
@@ -263,6 +264,8 @@ pub struct HttpRequestView {
     pub pre_request_script_editor: text_editor::Content,
     pub post_response_script_editor: text_editor::Content,
     pub active_script_tab: ScriptTab,
+    pub cookie_count: usize,
+    pub cookie_domain_count: usize,
 }
 
 impl Clone for HttpRequestView {
@@ -318,6 +321,8 @@ impl Clone for HttpRequestView {
                 &self.post_response_script_editor.text(),
             ),
             active_script_tab: self.active_script_tab.clone(),
+            cookie_count: self.cookie_count,
+            cookie_domain_count: self.cookie_domain_count,
         }
     }
 }
@@ -379,6 +384,8 @@ impl Default for HttpRequestView {
             pre_request_script_editor: text_editor::Content::new(),
             post_response_script_editor: text_editor::Content::new(),
             active_script_tab: ScriptTab::default(),
+            cookie_count: 0,
+            cookie_domain_count: 0,
         }
     }
 }
@@ -946,6 +953,9 @@ impl HttpRequestView {
                 self.show_api_key_value = !self.show_api_key_value;
             }
             Message::ClearKeychainSecrets => {
+                // Handled at app level - no view state change needed.
+            }
+            Message::ClearCookies => {
                 // Handled at app level - no view state change needed.
             }
             Message::ScriptTabSelected(tab) => {

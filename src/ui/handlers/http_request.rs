@@ -182,6 +182,17 @@ pub fn handle_http_request_msg(
             let request_url = request.url.clone();
             let request_method = request.method.to_string();
 
+            // Inject cookies from jar into request
+            if let Ok(jar) = app.cookie_jar.lock() {
+                if let Some(cookie_header) = jar.to_cookie_header(&request.url) {
+                    request
+                        .headers
+                        .retain(|(k, _)| !k.eq_ignore_ascii_case("cookie"));
+                    request.headers
+                        .push(("cookie".to_string(), cookie_header));
+                }
+            }
+
             view.pending_request_data = serde_json::to_string(&request).ok();
             view.update(http_request_view::Message::SetLoading);
 
@@ -282,6 +293,23 @@ pub fn handle_http_request_msg(
                 Ok(response) => {
                     let request_data = view.pending_request_data.take();
                     let response_data = serde_json::to_string(response).ok();
+
+                    // Capture Set-Cookie headers into the cookie jar
+                    let (new_total, new_domains) = {
+                        if let Ok(mut jar) = app.cookie_jar.lock() {
+                            for (key, value) in &response.headers {
+                                if key.eq_ignore_ascii_case("set-cookie") {
+                                    jar.insert_from_set_cookie(value, &response.url);
+                                }
+                            }
+                            (jar.total_count(), jar.domain_count())
+                        } else {
+                            (0, 0)
+                        }
+                    };
+                    view.cookie_count = new_total;
+                    view.cookie_domain_count = new_domains;
+
                     let _ = crate::services::history_service::save_raw(
                         &app.db_conn,
                         &response.method.to_string(),
@@ -489,6 +517,9 @@ pub fn handle_http_request_msg(
             Task::perform(async { Ok::<(), crate::error::AppError>(()) }, |_| {
                 Message::ClearKeychainSecrets
             })
+        }
+        http_request_view::Message::ClearCookies => {
+            Task::perform(async {}, |_| Message::ClearCookies)
         }
         other => {
             if let Some(view) = app.request_tabs.get_mut(index) {

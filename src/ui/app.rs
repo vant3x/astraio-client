@@ -1,3 +1,4 @@
+use crate::cookie::CookieJar;
 use crate::persistence::database::{self, Environment};
 use crate::protocols::websocket::{WsEvent, WsSender, WsStatus};
 use crate::ui::toast::ToastManager;
@@ -149,6 +150,7 @@ pub(crate) struct AstraNovaApp {
     pub(crate) active_request_tab_index: usize,
     pub(crate) http_client: Arc<reqwest::Client>,
     pub(crate) custom_clients: HashMap<String, (Arc<reqwest::Client>, std::time::Instant)>,
+    pub(crate) cookie_jar: Arc<std::sync::Mutex<CookieJar>>,
     pub(crate) db_conn: rusqlite::Connection,
     pub(crate) environments: Vec<Environment>,
     pub(crate) active_environment: Option<Environment>,
@@ -237,6 +239,8 @@ pub enum Message {
     EscapePressed,
     ClearKeychainSecrets,
     KeychainCleared(Result<u32, crate::error::AppError>),
+    ClearCookies,
+    CookiesCleared,
 }
 
 impl AstraNovaApp {
@@ -308,6 +312,7 @@ impl AstraNovaApp {
                     .unwrap_or_else(|_| reqwest::Client::new()),
             ),
             custom_clients: HashMap::new(),
+            cookie_jar: Arc::new(std::sync::Mutex::new(CookieJar::new())),
             db_conn,
             environments: environments.clone(),
             active_environment: None,
@@ -623,6 +628,18 @@ impl AstraNovaApp {
                 }
                 Task::none()
             }
+            Message::ClearCookies => {
+                if let Ok(mut jar) = self.cookie_jar.lock() {
+                    jar.clear();
+                }
+                for tab in &mut self.request_tabs {
+                    tab.cookie_count = 0;
+                    tab.cookie_domain_count = 0;
+                }
+                self.toast_manager.success("Cookies cleared".to_string());
+                Task::none()
+            }
+            Message::CookiesCleared => Task::none(),
         }
     }
 
