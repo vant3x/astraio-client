@@ -310,6 +310,15 @@ pub fn handle_http_request_msg(
                     view.cookie_count = new_total;
                     view.cookie_domain_count = new_domains;
 
+                    // Persist updated cookie jar to SQLite (non-fatal)
+                    if let Ok(jar) = app.cookie_jar.lock() {
+                        if let Err(e) =
+                            crate::persistence::database::save_cookies(&app.db_conn, &jar)
+                        {
+                            log::warn!("Failed to persist cookies: {}", e);
+                        }
+                    }
+
                     let _ = crate::services::history_service::save_raw(
                         &app.db_conn,
                         &response.method.to_string(),

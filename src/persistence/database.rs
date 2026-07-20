@@ -327,6 +327,29 @@ pub fn init_schema(conn: &Connection) -> std::result::Result<(), AppError> {
     )
     .ok();
 
+    // Cookies table — idempotent migration
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS cookies (
+            id INTEGER PRIMARY KEY,
+            domain TEXT NOT NULL,
+            name TEXT NOT NULL,
+            value TEXT NOT NULL,
+            path TEXT NOT NULL DEFAULT '/',
+            expires_at TEXT,
+            secure INTEGER NOT NULL DEFAULT 0,
+            http_only INTEGER NOT NULL DEFAULT 0,
+            same_site TEXT NOT NULL DEFAULT 'Lax',
+            created_at TEXT NOT NULL
+        )",
+        [],
+    )
+    .ok();
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_cookies_domain_name_path ON cookies(domain, name, path)",
+        [],
+    )
+    .ok();
+
     Ok(())
 }
 
@@ -337,6 +360,101 @@ pub fn init() -> std::result::Result<Connection, AppError> {
         .map_err(|e| AppError::Database(format!("Failed to set pragmas: {}", e)))?;
     init_schema(&conn)?;
     Ok(conn)
+}
+
+/// Persist the entire CookieJar to SQLite.
+/// Uses INSERT OR REPLACE so it's safe to call after every response.
+pub fn save_cookies(
+    conn: &Connection,
+    jar: &crate::cookie::CookieJar,
+) -> std::result::Result<(), AppError> {
+    let now = crate::utils::timestamp_seconds();
+    // Collect all cookies from all domains
+    let all_domains: Vec<String> = {
+        // We access via domains() which returns (&str, usize) pairs
+        jar.domains().iter().map(|(d, _)| d.to_string()).collect()
+    };
+
+    for domain in &all_domains {
+        for cookie in jar.cookies_for_domain(domain) {
+            conn.execute(
+                "INSERT OR REPLACE INTO cookies
+                    (domain, name, value, path, expires_at, secure, http_only, same_site, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                params![
+                    cookie.domain,
+                    cookie.name,
+                    cookie.value,
+                    cookie.path,
+                    cookie.expires,
+                    cookie.secure as i32,
+                    cookie.http_only as i32,
+                    cookie.same_site.to_string(),
+                    now,
+                ],
+            )
+            .map_err(|e| AppError::Database(format!("Failed to save cookie: {}", e)))?;
+        }
+    }
+    Ok(())
+}
+
+/// Load all cookies from SQLite into a fresh CookieJar.
+/// Called once at app startup.
+pub fn load_cookies(
+    conn: &Connection,
+) -> std::result::Result<crate::cookie::CookieJar, AppError> {
+    use crate::cookie::{Cookie, CookieJar, SameSite};
+
+    let mut jar = CookieJar::new();
+    let mut stmt = conn
+        .prepare(
+            "SELECT domain, name, value, path, expires_at, secure, http_only, same_site
+             FROM cookies",
+        )
+        .map_err(|e| AppError::Database(format!("Failed to prepare cookie query: {}", e)))?;
+
+    let rows = stmt
+        .query_map([], |row| {
+            let same_site_str: String = row.get(7)?;
+            let same_site = match same_site_str.to_lowercase().as_str() {
+                "strict" => SameSite::Strict,
+                "none" => SameSite::None,
+                _ => SameSite::Lax,
+            };
+            Ok(Cookie {
+                domain: row.get(0)?,
+                name: row.get(1)?,
+                value: row.get(2)?,
+                path: row.get(3)?,
+                expires: row.get(4)?,
+                secure: row.get::<_, i32>(5)? != 0,
+                http_only: row.get::<_, i32>(6)? != 0,
+                same_site,
+            })
+        })
+        .map_err(|e| AppError::Database(format!("Failed to query cookies: {}", e)))?;
+
+    for row in rows {
+        match row {
+            Ok(cookie) => jar.insert(cookie),
+            Err(e) => log::warn!("Skipping corrupt cookie row: {}", e),
+        }
+    }
+
+    log::info!(
+        "Loaded {} cookies across {} domains from SQLite",
+        jar.total_count(),
+        jar.domain_count()
+    );
+    Ok(jar)
+}
+
+/// Remove all cookies from the database (used by Clear Cookies button).
+pub fn clear_cookies_db(conn: &Connection) -> std::result::Result<(), AppError> {
+    conn.execute("DELETE FROM cookies", [])
+        .map_err(|e| AppError::Database(format!("Failed to clear cookies: {}", e)))?;
+    Ok(())
 }
 
 pub fn create_environment(conn: &Connection, name: &str) -> Result<Environment> {

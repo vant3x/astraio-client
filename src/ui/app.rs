@@ -311,7 +311,12 @@ impl AstraNovaApp {
                     .unwrap_or_else(|_| reqwest::Client::new()),
             ),
             custom_clients: HashMap::new(),
-            cookie_jar: Arc::new(std::sync::Mutex::new(CookieJar::new())),
+            cookie_jar: Arc::new(std::sync::Mutex::new(
+                crate::persistence::database::load_cookies(&db_conn).unwrap_or_else(|e| {
+                    log::warn!("Failed to load cookies from SQLite: {}", e);
+                    CookieJar::new()
+                }),
+            )),
             db_conn,
             environments: environments.clone(),
             active_environment: None,
@@ -630,6 +635,10 @@ impl AstraNovaApp {
             Message::ClearCookies => {
                 if let Ok(mut jar) = self.cookie_jar.lock() {
                     jar.clear();
+                }
+                // Also clear from SQLite
+                if let Err(e) = crate::persistence::database::clear_cookies_db(&self.db_conn) {
+                    log::warn!("Failed to clear cookies from DB: {}", e);
                 }
                 for tab in &mut self.request_tabs {
                     tab.cookie_count = 0;
