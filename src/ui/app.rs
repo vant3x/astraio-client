@@ -240,7 +240,6 @@ pub enum Message {
     ClearKeychainSecrets,
     KeychainCleared(Result<u32, crate::error::AppError>),
     ClearCookies,
-    CookiesCleared,
 }
 
 impl AstraNovaApp {
@@ -639,7 +638,6 @@ impl AstraNovaApp {
                 self.toast_manager.success("Cookies cleared".to_string());
                 Task::none()
             }
-            Message::CookiesCleared => Task::none(),
         }
     }
 

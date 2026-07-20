@@ -9,20 +9,16 @@ pub struct Cookie {
     pub secure: bool,
     pub http_only: bool,
     pub same_site: SameSite,
+    #[allow(dead_code)]
     pub expires: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum SameSite {
     Strict,
+    #[default]
     Lax,
     None,
-}
-
-impl Default for SameSite {
-    fn default() -> Self {
-        Self::Lax
-    }
 }
 
 impl std::fmt::Display for SameSite {
@@ -196,6 +192,7 @@ impl CookieJar {
         self.cookies.clear();
     }
 
+    #[allow(dead_code)]
     pub fn clear_domain(&mut self, domain: &str) {
         self.cookies.remove(domain);
     }
@@ -208,6 +205,7 @@ impl CookieJar {
         self.cookies.values().map(|v| v.len()).sum()
     }
 
+    #[allow(dead_code)]
     pub fn domains(&self) -> Vec<(&str, usize)> {
         self.cookies
             .iter()
@@ -215,6 +213,7 @@ impl CookieJar {
             .collect()
     }
 
+    #[allow(dead_code)]
     pub fn cookies_for_domain(&self, domain: &str) -> Vec<&Cookie> {
         // Try exact match first
         if let Some(v) = self.cookies.get(domain) {
@@ -247,6 +246,7 @@ impl CookieJar {
         format!(".{}", host) == cookie_domain || host == cookie_domain
     }
 
+    #[allow(dead_code)]
     pub fn insert(&mut self, cookie: Cookie) {
         let domain_key = cookie.domain.clone();
         let entry = self.cookies.entry(domain_key).or_default();
