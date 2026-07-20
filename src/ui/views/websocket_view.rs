@@ -500,7 +500,11 @@ impl WebSocketView {
                 };
 
                 let dir_clone = msg.direction.clone();
-                let expand_icon = if is_expanded { "\u{25BC}" } else { "\u{25B6}" };
+                let expand_icon: Element<'_, Message, Theme, Renderer> = if is_expanded {
+                    lucide::chevron_down().size(12).into()
+                } else {
+                    lucide::chevron_right().size(12).into()
+                };
                 let content = if is_expanded {
                     column![
                         row![
@@ -531,9 +535,7 @@ impl WebSocketView {
                 message_list = message_list.push(
                     button(
                         row![
-                            text(expand_icon)
-                                .size(10)
-                                .color(Color::from_rgb(0.5, 0.5, 0.5)),
+                            expand_icon,
                             content,
                         ]
                         .spacing(6)

@@ -161,6 +161,14 @@ fn build_url(endpoint: &ParsedEndpoint, base_url: &Option<String>) -> String {
 fn generate_headers(endpoint: &ParsedEndpoint) -> Vec<(String, String)> {
     let mut headers = vec![("Accept".to_string(), "application/json".to_string())];
 
+    for hp in &endpoint.header_parameters {
+        let value = hp
+            .example
+            .clone()
+            .unwrap_or_else(|| "value".to_string());
+        headers.push((hp.name.clone(), value));
+    }
+
     if (endpoint.method == "POST" || endpoint.method == "PUT" || endpoint.method == "PATCH")
         && endpoint.request_body_example.is_some()
     {
@@ -231,16 +239,9 @@ mod tests {
     #[test]
     fn generate_request_name_from_operation_id() {
         let endpoint = ParsedEndpoint {
-            path: "/users".to_string(),
-            method: "GET".to_string(),
             operation_id: Some("listUsers".to_string()),
             summary: Some("List all users".to_string()),
-            description: None,
-            tags: vec![],
-            parameters: vec![],
-            request_body_example: None,
-            response_example: None,
-            deprecated: false,
+            ..Default::default()
         };
         assert_eq!(generate_request_name(&endpoint), "listUsers");
     }
@@ -248,16 +249,8 @@ mod tests {
     #[test]
     fn generate_request_name_from_summary() {
         let endpoint = ParsedEndpoint {
-            path: "/users".to_string(),
-            method: "GET".to_string(),
-            operation_id: None,
             summary: Some("List all users".to_string()),
-            description: None,
-            tags: vec![],
-            parameters: vec![],
-            request_body_example: None,
-            response_example: None,
-            deprecated: false,
+            ..Default::default()
         };
         assert_eq!(generate_request_name(&endpoint), "List all users");
     }
@@ -266,15 +259,7 @@ mod tests {
     fn generate_request_name_from_path() {
         let endpoint = ParsedEndpoint {
             path: "/users".to_string(),
-            method: "GET".to_string(),
-            operation_id: None,
-            summary: None,
-            description: None,
-            tags: vec![],
-            parameters: vec![],
-            request_body_example: None,
-            response_example: None,
-            deprecated: false,
+            ..Default::default()
         };
         assert_eq!(generate_request_name(&endpoint), "GetUsers");
     }
@@ -283,15 +268,7 @@ mod tests {
     fn build_url_with_base() {
         let endpoint = ParsedEndpoint {
             path: "/users/{id}".to_string(),
-            method: "GET".to_string(),
-            operation_id: None,
-            summary: None,
-            description: None,
-            tags: vec![],
-            parameters: vec![],
-            request_body_example: None,
-            response_example: None,
-            deprecated: false,
+            ..Default::default()
         };
         let url = build_url(&endpoint, &Some("https://api.example.com/v1".to_string()));
         assert_eq!(url, "https://api.example.com/v1/users/{id}");
@@ -301,15 +278,7 @@ mod tests {
     fn build_url_without_base() {
         let endpoint = ParsedEndpoint {
             path: "/users".to_string(),
-            method: "GET".to_string(),
-            operation_id: None,
-            summary: None,
-            description: None,
-            tags: vec![],
-            parameters: vec![],
-            request_body_example: None,
-            response_example: None,
-            deprecated: false,
+            ..Default::default()
         };
         let url = build_url(&endpoint, &None);
         assert_eq!(url, "http://localhost/users");
@@ -318,16 +287,9 @@ mod tests {
     #[test]
     fn generate_headers_for_post() {
         let endpoint = ParsedEndpoint {
-            path: "/users".to_string(),
             method: "POST".to_string(),
-            operation_id: None,
-            summary: None,
-            description: None,
-            tags: vec![],
-            parameters: vec![],
             request_body_example: Some("{}".to_string()),
-            response_example: None,
-            deprecated: false,
+            ..Default::default()
         };
         let headers = generate_headers(&endpoint);
         assert!(headers
@@ -339,11 +301,6 @@ mod tests {
     fn generate_params_from_query_parameters() {
         let endpoint = ParsedEndpoint {
             path: "/users".to_string(),
-            method: "GET".to_string(),
-            operation_id: None,
-            summary: None,
-            description: None,
-            tags: vec![],
             parameters: vec![
                 crate::openapi::models::ParsedParameter {
                     name: "limit".to_string(),
@@ -360,9 +317,7 @@ mod tests {
                     example: Some("123".to_string()),
                 },
             ],
-            request_body_example: None,
-            response_example: None,
-            deprecated: false,
+            ..Default::default()
         };
         let params = generate_params(&endpoint);
         assert_eq!(params.len(), 1);

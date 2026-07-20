@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+use crate::http_client::config::RequestConfig;
 use crate::http_client::request::HttpRequest;
 use crate::http_client::response::HttpResponse;
 use serde::{Deserialize, Serialize};
@@ -211,6 +212,86 @@ pub fn export_history_to_har(
     }
     let refs: Vec<(&HttpRequest, &HttpResponse)> = requests.iter().zip(responses.iter()).collect();
     export_entries(&refs)
+}
+
+pub fn export_collection_to_har(
+    collection: &crate::persistence::database::Collection,
+    requests: &[crate::persistence::database::CollectionRequest],
+) -> String {
+    let refs: Vec<(HttpRequest, HttpResponse)> = requests
+        .iter()
+        .map(|req| {
+            let method: crate::http_client::request::HttpMethod = req.method.parse().unwrap_or(
+                crate::http_client::request::HttpMethod::Other(req.method.clone()),
+            );
+            let url = if req.params.is_empty() {
+                req.url.clone()
+            } else {
+                let query: String = req
+                    .params
+                    .iter()
+                    .map(|(k, v)| format!("{}={}", urlencoding::encode(k), urlencoding::encode(v)))
+                    .collect::<Vec<_>>()
+                    .join("&");
+                if req.url.contains('?') {
+                    format!("{}&{}", req.url, query)
+                } else {
+                    format!("{}?{}", req.url, query)
+                }
+            };
+            let headers = req.headers.clone();
+            let body = req.body.clone();
+            let _content_type = headers
+                .iter()
+                .find(|(k, _)| k.eq_ignore_ascii_case("content-type"))
+                .map(|(_, v)| v.clone())
+                .unwrap_or_else(|| "application/json".to_string());
+
+            let http_req = HttpRequest {
+                method,
+                url: url.clone(),
+                headers: headers.clone(),
+                body: body.clone(),
+                config: RequestConfig::default(),
+                multipart_fields: Vec::new(),
+                auth: None,
+            };
+
+            let http_resp = HttpResponse {
+                url,
+                method: http_req.method.clone(),
+                status: 0,
+                headers: Vec::new(),
+                body: String::new(),
+                body_encoding: crate::http_client::response::BodyEncoding::Text,
+                duration: std::time::Duration::ZERO,
+                size: 0,
+                redirect_chain: Vec::new(),
+            };
+
+            (http_req, http_resp)
+        })
+        .collect();
+
+    let refs: Vec<(&HttpRequest, &HttpResponse)> = refs.iter().map(|(r, s)| (r, s)).collect();
+    let mut result = export_entries(&refs);
+
+    // Inject collection name into creator for identification
+    if let Ok(mut val) = serde_json::from_str::<serde_json::Value>(&result) {
+        if let Some(log) = val.get_mut("log") {
+            if let Some(creator) = log.get_mut("creator") {
+                if let Some(name) = creator.get_mut("name") {
+                    *name = serde_json::Value::String(format!(
+                        "AstraNova Client - {}",
+                        collection.name
+                    ));
+                }
+            }
+        }
+        result = serde_json::to_string_pretty(&val).unwrap_or(result);
+    }
+
+    result
 }
 
 pub fn export_entries(entries: &[(&HttpRequest, &HttpResponse)]) -> String {

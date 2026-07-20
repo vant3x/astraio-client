@@ -59,6 +59,8 @@ pub enum Message {
     ImportHarData(Option<String>),
     ExportCollection(usize),
     ExportCollectionData(()),
+    ExportCollectionHar(usize),
+    ExportCollectionHarData(()),
     SaveCurrentRequest,
 }
 
@@ -213,6 +215,8 @@ impl CollectionView {
             Message::ImportHarData(_) => None,
             Message::ExportCollection(_) => None,
             Message::ExportCollectionData(_) => None,
+            Message::ExportCollectionHar(_) => None,
+            Message::ExportCollectionHarData(_) => None,
             Message::SaveCurrentRequest => None,
             Message::LoadRequest(req_id) => {
                 self.selected_item = Some(TreeItemId::Request(req_id));
@@ -331,18 +335,25 @@ impl CollectionView {
     }
 
     pub fn view(&self) -> Element<'_, Message, Theme, Renderer> {
-        let header = row![
-            text("Collections").size(15),
-            button(lucide::plus().size(13)).on_press(Message::CreateCollection),
-            button(row![lucide::upload().size(13), text(" Import")].spacing(4))
-                .on_press(Message::ImportCollection),
-            button(row![lucide::file_code().size(13), text(" OpenAPI")].spacing(4))
-                .on_press(Message::ImportOpenApi),
-            button(row![lucide::upload().size(13), text(" HAR")].spacing(4))
-                .on_press(Message::ImportHar),
+        let header = column![
+            row![
+                text("Collections").size(15),
+                button(lucide::plus().size(13)).on_press(Message::CreateCollection),
+            ]
+            .spacing(8)
+            .align_y(Alignment::Center),
+            row![
+                button(row![lucide::upload().size(13), text(" Postman")].spacing(4).align_y(Alignment::Center))
+                    .on_press(Message::ImportCollection),
+                button(row![lucide::download().size(13), text(" HAR")].spacing(4).align_y(Alignment::Center))
+                    .on_press(Message::ImportHar),
+                button(row![lucide::file_code().size(13), text(" OpenAPI")].spacing(4).align_y(Alignment::Center))
+                    .on_press(Message::ImportOpenApi),
+            ]
+            .spacing(6)
+            .align_y(Alignment::Center),
         ]
-        .spacing(8)
-        .align_y(Alignment::Center);
+        .spacing(6);
 
         let new_collection_input = text_input("New collection...", &self.new_collection_name)
             .on_input(Message::NewCollectionNameChanged)
@@ -554,9 +565,12 @@ impl CollectionView {
                         button(text("Rename").size(11))
                             .width(Length::Fill)
                             .on_press(Message::StartRenameCollection(col_idx)),
-                        button(text("Export").size(11))
+                        button(text("Export as Postman").size(11))
                             .width(Length::Fill)
                             .on_press(Message::ExportCollection(col_idx)),
+                        button(text("Export as HAR").size(11))
+                            .width(Length::Fill)
+                            .on_press(Message::ExportCollectionHar(col_idx)),
                         button(text("Delete").size(11))
                             .width(Length::Fill)
                             .on_press(Message::RequestDeleteCollection(col_idx)),
@@ -564,12 +578,9 @@ impl CollectionView {
                     .spacing(2)
                     .padding(4),
                 )
-                .style(|theme: &Theme| iced::widget::container::Style {
+                .style(|_theme: &Theme| iced::widget::container::Style {
                     background: Some(iced::Background::Color(Color::from_rgb(0.16, 0.16, 0.20))),
-                    border: iced::Border::default()
-                        .rounded(6)
-                        .width(1)
-                        .color(theme.extended_palette().primary.strong.color),
+                    border: iced::Border::default().rounded(4),
                     ..iced::widget::container::Style::default()
                 })
                 .width(Length::Fixed(170.0))

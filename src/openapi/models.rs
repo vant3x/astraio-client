@@ -171,9 +171,32 @@ pub struct ParsedEndpoint {
     pub description: Option<String>,
     pub tags: Vec<String>,
     pub parameters: Vec<ParsedParameter>,
+    pub header_parameters: Vec<ParsedParameter>,
+    pub cookie_parameters: Vec<ParsedParameter>,
     pub request_body_example: Option<String>,
     pub response_example: Option<String>,
     pub deprecated: bool,
+    pub security: Vec<HashMap<String, Vec<String>>>,
+}
+
+impl Default for ParsedEndpoint {
+    fn default() -> Self {
+        Self {
+            path: String::new(),
+            method: "GET".to_string(),
+            operation_id: None,
+            summary: None,
+            description: None,
+            tags: vec![],
+            parameters: vec![],
+            header_parameters: vec![],
+            cookie_parameters: vec![],
+            request_body_example: None,
+            response_example: None,
+            deprecated: false,
+            security: vec![],
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

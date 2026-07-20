@@ -452,6 +452,37 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: collection_view::Message) -> 
             }
         }
         collection_view::Message::ExportCollectionData(_) => {}
+        collection_view::Message::ExportCollectionHar(idx) => {
+            if let Some(col) = app.collection_view.collections.get(idx) {
+                let requests =
+                    crate::services::collection_service::get_requests(&app.db_conn, col.id, None)
+                        .unwrap_or_default();
+                let har_json =
+                    crate::export::har::export_collection_to_har(col, &requests);
+                let col_name = col.name.clone();
+                app.collection_view.update(msg);
+                return Task::perform(
+                    async move {
+                        let file = rfd::AsyncFileDialog::new()
+                            .add_filter("HTTP Archive (HAR)", &["har"])
+                            .set_file_name(&format!("{}.har", col_name))
+                            .save_file()
+                            .await;
+                        if let Some(file_handle) = file {
+                            let path = file_handle.path().to_path_buf();
+                            let _ = tokio::fs::write(&path, har_json.as_bytes()).await;
+                        }
+                        None::<()>
+                    },
+                    |_: Option<_>| {
+                        Message::CollectionMsg(
+                            collection_view::Message::ExportCollectionHarData(()),
+                        )
+                    },
+                );
+            }
+        }
+        collection_view::Message::ExportCollectionHarData(_) => {}
         collection_view::Message::ConfirmRenameCollection => {
             if let Some(idx) = app.collection_view.renaming_collection {
                 let new_name = app.collection_view.rename_collection_value.clone();

@@ -49,7 +49,7 @@ fn parse_openapi3(value: &serde_json::Value) -> Result<ParsedSpec, AppError> {
     for (path, path_item) in &spec.paths {
         let operations = extract_operations(path_item);
         for (method, op) in operations {
-            let endpoint = build_endpoint(path, &method, op, &schemas);
+            let endpoint = build_endpoint(path, &method, op, &schemas, &path_item.parameters);
             endpoints.push(endpoint);
         }
     }
@@ -87,7 +87,8 @@ fn parse_swagger2(value: &serde_json::Value) -> Result<ParsedSpec, AppError> {
     for (path, path_item) in &spec.paths {
         let operations = extract_operations(path_item);
         for (method, op) in operations {
-            let endpoint = build_endpoint(path, &method, op, &spec.definitions);
+            let endpoint =
+                build_endpoint(path, &method, op, &spec.definitions, &path_item.parameters);
             endpoints.push(endpoint);
         }
     }
@@ -133,36 +134,81 @@ fn build_endpoint(
     method: &str,
     operation: &Operation,
     schemas: &Option<HashMap<String, Schema>>,
+    path_parameters: &[Parameter],
 ) -> ParsedEndpoint {
-    let parameters: Vec<ParsedParameter> = operation
-        .parameters
-        .iter()
-        .map(|p| ParsedParameter {
-            name: p.name.clone(),
-            location: p.location.clone(),
-            required: p.required,
-            description: p.description.clone(),
-            example: p
-                .example
-                .as_ref()
-                .and_then(|v| v.as_str().map(|s| s.to_string())),
-        })
-        .collect();
+    let mut all_parameters: Vec<Parameter> = path_parameters.to_vec();
+    all_parameters.extend(operation.parameters.iter().cloned());
 
-    let request_body_example = operation
-        .request_body
-        .as_ref()
-        .and_then(|rb| rb.content.get("application/json"))
-        .and_then(|mt| {
-            mt.example
-                .as_ref()
-                .and_then(|v| serde_json::to_string_pretty(v).ok())
-                .or_else(|| {
-                    mt.schema
-                        .as_ref()
-                        .and_then(|s| generate_example_from_schema(s, schemas))
-                })
-        });
+    let mut query_params: Vec<ParsedParameter> = Vec::new();
+    let mut header_params: Vec<ParsedParameter> = Vec::new();
+    let mut cookie_params: Vec<ParsedParameter> = Vec::new();
+    let mut swagger_body: Option<String> = None;
+
+    for p in &all_parameters {
+        match p.location.as_str() {
+            "query" | "path" => {
+                let example = resolve_parameter_example(p, schemas);
+                query_params.push(ParsedParameter {
+                    name: p.name.clone(),
+                    location: p.location.clone(),
+                    required: p.required,
+                    description: p.description.clone(),
+                    example,
+                });
+            }
+            "header" => {
+                let example = resolve_parameter_example(p, schemas);
+                header_params.push(ParsedParameter {
+                    name: p.name.clone(),
+                    location: p.location.clone(),
+                    required: p.required,
+                    description: p.description.clone(),
+                    example,
+                });
+            }
+            "cookie" => {
+                let example = resolve_parameter_example(p, schemas);
+                cookie_params.push(ParsedParameter {
+                    name: p.name.clone(),
+                    location: p.location.clone(),
+                    required: p.required,
+                    description: p.description.clone(),
+                    example,
+                });
+            }
+            "body" => {
+                if let Some(ref schema) = p.schema {
+                    swagger_body = generate_example_from_schema(schema, schemas);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let request_body_example = if let Some(body) = swagger_body {
+        Some(body)
+    } else {
+        operation
+            .request_body
+            .as_ref()
+            .and_then(|rb| {
+                rb.content
+                    .get("application/json")
+                    .or_else(|| rb.content.get("application/x-www-form-urlencoded"))
+                    .or_else(|| rb.content.get("multipart/form-data"))
+                    .or_else(|| rb.content.values().next())
+                    .and_then(|mt| {
+                        mt.example
+                            .as_ref()
+                            .and_then(|v| serde_json::to_string_pretty(v).ok())
+                            .or_else(|| {
+                                mt.schema
+                                    .as_ref()
+                                    .and_then(|s| generate_example_from_schema(s, schemas))
+                            })
+                    })
+            })
+    };
 
     let response_example = operation
         .responses
@@ -170,16 +216,19 @@ fn build_endpoint(
         .or(operation.responses.get("201"))
         .or(operation.responses.values().next())
         .and_then(|resp| {
-            resp.content.get("application/json").and_then(|mt| {
-                mt.example
-                    .as_ref()
-                    .and_then(|v| serde_json::to_string_pretty(v).ok())
-                    .or_else(|| {
-                        mt.schema
-                            .as_ref()
-                            .and_then(|s| generate_example_from_schema(s, schemas))
-                    })
-            })
+            resp.content
+                .get("application/json")
+                .or_else(|| resp.content.values().next())
+                .and_then(|mt| {
+                    mt.example
+                        .as_ref()
+                        .and_then(|v| serde_json::to_string_pretty(v).ok())
+                        .or_else(|| {
+                            mt.schema
+                                .as_ref()
+                                .and_then(|s| generate_example_from_schema(s, schemas))
+                        })
+                })
         });
 
     ParsedEndpoint {
@@ -189,11 +238,43 @@ fn build_endpoint(
         summary: operation.summary.clone(),
         description: operation.description.clone(),
         tags: operation.tags.clone(),
-        parameters,
+        parameters: query_params,
+        header_parameters: header_params,
+        cookie_parameters: cookie_params,
         request_body_example,
         response_example,
         deprecated: operation.deprecated,
+        security: operation.security.clone(),
     }
+}
+
+fn resolve_parameter_example(
+    param: &Parameter,
+    schemas: &Option<HashMap<String, Schema>>,
+) -> Option<String> {
+    if let Some(ref example) = param.example {
+        return match example {
+            serde_json::Value::String(s) => Some(s.clone()),
+            other => serde_json::to_string_pretty(other).ok(),
+        };
+    }
+    if let Some(ref schema) = param.schema {
+        return generate_example_from_schema(schema, schemas);
+    }
+    match param.param_type.as_deref() {
+        Some("string") => Some("string".to_string()),
+        Some("integer") | Some("number") => Some("0".to_string()),
+        Some("boolean") => Some("false".to_string()),
+        _ => None,
+    }
+}
+
+fn resolve_ref<'a>(
+    r#ref: &str,
+    schemas: &'a Option<HashMap<String, Schema>>,
+) -> Option<&'a Schema> {
+    let ref_name = r#ref.split('/').next_back()?;
+    schemas.as_ref()?.get(ref_name)
 }
 
 fn generate_example_from_schema(
@@ -205,11 +286,36 @@ fn generate_example_from_schema(
     }
 
     if let Some(ref r#ref) = schema.r#ref {
-        let ref_name = r#ref.split('/').next_back()?;
-        if let Some(schemas) = schemas {
-            if let Some(resolved) = schemas.get(ref_name) {
-                return generate_example_from_schema(resolved, &Some(schemas.clone()));
+        if let Some(resolved) = resolve_ref(r#ref, schemas) {
+            return generate_example_from_schema(resolved, schemas);
+        }
+    }
+
+    if let Some(ref all_of) = schema.all_of {
+        let mut merged = serde_json::Map::new();
+        for sub_schema in all_of {
+            if let Some(ex) = generate_example_from_schema(sub_schema, schemas) {
+                if let Ok(val) = serde_json::from_str::<serde_json::Value>(&ex) {
+                    if let serde_json::Value::Object(map) = val {
+                        for (k, v) in map {
+                            merged.insert(k, v);
+                        }
+                    }
+                }
             }
+        }
+        return serde_json::to_string_pretty(&serde_json::Value::Object(merged)).ok();
+    }
+
+    if let Some(ref one_of) = schema.one_of {
+        if let Some(first) = one_of.first() {
+            return generate_example_from_schema(first, schemas);
+        }
+    }
+
+    if let Some(ref any_of) = schema.any_of {
+        if let Some(first) = any_of.first() {
+            return generate_example_from_schema(first, schemas);
         }
     }
 
@@ -221,11 +327,27 @@ fn generate_example_from_schema(
                 Some("uuid") => "550e8400-e29b-41d4-a716-446655440000",
                 Some("date") => "2024-01-01",
                 Some("date-time") => "2024-01-01T00:00:00Z",
+                Some("binary") | Some("byte") => "base64EncodedString",
                 _ => "string",
             };
             serde_json::Value::String(s.to_string())
         }
-        Some("integer") | Some("number") => serde_json::Value::Number(0.into()),
+        Some("integer") => {
+            let n = match schema.format.as_deref() {
+                Some("int32") => 0,
+                Some("int64") => 0,
+                _ => 0,
+            };
+            serde_json::Value::Number(n.into())
+        }
+        Some("number") => {
+            let n = match schema.format.as_deref() {
+                Some("float") => 0.0,
+                Some("double") => 0.0,
+                _ => 0.0,
+            };
+            serde_json::json!(n)
+        }
         Some("boolean") => serde_json::Value::Bool(false),
         Some("array") => {
             if let Some(ref items) = schema.items {
@@ -251,7 +373,14 @@ fn generate_example_from_schema(
             }
             serde_json::Value::Object(map)
         }
-        _ => return None,
+        _ => {
+            if let Some(ref enum_vals) = schema.enum_values {
+                if let Some(first) = enum_vals.first() {
+                    return serde_json::to_string_pretty(first).ok();
+                }
+            }
+            return None;
+        }
     };
 
     serde_json::to_string_pretty(&value).ok()

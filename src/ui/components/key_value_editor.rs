@@ -1,7 +1,8 @@
 use iced::{
     widget::{button, column, row, text, text_input},
-    Element,
+    Element, Renderer, Theme,
 };
+use iced_fonts::lucide;
 
 #[derive(Debug, Clone)]
 pub struct KeyValueEntry {
@@ -93,20 +94,20 @@ impl KeyValueEditor {
             .entries
             .iter()
             .fold(column![].spacing(8), |col, entry| {
-                let lock_label = if entry.secret {
-                    "\u{1f512}"
-                } else {
-                    "\u{1f513}"
-                };
                 let value_input = text_input("Value", &entry.value)
                     .on_input(move |v| Message::EntryValueChanged(entry.id, v));
+                let lock_icon: Element<'_, Message, Theme, Renderer> = if entry.secret {
+                    lucide::lock().size(13).into()
+                } else {
+                    lucide::lock_open().size(13).into()
+                };
                 col.push(
                     row![
                         text_input("Key", &entry.key)
                             .on_input(move |k| Message::EntryKeyChanged(entry.id, k)),
                         value_input,
-                        button(text(lock_label)).on_press(Message::ToggleSecret(entry.id)),
-                        button(text("X")).on_press(Message::RemoveEntry(entry.id))
+                        button(lock_icon).on_press(Message::ToggleSecret(entry.id)),
+                        button(lucide::x().size(13)).on_press(Message::RemoveEntry(entry.id))
                     ]
                     .spacing(10),
                 )
@@ -114,7 +115,8 @@ impl KeyValueEditor {
 
         column![
             entries_view,
-            button(text(&self.button_text)).on_press(Message::AddEntry)
+            button(row![lucide::plus().size(13), text(&self.button_text)].spacing(4))
+                .on_press(Message::AddEntry)
         ]
         .spacing(10)
         .into()
