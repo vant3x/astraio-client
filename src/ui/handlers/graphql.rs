@@ -28,7 +28,8 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: graphql_view::Message) -> Tas
                         || http_request.config.proxy.is_some()
                         || !http_request.config.tls.verify_ssl
                         || http_request.config.tls.ca_cert_path.is_some()
-                        || http_request.config.tls.client_cert_path.is_some();
+                        || http_request.config.tls.client_cert_path.is_some()
+                        || !http_request.config.cookie_store;
 
                     let http_client = if needs_custom_client {
                         let cache_key =
@@ -115,7 +116,8 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: graphql_view::Message) -> Tas
                 || http_request.config.proxy.is_some()
                 || !http_request.config.tls.verify_ssl
                 || http_request.config.tls.ca_cert_path.is_some()
-                || http_request.config.tls.client_cert_path.is_some();
+                || http_request.config.tls.client_cert_path.is_some()
+                || !http_request.config.cookie_store;
 
             let http_client = if needs_custom_client {
                 let cache_key = super::http_request::build_client_cache_key(&http_request.config);

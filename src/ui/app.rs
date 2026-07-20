@@ -301,7 +301,12 @@ impl AstraNovaApp {
         let app = Self {
             request_tabs: vec![default_tab],
             active_request_tab_index: 0,
-            http_client: Arc::new(reqwest::Client::new()),
+            http_client: Arc::new(
+                reqwest::Client::builder()
+                    .cookie_store(true)
+                    .build()
+                    .unwrap_or_else(|_| reqwest::Client::new()),
+            ),
             custom_clients: HashMap::new(),
             db_conn,
             environments: environments.clone(),

@@ -8,7 +8,7 @@
 [Web](https://astraio.vercel.app/) -
 [Download installer](https://astraio.vercel.app/) -
 
-AstraNova Client is a desktop application built with Rust and Iced, designed to provide a user-friendly interface for making HTTP requests. It allows users to specify URLs, HTTP methods, headers, and request bodies, and then displays the response.
+Astraio Client is a desktop application built with Rust and Iced, designed to provide a user-friendly interface for making HTTP requests. It allows users to specify URLs, HTTP methods, headers, and request bodies, and then displays the response.
 
 ## License
 

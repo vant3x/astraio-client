@@ -148,6 +148,7 @@ pub enum Message {
     ProxyAuthUsernameChanged(String),
     ProxyAuthPasswordChanged(String),
     VerifySslToggled(bool),
+    CookieStoreToggled(bool),
     CaCertPathChanged(String),
     ClientCertPathChanged(String),
     ClientKeyPathChanged(String),
@@ -705,6 +706,9 @@ impl HttpRequestView {
             }
             Message::VerifySslToggled(verify) => {
                 self.request_config.tls.verify_ssl = verify;
+            }
+            Message::CookieStoreToggled(enabled) => {
+                self.request_config.cookie_store = enabled;
             }
             Message::CaCertPathChanged(path) => {
                 self.request_config.tls.ca_cert_path =

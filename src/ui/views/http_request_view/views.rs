@@ -543,7 +543,23 @@ impl HttpRequestView {
                     .into();
             }
 
-            let header_count = text(format!("{} headers", response.headers.len()))
+            let cookie_count = response
+                .headers
+                .iter()
+                .filter(|(k, _)| k.eq_ignore_ascii_case("set-cookie"))
+                .count();
+
+            let header_count_text = if cookie_count > 0 {
+                format!(
+                    "{} headers ({} cookies)",
+                    response.headers.len(),
+                    cookie_count
+                )
+            } else {
+                format!("{} headers", response.headers.len())
+            };
+
+            let header_count = text(header_count_text)
                 .size(11)
                 .color(Color::from_rgb(0.5, 0.5, 0.5));
 
@@ -558,19 +574,38 @@ impl HttpRequestView {
 
             let mut rows = column![header_row].spacing(0);
             for (i, (key, value)) in response.headers.iter().enumerate() {
-                let bg = if i % 2 == 0 {
+                let is_set_cookie = key.eq_ignore_ascii_case("set-cookie");
+                let bg = if is_set_cookie {
+                    Color::from_rgb(0.15, 0.25, 0.15)
+                } else if i % 2 == 0 {
                     Color::from_rgb(0.12, 0.12, 0.15)
                 } else {
                     Color::from_rgb(0.10, 0.10, 0.13)
                 };
+                let key_color = if is_set_cookie {
+                    Color::from_rgb(0.3, 0.9, 0.3)
+                } else {
+                    Color::from_rgb(0.4, 0.6, 0.9)
+                };
                 let row = row![
-                    container(text(key).size(13).color(Color::from_rgb(0.4, 0.6, 0.9)))
-                        .width(Length::FillPortion(2))
-                        .padding(iced::Padding::from([5, 8]))
-                        .style(move |_: &Theme| iced::widget::container::Style {
-                            background: Some(bg.into()),
-                            ..iced::widget::container::Style::default()
-                        }),
+                    container(
+                        row![
+                            if is_set_cookie {
+                                Element::from(lucide::cookie().size(12))
+                            } else {
+                                Element::from(column![])
+                            },
+                            text(key).size(13).color(key_color),
+                        ]
+                        .spacing(4)
+                        .align_y(Alignment::Center)
+                    )
+                    .width(Length::FillPortion(2))
+                    .padding(iced::Padding::from([5, 8]))
+                    .style(move |_: &Theme| iced::widget::container::Style {
+                        background: Some(bg.into()),
+                        ..iced::widget::container::Style::default()
+                    }),
                     container(text(value).size(13))
                         .width(Length::FillPortion(3))
                         .padding(iced::Padding::from([5, 8]))
@@ -1124,6 +1159,14 @@ impl HttpRequestView {
             .padding(10);
 
         let verify_ssl = self.request_config.tls.verify_ssl;
+        let cookie_store = self.request_config.cookie_store;
+        let cookie_toggle = button(if cookie_store {
+            "Cookie Store: ON"
+        } else {
+            "Cookie Store: OFF"
+        })
+        .on_press(Message::CookieStoreToggled(!cookie_store));
+
         let ssl_toggle = button(if verify_ssl {
             "Verify SSL: ON"
         } else {
@@ -1213,6 +1256,7 @@ impl HttpRequestView {
                 row![proxy_username_input, proxy_password_input]
                     .spacing(10)
                     .width(Length::Fill),
+                cookie_toggle,
                 ssl_toggle,
                 ssl_warning,
                 rule::horizontal(10),

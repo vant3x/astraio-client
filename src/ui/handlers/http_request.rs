@@ -20,13 +20,14 @@ pub(crate) fn build_client_cache_key(config: &RequestConfig) -> String {
         (None, None) => String::new(),
     };
     format!(
-        "{}|{}|{}|{}|{}|{}",
+        "{}|{}|{}|{}|{}|{}|{}",
         proxy_part,
         config.tls.verify_ssl,
         config.tls.ca_cert_path.as_deref().unwrap_or(""),
         config.tls.client_cert_path.as_deref().unwrap_or(""),
         config.tls.client_key_path.as_deref().unwrap_or(""),
         config.timeout.as_millis(),
+        config.cookie_store,
     )
 }
 
@@ -188,7 +189,8 @@ pub fn handle_http_request_msg(
                 || request.config.proxy.is_some()
                 || !request.config.tls.verify_ssl
                 || request.config.tls.ca_cert_path.is_some()
-                || request.config.tls.client_cert_path.is_some();
+                || request.config.tls.client_cert_path.is_some()
+                || !request.config.cookie_store;
 
             let http_client = if needs_custom_client {
                 let cache_key = build_client_cache_key(&request.config);
