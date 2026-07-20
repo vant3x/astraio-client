@@ -564,10 +564,18 @@ impl HttpRequestView {
                 .color(Color::from_rgb(0.5, 0.5, 0.5));
 
             let header_row = row![
-                container(text("Name").size(11).color(Color::from_rgb(0.6, 0.6, 0.6)))
-                    .width(Length::FillPortion(2)),
-                container(text("Value").size(11).color(Color::from_rgb(0.6, 0.6, 0.6)))
-                    .width(Length::FillPortion(3)),
+                container(
+                    text("Name")
+                        .size(11)
+                        .color(Color::from_rgb(0.55, 0.65, 0.85))
+                )
+                .width(Length::FillPortion(2)),
+                container(
+                    text("Value")
+                        .size(11)
+                        .color(Color::from_rgb(0.55, 0.65, 0.85))
+                )
+                .width(Length::FillPortion(3)),
             ]
             .spacing(1)
             .padding(iced::Padding::from([6, 8]));
@@ -575,23 +583,28 @@ impl HttpRequestView {
             let mut rows = column![header_row].spacing(0);
             for (i, (key, value)) in response.headers.iter().enumerate() {
                 let is_set_cookie = key.eq_ignore_ascii_case("set-cookie");
+                // Lighter alternating backgrounds with better contrast
                 let bg = if is_set_cookie {
-                    Color::from_rgb(0.15, 0.25, 0.15)
+                    Color::from_rgba(0.15, 0.6, 0.15, 0.18)
                 } else if i % 2 == 0 {
-                    Color::from_rgb(0.12, 0.12, 0.15)
+                    Color::from_rgba(0.55, 0.65, 1.0, 0.06)
                 } else {
-                    Color::from_rgb(0.10, 0.10, 0.13)
+                    Color::from_rgba(0.0, 0.0, 0.0, 0.0)
                 };
                 let key_color = if is_set_cookie {
-                    Color::from_rgb(0.3, 0.9, 0.3)
+                    Color::from_rgb(0.35, 0.88, 0.35)
                 } else {
-                    Color::from_rgb(0.4, 0.6, 0.9)
+                    Color::from_rgb(0.45, 0.7, 1.0)
                 };
                 let row = row![
                     container(
                         row![
                             if is_set_cookie {
-                                Element::from(lucide::cookie().size(12))
+                                Element::from(
+                                    lucide::cookie()
+                                        .size(12)
+                                        .color(Color::from_rgb(0.35, 0.88, 0.35)),
+                                )
                             } else {
                                 Element::from(column![])
                             },

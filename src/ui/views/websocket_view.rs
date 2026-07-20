@@ -360,6 +360,9 @@ impl WebSocketView {
         };
 
         let is_connected = matches!(self.status, WsStatus::Connected);
+        let has_sender = self.ws_sender.is_some();
+        let can_send = is_connected && has_sender && !self.input.is_empty();
+        let can_send_binary = is_connected && has_sender && !self.hex_input.is_empty();
 
         let stats_row = if is_connected {
             let dur = self.stats.format_duration();
@@ -580,7 +583,7 @@ impl WebSocketView {
                 .on_input(Message::InputChanged)
                 .padding(8)
                 .width(Length::Fill),
-            if is_connected {
+            if can_send {
                 button(row![lucide::send().size(14), text(" Send")].spacing(4))
                     .on_press(Message::SendMessage(self.input.clone()))
             } else {
@@ -595,7 +598,7 @@ impl WebSocketView {
                 .on_input(Message::HexInputChanged)
                 .padding(5)
                 .width(Length::Fill),
-            if is_connected {
+            if can_send_binary {
                 button(row![lucide::binary().size(12), text(" Send Binary")].spacing(4))
                     .on_press(Message::SendBinary(self.hex_input.clone()))
             } else {
