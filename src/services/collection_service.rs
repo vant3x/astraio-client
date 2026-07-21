@@ -30,6 +30,19 @@ pub fn delete_and_refresh(conn: &Connection, id: i32) -> Result<Vec<Collection>,
     get_all(conn)
 }
 
+pub fn update_variables(
+    conn: &Connection,
+    collection_id: i32,
+    variables: &[(String, String)],
+) -> Result<(), AppError> {
+    let mut collections = database::get_collections(conn)?;
+    if let Some(col) = collections.iter_mut().find(|c| c.id == collection_id) {
+        col.variables = variables.to_vec();
+        database::update_collection(conn, col)?;
+    }
+    Ok(())
+}
+
 pub fn rename(conn: &Connection, collection: &Collection, new_name: &str) -> Result<(), AppError> {
     let mut updated = collection.clone();
     updated.name = new_name.to_string();

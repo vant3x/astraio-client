@@ -562,6 +562,21 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: collection_view::Message) -> 
         collection_view::Message::SaveCurrentRequest => {
             save_current_to_collection(app);
         }
+        collection_view::Message::SaveCollectionVariables(col_idx) => {
+            app.collection_view.update(msg.clone());
+            if let Some(col) = app.collection_view.collections.get(col_idx) {
+                let col_id = col.id;
+                let variables = col.variables.clone();
+                if let Err(e) = crate::services::collection_service::update_variables(
+                    &app.db_conn,
+                    col_id,
+                    &variables,
+                ) {
+                    log::error!("Failed to save collection variables: {}", e);
+                }
+            }
+            return Task::none();
+        }
         collection_view::Message::MoveRequestUp(req_id) => {
             if let Some(req) = app.collection_view.requests.iter().find(|r| r.id == req_id) {
                 let req = req.clone();

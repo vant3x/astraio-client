@@ -62,6 +62,12 @@ pub enum Message {
     ExportCollectionHar(usize),
     ExportCollectionHarData(()),
     SaveCurrentRequest,
+    ToggleVariablesPanel(usize),
+    AddCollectionVariable(usize),
+    RemoveCollectionVariable(usize, usize),
+    CollectionVariableKeyChanged(usize, usize, String),
+    CollectionVariableValueChanged(usize, usize, String),
+    SaveCollectionVariables(usize),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -95,6 +101,8 @@ pub struct CollectionView {
     pub pending_delete_request: Option<i32>,
     pub moving_request: Option<i32>,
     pub moving_collection_id: Option<i32>,
+    pub show_variables_for_collection: Option<usize>,
+    pub editing_variables: Vec<(String, String)>,
 }
 
 impl Clone for CollectionView {
@@ -122,6 +130,8 @@ impl Clone for CollectionView {
             pending_delete_request: self.pending_delete_request,
             moving_request: self.moving_request,
             moving_collection_id: self.moving_collection_id,
+            show_variables_for_collection: self.show_variables_for_collection,
+            editing_variables: self.editing_variables.clone(),
         }
     }
 }
@@ -221,6 +231,56 @@ impl CollectionView {
             Message::LoadRequest(req_id) => {
                 self.selected_item = Some(TreeItemId::Request(req_id));
                 Some(req_id)
+            }
+            Message::ToggleVariablesPanel(col_idx) => {
+                if self.show_variables_for_collection == Some(col_idx) {
+                    self.show_variables_for_collection = None;
+                    self.editing_variables.clear();
+                } else {
+                    if let Some(col) = self.collections.get(col_idx) {
+                        self.editing_variables = col.variables.clone();
+                    }
+                    self.show_variables_for_collection = Some(col_idx);
+                }
+                None
+            }
+            Message::AddCollectionVariable(col_idx) => {
+                if self.show_variables_for_collection == Some(col_idx) {
+                    self.editing_variables.push((String::new(), String::new()));
+                }
+                None
+            }
+            Message::RemoveCollectionVariable(col_idx, var_idx) => {
+                if self.show_variables_for_collection == Some(col_idx) {
+                    if var_idx < self.editing_variables.len() {
+                        self.editing_variables.remove(var_idx);
+                    }
+                }
+                None
+            }
+            Message::CollectionVariableKeyChanged(col_idx, var_idx, key) => {
+                if self.show_variables_for_collection == Some(col_idx) {
+                    if let Some((k, _)) = self.editing_variables.get_mut(var_idx) {
+                        *k = key;
+                    }
+                }
+                None
+            }
+            Message::CollectionVariableValueChanged(col_idx, var_idx, value) => {
+                if self.show_variables_for_collection == Some(col_idx) {
+                    if let Some((_, v)) = self.editing_variables.get_mut(var_idx) {
+                        *v = value;
+                    }
+                }
+                None
+            }
+            Message::SaveCollectionVariables(col_idx) => {
+                if let Some(col) = self.collections.get_mut(col_idx) {
+                    col.variables = self.editing_variables.clone();
+                }
+                self.show_variables_for_collection = None;
+                self.editing_variables.clear();
+                None
             }
             Message::StartRenameCollection(idx) => {
                 if let Some(col) = self.collections.get(idx) {
@@ -546,6 +606,10 @@ impl CollectionView {
                             .on_press(Message::StartRenameCollection(col_idx)),
                     )
                     .push(
+                        button(lucide::braces().size(10))
+                            .on_press(Message::ToggleVariablesPanel(col_idx)),
+                    )
+                    .push(
                         button(lucide::download().size(10))
                             .on_press(Message::ExportCollection(col_idx)),
                     )
@@ -574,6 +638,9 @@ impl CollectionView {
                         button(text("New Folder").size(11))
                             .width(Length::Fill)
                             .on_press(Message::ShowNewFolderInput(col_id, None)),
+                        button(text("Variables").size(11))
+                            .width(Length::Fill)
+                            .on_press(Message::ToggleVariablesPanel(col_idx)),
                         button(text("Rename").size(11))
                             .width(Length::Fill)
                             .on_press(Message::StartRenameCollection(col_idx)),
@@ -603,7 +670,6 @@ impl CollectionView {
         }
 
         if is_expanded {
-            // Show new folder input if this collection is the target
             if self.new_folder_target == Some(col.id) && self.new_folder_parent.is_none() {
                 let input_row = row![
                     Self::indent(1),
@@ -620,7 +686,66 @@ impl CollectionView {
                 tree = tree.push(input_row);
             }
 
-            // Render root folders for this collection
+            if self.show_variables_for_collection == Some(col_idx) {
+                let vars_header = row![
+                    Self::indent(1),
+                    lucide::braces().size(11),
+                    text("Variables").size(11),
+                ]
+                .spacing(4)
+                .align_y(Alignment::Center);
+                tree = tree.push(vars_header);
+
+                for (v_idx, (key, value)) in self.editing_variables.iter().enumerate() {
+                    let var_row = row![
+                        Self::indent(2),
+                        text_input("key", key)
+                            .on_input({
+                                let ci = col_idx;
+                                let vi = v_idx;
+                                move |s| Message::CollectionVariableKeyChanged(ci, vi, s)
+                            })
+                            .size(11)
+                            .padding(3)
+                            .width(Length::FillPortion(1)),
+                        text("=").size(11),
+                        text_input("value", value)
+                            .on_input({
+                                let ci = col_idx;
+                                let vi = v_idx;
+                                move |s| Message::CollectionVariableValueChanged(ci, vi, s)
+                            })
+                            .size(11)
+                            .padding(3)
+                            .width(Length::FillPortion(2)),
+                        button(lucide::trash().size(10)).on_press(
+                            Message::RemoveCollectionVariable(col_idx, v_idx),
+                        ),
+                    ]
+                    .spacing(4)
+                    .align_y(Alignment::Center);
+                    tree = tree.push(var_row);
+                }
+
+                let var_actions = row![
+                    Self::indent(2),
+                    button(
+                        row![lucide::plus().size(10), text(" Add").size(10)].spacing(2)
+                    )
+                    .on_press(Message::AddCollectionVariable(col_idx)),
+                    button(
+                        row![lucide::check().size(10), text(" Save").size(10)].spacing(2)
+                    )
+                    .on_press(Message::SaveCollectionVariables(col_idx)),
+                    button(
+                        row![lucide::x().size(10), text(" Cancel").size(10)].spacing(2)
+                    )
+                    .on_press(Message::ToggleVariablesPanel(col_idx)),
+                ]
+                .spacing(6);
+                tree = tree.push(var_actions);
+            }
+
             let col_folders: Vec<(usize, &CollectionFolder)> = self
                 .folders
                 .iter()
