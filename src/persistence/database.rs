@@ -401,9 +401,7 @@ pub fn save_cookies(
 
 /// Load all cookies from SQLite into a fresh CookieJar.
 /// Called once at app startup.
-pub fn load_cookies(
-    conn: &Connection,
-) -> std::result::Result<crate::cookie::CookieJar, AppError> {
+pub fn load_cookies(conn: &Connection) -> std::result::Result<crate::cookie::CookieJar, AppError> {
     use crate::cookie::{Cookie, CookieJar, SameSite};
 
     let mut jar = CookieJar::new();
@@ -454,6 +452,44 @@ pub fn load_cookies(
 pub fn clear_cookies_db(conn: &Connection) -> std::result::Result<(), AppError> {
     conn.execute("DELETE FROM cookies", [])
         .map_err(|e| AppError::Database(format!("Failed to clear cookies: {}", e)))?;
+    Ok(())
+}
+
+/// Remove all cookies for a specific domain.
+pub fn clear_domain_cookies_db(conn: &Connection, domain: &str) -> std::result::Result<(), AppError> {
+    conn.execute("DELETE FROM cookies WHERE domain = ?1", params![domain])
+        .map_err(|e| AppError::Database(format!("Failed to clear domain cookies: {}", e)))?;
+    Ok(())
+}
+
+/// Remove a single cookie by domain, name, and path.
+pub fn delete_cookie_db(
+    conn: &Connection,
+    domain: &str,
+    name: &str,
+    path: &str,
+) -> std::result::Result<(), AppError> {
+    conn.execute(
+        "DELETE FROM cookies WHERE domain = ?1 AND name = ?2 AND path = ?3",
+        params![domain, name, path],
+    )
+    .map_err(|e| AppError::Database(format!("Failed to delete cookie: {}", e)))?;
+    Ok(())
+}
+
+/// Update a cookie's value (used by inline editor).
+pub fn update_cookie_value_db(
+    conn: &Connection,
+    domain: &str,
+    name: &str,
+    path: &str,
+    new_value: &str,
+) -> std::result::Result<(), AppError> {
+    conn.execute(
+        "UPDATE cookies SET value = ?1 WHERE domain = ?2 AND name = ?3 AND path = ?4",
+        params![new_value, domain, name, path],
+    )
+    .map_err(|e| AppError::Database(format!("Failed to update cookie: {}", e)))?;
     Ok(())
 }
 

@@ -188,8 +188,7 @@ pub fn handle_http_request_msg(
                     request
                         .headers
                         .retain(|(k, _)| !k.eq_ignore_ascii_case("cookie"));
-                    request.headers
-                        .push(("cookie".to_string(), cookie_header));
+                    request.headers.push(("cookie".to_string(), cookie_header));
                 }
             }
 
@@ -294,7 +293,6 @@ pub fn handle_http_request_msg(
                     let request_data = view.pending_request_data.take();
                     let response_data = serde_json::to_string(response).ok();
 
-                    // Capture Set-Cookie headers into the cookie jar
                     let (new_total, new_domains) = {
                         if let Ok(mut jar) = app.cookie_jar.lock() {
                             for (key, value) in &response.headers {
@@ -310,7 +308,6 @@ pub fn handle_http_request_msg(
                     view.cookie_count = new_total;
                     view.cookie_domain_count = new_domains;
 
-                    // Persist updated cookie jar to SQLite (non-fatal)
                     if let Ok(jar) = app.cookie_jar.lock() {
                         if let Err(e) =
                             crate::persistence::database::save_cookies(&app.db_conn, &jar)
@@ -319,7 +316,7 @@ pub fn handle_http_request_msg(
                         }
                     }
 
-                    let _ = crate::services::history_service::save_raw(
+                    let history_result = crate::services::history_service::save_raw(
                         &app.db_conn,
                         &response.method.to_string(),
                         &response.url,
@@ -328,6 +325,7 @@ pub fn handle_http_request_msg(
                         request_data.as_deref(),
                         response_data.as_deref(),
                     );
+                    let _ = history_result;
                     let _ = crate::services::history_service::trim(
                         &app.db_conn,
                         crate::persistence::database::DEFAULT_HISTORY_LIMIT,
@@ -352,7 +350,10 @@ pub fn handle_http_request_msg(
                     app.toast_manager.error(format!("Request failed: {}", e));
                 }
             }
-            view.update(msg);
+            if let Some(v) = app.request_tabs.get_mut(index) {
+                v.update(msg);
+            }
+            app.sync_cookie_data_to_tabs();
             Task::none()
         }
         http_request_view::Message::MultipartBrowseFile(entry_id) => {
@@ -529,6 +530,52 @@ pub fn handle_http_request_msg(
         }
         http_request_view::Message::ClearCookies => {
             Task::perform(async {}, |_| Message::ClearCookies)
+        }
+        http_request_view::Message::CookieManagerMsg(cm_msg) => {
+            use crate::ui::views::cookie_manager::Message as CmMsg;
+            match cm_msg {
+                CmMsg::DeleteCookie(d, n, p) => {
+                    Task::perform(async {}, move |_| Message::DeleteCookie(d, n, p))
+                }
+                CmMsg::ClearDomain(d) => {
+                    Task::perform(async {}, move |_| Message::ClearDomainCookies(d))
+                }
+                CmMsg::ClearAll => Task::perform(async {}, |_| Message::ClearCookies),
+                CmMsg::SaveEdit => {
+                    let edit = app
+                        .request_tabs
+                        .get(index)
+                        .and_then(|v| v.cookie_manager.editing_cookie.clone());
+                    let value = app
+                        .request_tabs
+                        .get(index)
+                        .map(|v| v.cookie_manager.edit_value.clone())
+                        .unwrap_or_default();
+                    if let Some((d, n, p)) = edit {
+                        if let Some(view) = app.request_tabs.get_mut(index) {
+                            view.update(http_request_view::Message::CookieManagerMsg(
+                                CmMsg::SaveEdit,
+                            ));
+                        }
+                        Task::perform(async {}, move |_| Message::SaveCookieEdit(d, n, p, value))
+                    } else {
+                        if let Some(view) = app.request_tabs.get_mut(index) {
+                            view.update(http_request_view::Message::CookieManagerMsg(
+                                CmMsg::SaveEdit,
+                            ));
+                        }
+                        Task::none()
+                    }
+                }
+                CmMsg::ImportCookies => Task::perform(async {}, |_| Message::ImportCookies),
+                CmMsg::ExportCookies => Task::perform(async {}, |_| Message::ExportCookies),
+                other => {
+                    if let Some(view) = app.request_tabs.get_mut(index) {
+                        view.update(http_request_view::Message::CookieManagerMsg(other));
+                    }
+                    Task::none()
+                }
+            }
         }
         other => {
             if let Some(view) = app.request_tabs.get_mut(index) {

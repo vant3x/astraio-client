@@ -457,8 +457,7 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: collection_view::Message) -> 
                 let requests =
                     crate::services::collection_service::get_requests(&app.db_conn, col.id, None)
                         .unwrap_or_default();
-                let har_json =
-                    crate::export::har::export_collection_to_har(col, &requests);
+                let har_json = crate::export::har::export_collection_to_har(col, &requests);
                 let col_name = col.name.clone();
                 app.collection_view.update(msg);
                 return Task::perform(

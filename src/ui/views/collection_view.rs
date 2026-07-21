@@ -343,12 +343,24 @@ impl CollectionView {
             .spacing(8)
             .align_y(Alignment::Center),
             row![
-                button(row![lucide::upload().size(13), text(" Postman")].spacing(4).align_y(Alignment::Center))
-                    .on_press(Message::ImportCollection),
-                button(row![lucide::download().size(13), text(" HAR")].spacing(4).align_y(Alignment::Center))
-                    .on_press(Message::ImportHar),
-                button(row![lucide::file_code().size(13), text(" OpenAPI")].spacing(4).align_y(Alignment::Center))
-                    .on_press(Message::ImportOpenApi),
+                button(
+                    row![lucide::upload().size(13), text(" Postman")]
+                        .spacing(4)
+                        .align_y(Alignment::Center)
+                )
+                .on_press(Message::ImportCollection),
+                button(
+                    row![lucide::download().size(13), text(" HAR")]
+                        .spacing(4)
+                        .align_y(Alignment::Center)
+                )
+                .on_press(Message::ImportHar),
+                button(
+                    row![lucide::file_code().size(13), text(" OpenAPI")]
+                        .spacing(4)
+                        .align_y(Alignment::Center)
+                )
+                .on_press(Message::ImportOpenApi),
             ]
             .spacing(6)
             .align_y(Alignment::Center),

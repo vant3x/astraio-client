@@ -537,12 +537,9 @@ impl WebSocketView {
                 };
                 message_list = message_list.push(
                     button(
-                        row![
-                            expand_icon,
-                            content,
-                        ]
-                        .spacing(6)
-                        .align_y(Alignment::Start),
+                        row![expand_icon, content,]
+                            .spacing(6)
+                            .align_y(Alignment::Start),
                     )
                     .on_press(Message::ToggleMessageExpand(
                         msg.timestamp.clone(),

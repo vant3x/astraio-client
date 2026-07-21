@@ -240,6 +240,13 @@ pub enum Message {
     ClearKeychainSecrets,
     KeychainCleared(Result<u32, crate::error::AppError>),
     ClearCookies,
+    ClearDomainCookies(String),
+    DeleteCookie(String, String, String),
+    SaveCookieEdit(String, String, String, String),
+    ImportCookies,
+    ImportCookiesData(Option<String>),
+    ExportCookies,
+    ExportCookiesComplete(Option<String>),
 }
 
 impl AstraNovaApp {
@@ -636,16 +643,198 @@ impl AstraNovaApp {
                 if let Ok(mut jar) = self.cookie_jar.lock() {
                     jar.clear();
                 }
-                // Also clear from SQLite
                 if let Err(e) = crate::persistence::database::clear_cookies_db(&self.db_conn) {
                     log::warn!("Failed to clear cookies from DB: {}", e);
                 }
                 for tab in &mut self.request_tabs {
                     tab.cookie_count = 0;
                     tab.cookie_domain_count = 0;
+                    tab.cookie_domains.clear();
+                    tab.cookie_domain_cookies.clear();
                 }
                 self.toast_manager.success("Cookies cleared".to_string());
                 Task::none()
+            }
+            Message::ClearDomainCookies(domain) => {
+                if let Ok(mut jar) = self.cookie_jar.lock() {
+                    jar.clear_domain(&domain);
+                }
+                if let Err(e) =
+                    crate::persistence::database::clear_domain_cookies_db(&self.db_conn, &domain)
+                {
+                    log::warn!("Failed to clear domain cookies from DB: {}", e);
+                }
+                self.sync_cookie_data_to_tabs();
+                self.toast_manager
+                    .success(format!("Cookies for {} cleared", domain));
+                Task::none()
+            }
+            Message::DeleteCookie(domain, name, path) => {
+                if let Ok(mut jar) = self.cookie_jar.lock() {
+                    jar.remove_cookie(&domain, &name, &path);
+                }
+                if let Err(e) = crate::persistence::database::delete_cookie_db(
+                    &self.db_conn,
+                    &domain,
+                    &name,
+                    &path,
+                ) {
+                    log::warn!("Failed to delete cookie from DB: {}", e);
+                }
+                self.sync_cookie_data_to_tabs();
+                Task::none()
+            }
+            Message::SaveCookieEdit(domain, name, path, new_value) => {
+                if let Ok(mut jar) = self.cookie_jar.lock() {
+                    if let Some(cookies) = jar.cookies_for_domain_mut(&domain) {
+                        for c in cookies.iter_mut() {
+                            if c.name == name && c.path == path {
+                                c.value = new_value.clone();
+                                break;
+                            }
+                        }
+                    }
+                }
+                if let Err(e) = crate::persistence::database::update_cookie_value_db(
+                    &self.db_conn,
+                    &domain,
+                    &name,
+                    &path,
+                    &new_value,
+                ) {
+                    log::warn!("Failed to update cookie in DB: {}", e);
+                }
+                self.sync_cookie_data_to_tabs();
+                Task::none()
+            }
+            Message::ImportCookies => {
+                Task::perform(
+                    async {
+                        rfd::AsyncFileDialog::new()
+                            .add_filter(
+                                "Cookie files",
+                                &["txt", "json", "cookie", "cookies"],
+                            )
+                            .pick_file()
+                            .await
+                            .map(|f| f.path().to_path_buf())
+                            .and_then(|p| std::fs::read_to_string(p).ok())
+                    },
+                    Message::ImportCookiesData,
+                )
+            }
+            Message::ImportCookiesData(content) => {
+                if let Some(content) = content {
+                    let new_jar = if let Ok(jar) = crate::cookie::CookieJar::from_json(&content) {
+                        jar
+                    } else if let Ok(jar) = crate::cookie::CookieJar::from_netscape(&content) {
+                        jar
+                    } else {
+                        self.toast_manager
+                            .error("Failed to parse cookie file".to_string());
+                        return Task::none();
+                    };
+                    {
+                        if let Ok(mut jar) = self.cookie_jar.lock() {
+                            for cookie in new_jar.all_cookies() {
+                                jar.insert(cookie.clone());
+                            }
+                        }
+                    }
+                    if let Ok(jar) = self.cookie_jar.lock() {
+                        if let Err(e) =
+                            crate::persistence::database::save_cookies(&self.db_conn, &jar)
+                        {
+                            log::warn!("Failed to save imported cookies: {}", e);
+                        }
+                    }
+                    self.sync_cookie_data_to_tabs();
+                    self.toast_manager
+                        .success("Cookies imported successfully".to_string());
+                }
+                Task::none()
+            }
+            Message::ExportCookies => {
+                let content = if let Ok(jar) = self.cookie_jar.lock() {
+                    jar.to_netscape()
+                } else {
+                    return Task::none();
+                };
+                Task::perform(
+                    async move {
+                        rfd::AsyncFileDialog::new()
+                            .add_filter("Cookie files", &["txt"])
+                            .set_file_name("cookies.txt")
+                            .save_file()
+                            .await
+                            .and_then(|f| {
+                                std::fs::write(f.path(), &content).ok()?;
+                                Some(())
+                            })
+                    },
+                    |result| {
+                        Message::ExportCookiesComplete(result.map(|_| "Exported".to_string()))
+                    },
+                )
+            }
+            Message::ExportCookiesComplete(result) => {
+                if let Some(msg) = result {
+                    self.toast_manager.success(msg);
+                }
+                Task::none()
+            }
+        }
+    }
+
+    pub(crate) fn sync_cookie_data_to_tabs(&mut self) {
+        let snapshot = match self.cookie_jar.lock() {
+            Ok(jar) => {
+                let domains: Vec<(String, usize)> = jar
+                    .domains()
+                    .into_iter()
+                    .map(|(d, c)| (d.to_string(), c))
+                    .collect();
+                let total = jar.total_count();
+                let domain_count = jar.domain_count();
+                let all_cookies: Vec<(
+                    String,
+                    Vec<crate::ui::views::http_request_view::CookieSnapshot>,
+                )> = jar
+                    .domains()
+                    .into_iter()
+                    .map(|(d, _)| {
+                        let cookies: Vec<crate::ui::views::http_request_view::CookieSnapshot> =
+                            jar.cookies_for_domain(d)
+                                .into_iter()
+                                .map(|c| {
+                                    crate::ui::views::http_request_view::CookieSnapshot {
+                                        name: c.name.clone(),
+                                        value: c.value.clone(),
+                                        domain: c.domain.clone(),
+                                        path: c.path.clone(),
+                                        secure: c.secure,
+                                        http_only: c.http_only,
+                                        same_site: c.same_site.to_string(),
+                                        expires: c.expires.clone(),
+                                    }
+                                })
+                                .collect();
+                        (d.to_string(), cookies)
+                    })
+                    .collect();
+                (domains, total, domain_count, all_cookies)
+            }
+            Err(_) => return,
+        };
+
+        let (domains, total, domain_count, all_cookies) = snapshot;
+        for tab in &mut self.request_tabs {
+            tab.cookie_count = total;
+            tab.cookie_domain_count = domain_count;
+            tab.cookie_domains = domains.clone();
+            tab.cookie_domain_cookies.clear();
+            for (_, cookies) in &all_cookies {
+                tab.cookie_domain_cookies.extend(cookies.iter().cloned());
             }
         }
     }

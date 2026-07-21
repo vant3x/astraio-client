@@ -162,10 +162,7 @@ fn generate_headers(endpoint: &ParsedEndpoint) -> Vec<(String, String)> {
     let mut headers = vec![("Accept".to_string(), "application/json".to_string())];
 
     for hp in &endpoint.header_parameters {
-        let value = hp
-            .example
-            .clone()
-            .unwrap_or_else(|| "value".to_string());
+        let value = hp.example.clone().unwrap_or_else(|| "value".to_string());
         headers.push((hp.name.clone(), value));
     }
 

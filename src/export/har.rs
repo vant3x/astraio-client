@@ -221,9 +221,12 @@ pub fn export_collection_to_har(
     let refs: Vec<(HttpRequest, HttpResponse)> = requests
         .iter()
         .map(|req| {
-            let method: crate::http_client::request::HttpMethod = req.method.parse().unwrap_or(
-                crate::http_client::request::HttpMethod::Other(req.method.clone()),
-            );
+            let method: crate::http_client::request::HttpMethod =
+                req.method
+                    .parse()
+                    .unwrap_or(crate::http_client::request::HttpMethod::Other(
+                        req.method.clone(),
+                    ));
             let url = if req.params.is_empty() {
                 req.url.clone()
             } else {

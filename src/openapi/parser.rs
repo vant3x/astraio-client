@@ -188,26 +188,23 @@ fn build_endpoint(
     let request_body_example = if let Some(body) = swagger_body {
         Some(body)
     } else {
-        operation
-            .request_body
-            .as_ref()
-            .and_then(|rb| {
-                rb.content
-                    .get("application/json")
-                    .or_else(|| rb.content.get("application/x-www-form-urlencoded"))
-                    .or_else(|| rb.content.get("multipart/form-data"))
-                    .or_else(|| rb.content.values().next())
-                    .and_then(|mt| {
-                        mt.example
-                            .as_ref()
-                            .and_then(|v| serde_json::to_string_pretty(v).ok())
-                            .or_else(|| {
-                                mt.schema
-                                    .as_ref()
-                                    .and_then(|s| generate_example_from_schema(s, schemas))
-                            })
-                    })
-            })
+        operation.request_body.as_ref().and_then(|rb| {
+            rb.content
+                .get("application/json")
+                .or_else(|| rb.content.get("application/x-www-form-urlencoded"))
+                .or_else(|| rb.content.get("multipart/form-data"))
+                .or_else(|| rb.content.values().next())
+                .and_then(|mt| {
+                    mt.example
+                        .as_ref()
+                        .and_then(|v| serde_json::to_string_pretty(v).ok())
+                        .or_else(|| {
+                            mt.schema
+                                .as_ref()
+                                .and_then(|s| generate_example_from_schema(s, schemas))
+                        })
+                })
+        })
     };
 
     let response_example = operation
@@ -295,11 +292,11 @@ fn generate_example_from_schema(
         let mut merged = serde_json::Map::new();
         for sub_schema in all_of {
             if let Some(ex) = generate_example_from_schema(sub_schema, schemas) {
-                if let Ok(val) = serde_json::from_str::<serde_json::Value>(&ex) {
-                    if let serde_json::Value::Object(map) = val {
-                        for (k, v) in map {
-                            merged.insert(k, v);
-                        }
+                if let Ok(serde_json::Value::Object(map)) =
+                    serde_json::from_str::<serde_json::Value>(&ex)
+                {
+                    for (k, v) in map {
+                        merged.insert(k, v);
                     }
                 }
             }

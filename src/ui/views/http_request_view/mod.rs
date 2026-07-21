@@ -17,6 +17,19 @@ use std::time::Duration;
 
 pub(crate) const LOGO_BG_BYTES: &[u8] = include_bytes!("../../../../assets/astra-bg.png");
 
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct CookieSnapshot {
+    pub name: String,
+    pub value: String,
+    pub domain: String,
+    pub path: String,
+    pub secure: bool,
+    pub http_only: bool,
+    pub same_site: String,
+    pub expires: Option<String>,
+}
+
 pub(crate) static HTTP_METHODS: [&str; 7] =
     ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
 
@@ -183,6 +196,7 @@ pub enum Message {
     SetIdle,
     ClearKeychainSecrets,
     ClearCookies,
+    CookieManagerMsg(crate::ui::views::cookie_manager::Message),
     ScriptTabSelected(ScriptTab),
     PreRequestScriptChanged(text_editor::Action),
     PostResponseScriptChanged(text_editor::Action),
@@ -197,6 +211,7 @@ pub enum TabId {
     Headers,
     Params,
     Authorization,
+    Cookies,
     Scripts,
     Settings,
 }
@@ -266,6 +281,9 @@ pub struct HttpRequestView {
     pub active_script_tab: ScriptTab,
     pub cookie_count: usize,
     pub cookie_domain_count: usize,
+    pub cookie_manager: crate::ui::views::cookie_manager::CookieManagerView,
+    pub cookie_domains: Vec<(String, usize)>,
+    pub cookie_domain_cookies: Vec<CookieSnapshot>,
 }
 
 impl Clone for HttpRequestView {
@@ -323,6 +341,9 @@ impl Clone for HttpRequestView {
             active_script_tab: self.active_script_tab.clone(),
             cookie_count: self.cookie_count,
             cookie_domain_count: self.cookie_domain_count,
+            cookie_manager: self.cookie_manager.clone(),
+            cookie_domains: self.cookie_domains.clone(),
+            cookie_domain_cookies: self.cookie_domain_cookies.clone(),
         }
     }
 }
@@ -386,6 +407,9 @@ impl Default for HttpRequestView {
             active_script_tab: ScriptTab::default(),
             cookie_count: 0,
             cookie_domain_count: 0,
+            cookie_manager: crate::ui::views::cookie_manager::CookieManagerView::default(),
+            cookie_domains: Vec::new(),
+            cookie_domain_cookies: Vec::new(),
         }
     }
 }
@@ -957,6 +981,41 @@ impl HttpRequestView {
             }
             Message::ClearCookies => {
                 // Handled at app level - no view state change needed.
+            }
+            Message::CookieManagerMsg(msg) => {
+                use crate::ui::views::cookie_manager::Message as CmMsg;
+                match msg {
+                    CmMsg::DomainSelected(domain) => {
+                        self.cookie_manager.selected_domain = Some(domain);
+                    }
+                    CmMsg::CookieSearchChanged(q) => {
+                        self.cookie_manager.search_query = q;
+                    }
+                    CmMsg::StartEdit(domain, name, path) => {
+                        let value = self
+                            .cookie_domain_cookies
+                            .iter()
+                            .find(|c| c.domain == domain && c.name == name && c.path == path)
+                            .map(|c| c.value.clone())
+                            .unwrap_or_default();
+                        self.cookie_manager.editing_cookie = Some((domain, name, path));
+                        self.cookie_manager.edit_value = value;
+                    }
+                    CmMsg::EditValueChanged(v) => {
+                        self.cookie_manager.edit_value = v;
+                    }
+                    CmMsg::SaveEdit | CmMsg::CancelEdit => {
+                        self.cookie_manager.editing_cookie = None;
+                        self.cookie_manager.edit_value.clear();
+                    }
+                    CmMsg::DeleteCookie(..)
+                    | CmMsg::ClearDomain(..)
+                    | CmMsg::ClearAll
+                    | CmMsg::ImportCookies
+                    | CmMsg::ImportData(_)
+                    | CmMsg::ExportCookies
+                    | CmMsg::ExportComplete(_) => {}
+                }
             }
             Message::ScriptTabSelected(tab) => {
                 self.active_script_tab = tab;
