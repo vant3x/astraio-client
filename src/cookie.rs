@@ -1,13 +1,66 @@
 use std::collections::HashMap;
 
 fn parse_cookie_expiry(s: &str) -> Option<i64> {
-    chrono::DateTime::parse_from_rfc2822(s)
+    // Try RFC 3339 / ISO 8601
+    chrono::DateTime::parse_from_rfc3339(s)
         .ok()
         .map(|dt| dt.timestamp())
         .or_else(|| {
             chrono::DateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.f%:z")
                 .ok()
                 .map(|dt| dt.timestamp())
+        })
+        .or_else(|| {
+            chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.f")
+                .ok()
+                .map(|dt| dt.and_utc().timestamp())
+        })
+        .or_else(|| {
+            chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S")
+                .ok()
+                .map(|dt| dt.and_utc().timestamp())
+        })
+        .or_else(|| {
+            // Manual parse for RFC 1123: "Thu, 01 Jan 2020 00:00:00 GMT"
+            let s = s.trim();
+            // Skip day-of-week and comma if present
+            let s = if let Some(idx) = s.find(',') {
+                s[idx + 1..].trim()
+            } else {
+                s
+            };
+            // Parse "DD Mon YYYY HH:MM:SS" and optional timezone
+            let parts: Vec<&str> = s.split_whitespace().collect();
+            if parts.len() < 4 {
+                return None;
+            }
+            let day: u32 = parts[0].parse().ok()?;
+            let month = match parts[1] {
+                "Jan" => 1u32,
+                "Feb" => 2,
+                "Mar" => 3,
+                "Apr" => 4,
+                "May" => 5,
+                "Jun" => 6,
+                "Jul" => 7,
+                "Aug" => 8,
+                "Sep" => 9,
+                "Oct" => 10,
+                "Nov" => 11,
+                "Dec" => 12,
+                _ => return None,
+            };
+            let year: i32 = parts[2].parse().ok()?;
+            let time_parts: Vec<&str> = parts[3].split(':').collect();
+            if time_parts.len() != 3 {
+                return None;
+            }
+            let hour: u32 = time_parts[0].parse().ok()?;
+            let min: u32 = time_parts[1].parse().ok()?;
+            let sec: u32 = time_parts[2].parse().ok()?;
+            let naive = chrono::NaiveDate::from_ymd_opt(year, month, day)?
+                .and_hms_opt(hour, min, sec)?;
+            Some(naive.and_utc().timestamp())
         })
 }
 
@@ -60,6 +113,19 @@ impl std::fmt::Display for Cookie {
 }
 
 impl Cookie {
+    pub fn is_expired(&self, now_timestamp: i64) -> bool {
+        match &self.expires {
+            Some(expires_str) => {
+                if let Some(ts) = parse_cookie_expiry(expires_str) {
+                    ts <= now_timestamp
+                } else {
+                    false
+                }
+            }
+            None => false,
+        }
+    }
+
     pub fn path_matches(&self, request_path: &str) -> bool {
         if self.path == "/" {
             return true;
@@ -166,12 +232,16 @@ impl CookieJar {
         let host = parsed.host_str().unwrap_or("");
         let is_secure = parsed.scheme() == "https";
         let request_path = parsed.path();
+        let now = chrono::Utc::now().timestamp();
 
         let mut result = Vec::new();
 
         for (domain, cookies) in &self.cookies {
-            if self.domain_matches(host, domain) {
+            if Self::domain_matches(host, domain) {
                 for cookie in cookies {
+                    if cookie.is_expired(now) {
+                        continue;
+                    }
                     if cookie.path_matches(request_path) && (!cookie.secure || is_secure) {
                         result.push(cookie);
                     }
@@ -190,7 +260,10 @@ impl CookieJar {
 
         let header = cookies
             .iter()
-            .map(|c| format!("{}={}", c.name, c.value))
+            .map(|c| {
+                let escaped_value = c.value.replace('\\', "\\\\").replace('"', "\\\"");
+                format!("{}=\"{}\"", c.name, escaped_value)
+            })
             .collect::<Vec<_>>()
             .join("; ");
 
@@ -199,6 +272,14 @@ impl CookieJar {
 
     pub fn clear(&mut self) {
         self.cookies.clear();
+    }
+
+    pub fn remove_expired(&mut self) {
+        let now = chrono::Utc::now().timestamp();
+        for cookies in self.cookies.values_mut() {
+            cookies.retain(|c| !c.is_expired(now));
+        }
+        self.cookies.retain(|_, v| !v.is_empty());
     }
 
     #[allow(dead_code)]
@@ -250,17 +331,10 @@ impl CookieJar {
         None
     }
 
-    fn domain_matches(&self, host: &str, cookie_domain: &str) -> bool {
-        if host == cookie_domain {
-            return true;
-        }
-        if cookie_domain.starts_with('.') {
-            if host == &cookie_domain[1..] {
-                return true;
-            }
-            return host.ends_with(cookie_domain);
-        }
-        format!(".{}", host) == cookie_domain || host == cookie_domain
+    fn domain_matches(host: &str, cookie_domain: &str) -> bool {
+        let cd = cookie_domain.strip_prefix('.').unwrap_or(cookie_domain);
+        let h = host.strip_prefix('.').unwrap_or(host);
+        h == cd || h.ends_with(&format!(".{}", cd))
     }
 
     pub fn remove_cookie(&mut self, domain: &str, name: &str, path: &str) -> bool {
@@ -494,6 +568,104 @@ mod tests {
     }
 
     #[test]
+    fn domain_matches_exact() {
+        assert!(CookieJar::domain_matches("example.com", "example.com"));
+    }
+
+    #[test]
+    fn domain_matches_subdomain() {
+        assert!(CookieJar::domain_matches("api.example.com", ".example.com"));
+    }
+
+    #[test]
+    fn domain_matches_no_dot_prefix() {
+        assert!(CookieJar::domain_matches("api.example.com", "example.com"));
+    }
+
+    #[test]
+    fn domain_matches_not_related() {
+        assert!(!CookieJar::domain_matches("evil.com", "example.com"));
+    }
+
+    #[test]
+    fn domain_matches_not_substring() {
+        assert!(!CookieJar::domain_matches("notexample.com", "example.com"));
+    }
+
+    #[test]
+    fn expired_cookie_is_filtered() {
+        let mut jar = CookieJar::new();
+        jar.insert(Cookie {
+            name: "old".to_string(),
+            value: "1".to_string(),
+            domain: "example.com".to_string(),
+            path: "/".to_string(),
+            secure: false,
+            http_only: false,
+            same_site: SameSite::Lax,
+            expires: Some("Thu, 01 Jan 2020 00:00:00 GMT".to_string()),
+        });
+        jar.insert(Cookie {
+            name: "fresh".to_string(),
+            value: "2".to_string(),
+            domain: "example.com".to_string(),
+            path: "/".to_string(),
+            secure: false,
+            http_only: false,
+            same_site: SameSite::Lax,
+            expires: Some("Thu, 01 Jan 2099 00:00:00 GMT".to_string()),
+        });
+        let cookies = jar.get_cookies_for_url("https://example.com/");
+        assert_eq!(cookies.len(), 1);
+        assert_eq!(cookies[0].name, "fresh");
+    }
+
+    #[test]
+    fn remove_expired_cleans_jar() {
+        let mut jar = CookieJar::new();
+        jar.insert(Cookie {
+            name: "old".to_string(),
+            value: "1".to_string(),
+            domain: "example.com".to_string(),
+            path: "/".to_string(),
+            secure: false,
+            http_only: false,
+            same_site: SameSite::Lax,
+            expires: Some("Thu, 01 Jan 2020 00:00:00 GMT".to_string()),
+        });
+        jar.insert(Cookie {
+            name: "fresh".to_string(),
+            value: "2".to_string(),
+            domain: "example.com".to_string(),
+            path: "/".to_string(),
+            secure: false,
+            http_only: false,
+            same_site: SameSite::Lax,
+            expires: None,
+        });
+        jar.remove_expired();
+        assert_eq!(jar.total_count(), 1);
+        assert_eq!(jar.cookies_for_domain("example.com")[0].name, "fresh");
+    }
+
+    #[test]
+    fn to_cookie_header_escapes_values() {
+        let mut jar = CookieJar::new();
+        jar.insert(Cookie {
+            name: "token".to_string(),
+            value: r#"val"ue"#.to_string(),
+            domain: "example.com".to_string(),
+            path: "/".to_string(),
+            secure: false,
+            http_only: false,
+            same_site: SameSite::Lax,
+            expires: None,
+        });
+        let header = jar.to_cookie_header("https://example.com/").unwrap();
+        assert!(header.contains(r#"token="val\"ue""#));
+    }
+
+    #[test]
     fn get_cookies_skips_secure_on_http() {
         let mut jar = CookieJar::new();
         jar.insert(Cookie {
@@ -574,8 +746,8 @@ mod tests {
             expires: None,
         });
         let header = jar.to_cookie_header("https://example.com/page").unwrap();
-        assert!(header.contains("a=1"));
-        assert!(header.contains("b=2"));
+        assert!(header.contains("a=\"1\""));
+        assert!(header.contains("b=\"2\""));
         assert!(header.contains("; "));
     }
 

@@ -70,6 +70,7 @@ pub enum Message {
                 Vec<(String, String)>,
                 std::time::Duration,
                 u64,
+                String,
             ),
             crate::error::AppError,
         >,
@@ -481,7 +482,7 @@ impl GraphQLView {
                 self.response_size = None;
             }
             Message::ResponseReceived(result) => match result {
-                Ok((response, status, headers, duration, size)) => {
+                Ok((response, status, headers, duration, size, _request_url)) => {
                     self.status_code = Some(status);
                     self.response_duration = Some(duration);
                     self.response_size = Some(size);

@@ -393,22 +393,50 @@ pub fn init() -> std::result::Result<Connection, AppError> {
     Ok(conn)
 }
 
+/// Persist a single cookie to SQLite (efficient for response handlers).
+pub fn save_cookie(
+    conn: &Connection,
+    cookie: &crate::cookie::Cookie,
+) -> std::result::Result<(), AppError> {
+    let now = crate::utils::timestamp_seconds();
+    conn.execute(
+        "INSERT OR REPLACE INTO cookies
+            (domain, name, value, path, expires_at, secure, http_only, same_site, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        params![
+            cookie.domain,
+            cookie.name,
+            cookie.value,
+            cookie.path,
+            cookie.expires,
+            cookie.secure as i32,
+            cookie.http_only as i32,
+            cookie.same_site.to_string(),
+            now,
+        ],
+    )
+    .map_err(|e| AppError::Database(format!("Failed to save cookie: {}", e)))?;
+    Ok(())
+}
+
 /// Persist the entire CookieJar to SQLite.
-/// Uses INSERT OR REPLACE so it's safe to call after every response.
+/// Uses a single transaction for performance.
 pub fn save_cookies(
     conn: &Connection,
     jar: &crate::cookie::CookieJar,
 ) -> std::result::Result<(), AppError> {
     let now = crate::utils::timestamp_seconds();
-    // Collect all cookies from all domains
     let all_domains: Vec<String> = {
-        // We access via domains() which returns (&str, usize) pairs
         jar.domains().iter().map(|(d, _)| d.to_string()).collect()
     };
 
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|e| AppError::Database(format!("Failed to start transaction: {}", e)))?;
+
     for domain in &all_domains {
         for cookie in jar.cookies_for_domain(domain) {
-            conn.execute(
+            tx.execute(
                 "INSERT OR REPLACE INTO cookies
                     (domain, name, value, path, expires_at, secure, http_only, same_site, created_at)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
@@ -427,6 +455,9 @@ pub fn save_cookies(
             .map_err(|e| AppError::Database(format!("Failed to save cookie: {}", e)))?;
         }
     }
+
+    tx.commit()
+        .map_err(|e| AppError::Database(format!("Failed to commit cookie transaction: {}", e)))?;
     Ok(())
 }
 

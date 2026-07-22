@@ -667,6 +667,8 @@ impl AstraNovaApp {
             Message::ClearCookies => {
                 if let Ok(mut jar) = self.cookie_jar.lock() {
                     jar.clear();
+                } else {
+                    log::error!("Failed to acquire cookie_jar lock for ClearCookies");
                 }
                 if let Err(e) = crate::persistence::database::clear_cookies_db(&self.db_conn) {
                     log::warn!("Failed to clear cookies from DB: {}", e);
@@ -683,6 +685,8 @@ impl AstraNovaApp {
             Message::ClearDomainCookies(domain) => {
                 if let Ok(mut jar) = self.cookie_jar.lock() {
                     jar.clear_domain(&domain);
+                } else {
+                    log::error!("Failed to acquire cookie_jar lock for ClearDomainCookies");
                 }
                 if let Err(e) =
                     crate::persistence::database::clear_domain_cookies_db(&self.db_conn, &domain)
@@ -697,6 +701,8 @@ impl AstraNovaApp {
             Message::DeleteCookie(domain, name, path) => {
                 if let Ok(mut jar) = self.cookie_jar.lock() {
                     jar.remove_cookie(&domain, &name, &path);
+                } else {
+                    log::error!("Failed to acquire cookie_jar lock for DeleteCookie");
                 }
                 if let Err(e) = crate::persistence::database::delete_cookie_db(
                     &self.db_conn,
@@ -719,6 +725,8 @@ impl AstraNovaApp {
                             }
                         }
                     }
+                } else {
+                    log::error!("Failed to acquire cookie_jar lock for SaveCookieEdit");
                 }
                 if let Err(e) = crate::persistence::database::update_cookie_value_db(
                     &self.db_conn,
@@ -770,8 +778,10 @@ impl AstraNovaApp {
                         if let Err(e) =
                             crate::persistence::database::save_cookies(&self.db_conn, &jar)
                         {
-                            log::warn!("Failed to save imported cookies: {}", e);
+                            log::warn!("Failed to persist imported cookies: {}", e);
                         }
+                    } else {
+                        log::error!("Failed to acquire cookie_jar lock for persisting imported cookies");
                     }
                     self.sync_cookie_data_to_tabs();
                     self.toast_manager
@@ -780,10 +790,12 @@ impl AstraNovaApp {
                 Task::none()
             }
             Message::ExportCookies => {
-                let content = if let Ok(jar) = self.cookie_jar.lock() {
-                    jar.to_netscape()
-                } else {
-                    return Task::none();
+                let content = match self.cookie_jar.lock() {
+                    Ok(jar) => jar.to_netscape(),
+                    Err(e) => {
+                        log::error!("Failed to acquire cookie_jar lock for export: {}", e);
+                        return Task::none();
+                    }
                 };
                 Task::perform(
                     async move {
@@ -831,7 +843,10 @@ impl AstraNovaApp {
                             .cookie_jar
                             .lock()
                             .map(|jar| jar.to_json_pretty().unwrap_or_else(|_| "[]".to_string()))
-                            .unwrap_or_else(|_| "[]".to_string());
+                            .unwrap_or_else(|e| {
+                                log::error!("Failed to acquire cookie_jar lock for session save: {}", e);
+                                "[]".to_string()
+                            });
 
                         let active_view = self.request_tabs.get(self.active_request_tab_index);
                         let headers_json = active_view
@@ -896,12 +911,18 @@ impl AstraNovaApp {
                             {
                                 if let Ok(mut app_jar) = self.cookie_jar.lock() {
                                     *app_jar = jar;
+                                } else {
+                                    log::error!("Failed to acquire cookie_jar lock for session load");
                                 }
-                                if let Err(e) = crate::persistence::database::save_cookies(
-                                    &self.db_conn,
-                                    &self.cookie_jar.lock().unwrap(),
-                                ) {
-                                    log::warn!("Failed to persist loaded cookies: {}", e);
+                                if let Ok(jar) = self.cookie_jar.lock() {
+                                    if let Err(e) = crate::persistence::database::save_cookies(
+                                        &self.db_conn,
+                                        &jar,
+                                    ) {
+                                        log::warn!("Failed to persist loaded cookies: {}", e);
+                                    }
+                                } else {
+                                    log::error!("Failed to acquire cookie_jar lock for persisting loaded cookies");
                                 }
                                 self.sync_cookie_data_to_tabs();
                             }
@@ -1018,35 +1039,29 @@ impl AstraNovaApp {
                     .collect();
                 let total = jar.total_count();
                 let domain_count = jar.domain_count();
-                let all_cookies: Vec<(
-                    String,
-                    Vec<crate::ui::views::http_request_view::CookieSnapshot>,
-                )> = jar
-                    .domains()
-                    .into_iter()
-                    .map(|(d, _)| {
-                        let cookies: Vec<crate::ui::views::http_request_view::CookieSnapshot> =
-                            jar.cookies_for_domain(d)
-                                .into_iter()
-                                .map(|c| {
-                                    crate::ui::views::http_request_view::CookieSnapshot {
-                                        name: c.name.clone(),
-                                        value: c.value.clone(),
-                                        domain: c.domain.clone(),
-                                        path: c.path.clone(),
-                                        secure: c.secure,
-                                        http_only: c.http_only,
-                                        same_site: c.same_site.to_string(),
-                                        expires: c.expires.clone(),
-                                    }
-                                })
-                                .collect();
-                        (d.to_string(), cookies)
-                    })
-                    .collect();
+
+                let mut all_cookies: Vec<crate::ui::views::http_request_view::CookieSnapshot> =
+                    Vec::with_capacity(total);
+                for (d, _) in &domains {
+                    for c in jar.cookies_for_domain(d) {
+                        all_cookies.push(crate::ui::views::http_request_view::CookieSnapshot {
+                            name: c.name.clone(),
+                            value: c.value.clone(),
+                            domain: c.domain.clone(),
+                            path: c.path.clone(),
+                            secure: c.secure,
+                            http_only: c.http_only,
+                            same_site: c.same_site.to_string(),
+                            expires: c.expires.clone(),
+                        });
+                    }
+                }
                 (domains, total, domain_count, all_cookies)
             }
-            Err(_) => return,
+            Err(e) => {
+                log::error!("Failed to acquire cookie_jar lock for sync: {}", e);
+                return;
+            }
         };
 
         let (domains, total, domain_count, all_cookies) = snapshot;
@@ -1054,10 +1069,7 @@ impl AstraNovaApp {
             tab.cookie_count = total;
             tab.cookie_domain_count = domain_count;
             tab.cookie_domains = domains.clone();
-            tab.cookie_domain_cookies.clear();
-            for (_, cookies) in &all_cookies {
-                tab.cookie_domain_cookies.extend(cookies.iter().cloned());
-            }
+            tab.cookie_domain_cookies.clone_from(&all_cookies);
         }
     }
 

@@ -14,7 +14,7 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: graphql_view::Message) -> Tas
 
             match temp_view.build_request() {
                 Ok(_graphql_request) => {
-                    let http_request = match temp_view.build_http_request() {
+                    let mut http_request = match temp_view.build_http_request() {
                         Ok(r) => r,
                         Err(e) => {
                             app.graphql_view
@@ -23,6 +23,19 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: graphql_view::Message) -> Tas
                         }
                     };
                     app.graphql_view.update(graphql_view::Message::SetLoading);
+
+                    if let Ok(jar) = app.cookie_jar.lock() {
+                        if let Some(cookie_header) = jar.to_cookie_header(&http_request.url) {
+                            http_request
+                                .headers
+                                .retain(|(k, _)| !k.eq_ignore_ascii_case("cookie"));
+                            http_request
+                                .headers
+                                .push(("cookie".to_string(), cookie_header));
+                        }
+                    } else {
+                        log::error!("Failed to acquire cookie_jar lock for GraphQL cookie injection");
+                    }
 
                     let needs_custom_client = http_request.config.proxy_url.is_some()
                         || http_request.config.proxy.is_some()
@@ -57,6 +70,8 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: graphql_view::Message) -> Tas
                         std::sync::Arc::clone(&app.http_client)
                     };
 
+                    let request_url = http_request.url.clone();
+
                     Task::perform(
                         async move {
                             let response = crate::http_client::client::send_request(
@@ -88,6 +103,7 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: graphql_view::Message) -> Tas
                                         http_response.headers,
                                         http_response.duration,
                                         http_response.size,
+                                        request_url,
                                     ))
                                 }
                                 Err(e) => Err(e),
@@ -317,6 +333,33 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: graphql_view::Message) -> Tas
                         .update(graphql_view::Message::SavedToCollection(Err(e)));
                 }
             }
+            Task::none()
+        }
+        graphql_view::Message::ResponseReceived(Ok(_)) => {
+            if let graphql_view::Message::ResponseReceived(Ok((_, _, ref headers, _, _, ref request_url))) = msg {
+                let mut captured_cookies = false;
+                if let Ok(mut jar) = app.cookie_jar.lock() {
+                    for (key, value) in headers {
+                        if key.eq_ignore_ascii_case("set-cookie") {
+                            jar.insert_from_set_cookie(value, request_url);
+                            captured_cookies = true;
+                        }
+                    }
+                } else {
+                    log::error!("Failed to acquire cookie_jar lock for GraphQL Set-Cookie capture");
+                }
+                if captured_cookies {
+                    if let Ok(jar) = app.cookie_jar.lock() {
+                        if let Err(e) =
+                            crate::persistence::database::save_cookies(&app.db_conn, &jar)
+                        {
+                            log::warn!("Failed to persist GraphQL cookies: {}", e);
+                        }
+                    }
+                    app.sync_cookie_data_to_tabs();
+                }
+            }
+            app.graphql_view.update(msg);
             Task::none()
         }
         other => {
