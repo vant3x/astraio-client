@@ -322,7 +322,8 @@ pub fn handle_http_request_msg(
                             for log in &script_output.post_logs {
                                 warnings.push(log.clone());
                             }
-                            let output_json = serde_json::to_string(&script_output).unwrap_or_default();
+                            let output_json =
+                                serde_json::to_string(&script_output).unwrap_or_default();
                             warnings.push(format!("__SCRIPT_OUTPUT__{}", output_json));
                             resp.url = request_url;
                             resp.method = request_method
@@ -350,7 +351,9 @@ pub fn handle_http_request_msg(
             };
             for warning in warnings {
                 if let Some(json) = warning.strip_prefix("__SCRIPT_OUTPUT__") {
-                    if let Ok(output) = serde_json::from_str::<http_request_view::ScriptOutput>(json) {
+                    if let Ok(output) =
+                        serde_json::from_str::<http_request_view::ScriptOutput>(json)
+                    {
                         view.script_output = output;
                     }
                 } else {

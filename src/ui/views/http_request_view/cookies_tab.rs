@@ -225,7 +225,10 @@ fn render_cookie_badges<'a>(
     }
     match cookie.same_site.as_str() {
         "Strict" => {
-            badges = badges.push(super::helpers::cookie_badge("St", BadgeKind::SameSiteStrict));
+            badges = badges.push(super::helpers::cookie_badge(
+                "St",
+                BadgeKind::SameSiteStrict,
+            ));
         }
         "None" => {
             badges = badges.push(super::helpers::cookie_badge("N", BadgeKind::SameSiteNone));

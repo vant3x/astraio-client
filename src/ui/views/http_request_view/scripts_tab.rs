@@ -1,6 +1,6 @@
 use super::{HttpRequestView, Message, ScriptTab};
-use iced::widget::{button, column, container, row, scrollable, text};
 use iced::widget::text_editor;
+use iced::widget::{button, column, container, row, scrollable, text};
 use iced::{Color, Element, Length, Theme};
 
 impl HttpRequestView {
@@ -88,7 +88,8 @@ impl HttpRequestView {
                     output_text.push('\n');
                 }
                 if output_text.is_empty() {
-                    output_text = "No script output yet. Send a request to see results.".to_string();
+                    output_text =
+                        "No script output yet. Send a request to see results.".to_string();
                 }
                 scrollable(text(output_text).size(12))
                     .height(Length::Fill)

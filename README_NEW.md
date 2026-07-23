@@ -83,6 +83,7 @@ A fast, open-source desktop API client built with **Rust** and **Iced**. Test, d
 
 ### Developer Experience
 
+- **Native OS menu bar** — File, Edit, View, Help menus (macOS menu bar, Windows native menu)
 - **Dark / light theme** — Toggle with `Ctrl+D`
 - **Keyboard shortcuts** — `Ctrl+N` (new tab), `Ctrl+W` (close tab), `Ctrl+1-5` (switch tabs)
 - **Tab management** — Multiple request tabs with URL preview
@@ -115,6 +116,7 @@ src/
 │   │   └── graphql_view.rs
 │   ├── handlers/            # Message handlers per domain
 │   ├── components/          # Reusable UI components
+│   ├── menu.rs              # Native OS menu bar (muda)
 │   ├── theme.rs             # Colors and theming
 │   └── toast.rs             # Toast notification system
 ├── http_client/             # HTTP request/response layer
@@ -164,6 +166,7 @@ src/
 | **Database** | [rusqlite](https://docs.rs/rusqlite) 0.31 (SQLite, WAL mode) |
 | **Async runtime** | [tokio](https://docs.rs/tokio) 1.38 |
 | **Secrets** | [keyring](https://docs.rs/keyring) 3 (macOS Keychain, Windows Credential Manager, Linux Secret Service) |
+| **Native menus** | [muda](https://github.com/tauri-apps/muda) 0.17 |
 | **TLS** | native-tls / rustls |
 
 ---
@@ -240,7 +243,7 @@ Ensure the required system libraries are installed (see Prerequisites).
 
 ## Project Status
 
-**Version:** 0.2.5-beta.0
+**Version:** 0.4.0
 
 | Feature | Status |
 |---------|--------|

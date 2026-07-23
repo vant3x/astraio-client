@@ -384,7 +384,8 @@ impl ScriptEngine {
             }
             ScriptAction::EncodeBase64 { input, variable } => {
                 let resolved_input = context.resolve_variables(input);
-                let encoded = base64::engine::general_purpose::STANDARD.encode(resolved_input.as_bytes());
+                let encoded =
+                    base64::engine::general_purpose::STANDARD.encode(resolved_input.as_bytes());
                 context.variables.insert(variable.clone(), encoded);
             }
             ScriptAction::DecodeBase64 { input, variable } => {
@@ -395,10 +396,7 @@ impl ScriptEngine {
                         context.variables.insert(variable.clone(), decoded);
                     }
                     Err(e) => {
-                        return Err(AppError::Validation(format!(
-                            "Base64 decode failed: {}",
-                            e
-                        )));
+                        return Err(AppError::Validation(format!("Base64 decode failed: {}", e)));
                     }
                 }
             }
@@ -416,23 +414,25 @@ impl ScriptEngine {
             } => {
                 let resolved_key = context.resolve_variables(key);
                 let resolved_message = context.resolve_variables(message);
-                let mut mac =
-                    HmacSha256::new_from_slice(resolved_key.as_bytes()).map_err(|e| {
-                        AppError::Validation(format!("HMAC key error: {}", e))
-                    })?;
+                let mut mac = HmacSha256::new_from_slice(resolved_key.as_bytes())
+                    .map_err(|e| AppError::Validation(format!("HMAC key error: {}", e)))?;
                 mac.update(resolved_message.as_bytes());
                 let result = format!("{:x}", mac.finalize().into_bytes());
                 context.variables.insert(variable.clone(), result);
             }
             ScriptAction::IfStatus { .. } => {
-                log::warn!("IfStatus is only valid in post-response scripts, skipping in pre-request");
+                log::warn!(
+                    "IfStatus is only valid in post-response scripts, skipping in pre-request"
+                );
             }
             ScriptAction::ExtractRegex { variable, pattern } => {
                 let resolved_pattern = context.resolve_variables(pattern);
                 match Regex::new(&resolved_pattern) {
                     Ok(re) => {
                         if let Some(caps) = re.captures(&request.url) {
-                            let val = caps.get(1).map(|m| m.as_str().to_string())
+                            let val = caps
+                                .get(1)
+                                .map(|m| m.as_str().to_string())
                                 .or_else(|| caps.get(0).map(|m| m.as_str().to_string()))
                                 .unwrap_or_default();
                             context.variables.insert(variable.clone(), val);
@@ -458,11 +458,15 @@ impl ScriptEngine {
                 let resolved_key = context.resolve_variables(key);
                 let resolved_value = context.resolve_variables(value);
                 if let Ok(mut url) = reqwest::Url::parse(&request.url) {
-                    url.query_pairs_mut().append_pair(&resolved_key, &resolved_value);
+                    url.query_pairs_mut()
+                        .append_pair(&resolved_key, &resolved_value);
                     request.url = url.to_string();
                 } else {
                     let separator = if request.url.contains('?') { '&' } else { '?' };
-                    request.url = format!("{}{}{}={}", request.url, separator, resolved_key, resolved_value);
+                    request.url = format!(
+                        "{}{}{}={}",
+                        request.url, separator, resolved_key, resolved_value
+                    );
                 }
             }
             ScriptAction::AssertJsonPath { .. } => {
@@ -609,7 +613,8 @@ impl ScriptEngine {
             }
             ScriptAction::EncodeBase64 { input, variable } => {
                 let resolved_input = context.resolve_variables(input);
-                let encoded = base64::engine::general_purpose::STANDARD.encode(resolved_input.as_bytes());
+                let encoded =
+                    base64::engine::general_purpose::STANDARD.encode(resolved_input.as_bytes());
                 context.variables.insert(variable.clone(), encoded);
             }
             ScriptAction::DecodeBase64 { input, variable } => {
@@ -640,10 +645,8 @@ impl ScriptEngine {
             } => {
                 let resolved_key = context.resolve_variables(key);
                 let resolved_message = context.resolve_variables(message);
-                let mut mac =
-                    HmacSha256::new_from_slice(resolved_key.as_bytes()).map_err(|e| {
-                        AppError::Validation(format!("HMAC key error: {}", e))
-                    })?;
+                let mut mac = HmacSha256::new_from_slice(resolved_key.as_bytes())
+                    .map_err(|e| AppError::Validation(format!("HMAC key error: {}", e)))?;
                 mac.update(resolved_message.as_bytes());
                 let result = format!("{:x}", mac.finalize().into_bytes());
                 context.variables.insert(variable.clone(), result);
@@ -668,19 +671,26 @@ impl ScriptEngine {
                 }
             }
             ScriptAction::Delay { .. } => {
-                log::warn!("Delay is only meaningful in pre-request scripts, skipping in post-response");
+                log::warn!(
+                    "Delay is only meaningful in pre-request scripts, skipping in post-response"
+                );
             }
             ScriptAction::ExtractRegex { variable, pattern } => {
                 let resolved_pattern = context.resolve_variables(pattern);
                 match Regex::new(&resolved_pattern) {
                     Ok(re) => {
                         if let Some(caps) = re.captures(&response.body) {
-                            let val = caps.get(1).map(|m| m.as_str().to_string())
+                            let val = caps
+                                .get(1)
+                                .map(|m| m.as_str().to_string())
                                 .or_else(|| caps.get(0).map(|m| m.as_str().to_string()))
                                 .unwrap_or_default();
                             context.variables.insert(variable.clone(), val);
                         } else {
-                            context.errors.push(format!("Regex pattern '{}' not found in response", resolved_pattern));
+                            context.errors.push(format!(
+                                "Regex pattern '{}' not found in response",
+                                resolved_pattern
+                            ));
                         }
                     }
                     Err(e) => {
@@ -690,14 +700,21 @@ impl ScriptEngine {
                     }
                 }
             }
-            ScriptAction::AssertJsonPath { path, equals, contains } => {
+            ScriptAction::AssertJsonPath {
+                path,
+                equals,
+                contains,
+            } => {
                 let resolved_path = context.resolve_variables(path);
                 if let Ok(json_value) = serde_json::from_str::<serde_json::Value>(&response.body) {
                     if let Some(extracted) = extract_json_path(&json_value, &resolved_path) {
                         if let Some(expected) = equals {
                             let resolved_expected = context.resolve_variables(expected);
                             if extracted != resolved_expected {
-                                let msg = format!("AssertJsonPath '{}' expected '{}', got '{}'", resolved_path, resolved_expected, extracted);
+                                let msg = format!(
+                                    "AssertJsonPath '{}' expected '{}', got '{}'",
+                                    resolved_path, resolved_expected, extracted
+                                );
                                 context.errors.push(msg.clone());
                                 return Err(AppError::Validation(msg));
                             }
@@ -705,7 +722,10 @@ impl ScriptEngine {
                         if let Some(expected) = contains {
                             let resolved_expected = context.resolve_variables(expected);
                             if !extracted.contains(resolved_expected.as_str()) {
-                                let msg = format!("AssertJsonPath '{}' should contain '{}', got '{}'", resolved_path, resolved_expected, extracted);
+                                let msg = format!(
+                                    "AssertJsonPath '{}' should contain '{}', got '{}'",
+                                    resolved_path, resolved_expected, extracted
+                                );
                                 context.errors.push(msg.clone());
                                 return Err(AppError::Validation(msg));
                             }
@@ -791,7 +811,9 @@ fn set_json_path(value: &mut serde_json::Value, path: &str, new_val: serde_json:
                     }
                 } else {
                     if let serde_json::Value::Object(map) = current {
-                        current = map.entry(key.clone()).or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
+                        current = map
+                            .entry(key.clone())
+                            .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
                     } else {
                         return;
                     }
@@ -1212,9 +1234,10 @@ mod tests {
     #[test]
     fn context_resolve_nested_variables() {
         let mut context = ScriptContext::new();
-        context
-            .variables
-            .insert("base_url".to_string(), "https://{{host}}/{{version}}".to_string());
+        context.variables.insert(
+            "base_url".to_string(),
+            "https://{{host}}/{{version}}".to_string(),
+        );
         context
             .variables
             .insert("host".to_string(), "api.example.com".to_string());
@@ -1235,10 +1258,7 @@ mod tests {
 
         let resolved = context.resolve_variables("Hello {{name}} and {{missing}}");
         assert_eq!(resolved, "Hello Alice and {{missing}}");
-        assert!(context
-            .errors
-            .iter()
-            .any(|e| e.contains("missing")));
+        assert!(context.errors.iter().any(|e| e.contains("missing")));
     }
 
     #[test]
@@ -1612,7 +1632,10 @@ mod tests {
         let mut context = ScriptContext::new();
 
         ScriptEngine::execute_pre_request(&script, &mut request, &mut context).unwrap();
-        assert_eq!(context.variables.get("encoded").unwrap(), "aGVsbG8gd29ybGQ=");
+        assert_eq!(
+            context.variables.get("encoded").unwrap(),
+            "aGVsbG8gd29ybGQ="
+        );
     }
 
     #[test]
@@ -1878,7 +1901,9 @@ mod tests {
         ScriptEngine::execute_pre_request(&script, &mut request, &mut context).unwrap();
         assert_eq!(
             context.variables.get("encoded").unwrap().as_str(),
-            base64::engine::general_purpose::STANDARD.encode("secret").as_str()
+            base64::engine::general_purpose::STANDARD
+                .encode("secret")
+                .as_str()
         );
     }
 
@@ -1896,10 +1921,7 @@ mod tests {
                 },
             ],
         };
-        let response = make_response(
-            200,
-            r#"{"users": [{"name": "Alice"}, {"name": "Bob"}]}"#,
-        );
+        let response = make_response(200, r#"{"users": [{"name": "Alice"}, {"name": "Bob"}]}"#);
         let mut context = ScriptContext::new();
 
         ScriptEngine::execute_post_response(&script, &response, &mut context).unwrap();
@@ -1985,7 +2007,8 @@ mod tests {
         let mut context = ScriptContext::new();
 
         ScriptEngine::execute_pre_request(&script, &mut request, &mut context).unwrap();
-        let body: serde_json::Value = serde_json::from_str(request.body.as_deref().unwrap()).unwrap();
+        let body: serde_json::Value =
+            serde_json::from_str(request.body.as_deref().unwrap()).unwrap();
         assert_eq!(body["name"], "John");
         assert_eq!(body["age"], 31);
     }
@@ -2007,7 +2030,8 @@ mod tests {
         let mut context = ScriptContext::new();
 
         ScriptEngine::execute_pre_request(&script, &mut request, &mut context).unwrap();
-        let body: serde_json::Value = serde_json::from_str(request.body.as_deref().unwrap()).unwrap();
+        let body: serde_json::Value =
+            serde_json::from_str(request.body.as_deref().unwrap()).unwrap();
         assert_eq!(body["user"]["address"]["city"], "Barcelona");
     }
 
@@ -2023,7 +2047,8 @@ mod tests {
         let mut context = ScriptContext::new();
 
         ScriptEngine::execute_pre_request(&script, &mut request, &mut context).unwrap();
-        let body: serde_json::Value = serde_json::from_str(request.body.as_deref().unwrap()).unwrap();
+        let body: serde_json::Value =
+            serde_json::from_str(request.body.as_deref().unwrap()).unwrap();
         assert_eq!(body["new_field"], "hello");
     }
 

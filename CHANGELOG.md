@@ -1,22 +1,31 @@
 # Changelog
 
-## v0.2.6-beta.0 (2026-07-12)
+## v0.4.0 (2026-07-23)
 
 ### Added
-- **Form URL-Encoded body type**: New `Form URL-Encoded` option in the Body tab for sending `application/x-www-form-urlencoded` requests (login forms, OAuth2 token exchange, etc.). Includes key-value editor with URL encoding.
-- **WebSocket Enter-to-send**: Pressing Enter in the WebSocket input field now sends the message when connected (fixes dead `WsSendFromKeyboard` message).
-- **Spinner on request loading**: Replaced plain "Loading..." text with animated spinner (`iced_aw::Spinner`) in both HTTP and GraphQL request views.
-- Confirmation dialogs for history delete/clear (P1 #20).
-- SSL verification disabled warning banner (P1 #6).
-- OAuth2 token data sanitized before SQLite storage (P1 #7).
-- WAL mode + foreign keys enabled for SQLite (P1 #11).
+- **Native OS menu bar** — File, Edit, View, Help menus via `muda` (macOS menu bar, Windows Win32 menu).
+  - File: New Tab, Open Collection, Save, Import (cURL/Postman/OpenAPI), Export (Postman/HAR), Quit
+  - Edit: Undo, Redo, Cut, Copy, Paste, Select All, Find
+  - View: Toggle Sidebar, Toggle History, Toggle Collections, Toggle Dark Mode, New Window
+  - Help: About Astraio
+- **Form URL-Encoded body type** — `application/x-www-form-urlencoded` support with key-value editor.
+- **WebSocket Enter-to-send** — Pressing Enter sends the message when connected.
+- **Spinner on request loading** — Animated spinner (`iced_aw::Spinner`) during HTTP and GraphQL requests.
+- Confirmation dialogs for history delete/clear.
+- SSL verification disabled warning banner.
+- OAuth2 token data sanitized before SQLite storage.
+- WAL mode + foreign keys enabled for SQLite.
+
+### Changed
+- **Rebrand: AstraNova → Astraio** — Renamed across the entire codebase: struct names, database name, paths (`~/.astraio/`), CLI, HAR export creator, OAuth2 HTML titles, WiX installer.
+- **Views refactor** — Split monolithic `views.rs` (1900 lines) into 10 focused modules (~200-420 lines each): `body_tab`, `auth_tab`, `settings_tab`, `cookies_tab`, `scripts_tab`, `response_area`, `snippets_panel`, `helpers`.
+- **Toolbar spacing fix** — Request bar row kept inline in `view()` with exact `.spacing(10).padding(iced::Padding::from([16, 10]))` to preserve correct vertical spacing between toolbar and tabs.
 
 ### Fixed
-- **Script delay blocking UI**: `ScriptAction::Delay` now logs a warning instead of blocking the UI thread with `std::thread::sleep`.
-- **Proxy auth**: Uses `Proxy::basic_auth()` instead of embedding credentials in URL string.
-- **OAuth2 functions**: Now use shared `reqwest::Client` instead of creating new client per request.
-- **Manual `impl Clone` for Message**: Replaced 50+ line manual implementation with `#[derive(Clone)]`.
-- **Script derives**: `Script` and `RequestScripts` use `#[derive(Default)]` to fix clippy warnings.
+- **Script delay blocking UI** — `ScriptAction::Delay` logs a warning instead of blocking the UI thread.
+- **Proxy auth** — Uses `Proxy::basic_auth()` instead of embedding credentials in URL string.
+- **OAuth2 functions** — Shared `reqwest::Client` instead of creating new client per request.
+- **Menu timing on macOS** — Menu attached via `WindowOpened` subscription (after event loop starts), not during `AstraioApp::new()`.
 
 ### Tests
-- 303 passing (4 new form-urlencoded tests added).
+- 388 passing, 0 clippy warnings.

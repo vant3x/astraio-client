@@ -284,10 +284,8 @@ pub fn export_collection_to_har(
         if let Some(log) = val.get_mut("log") {
             if let Some(creator) = log.get_mut("creator") {
                 if let Some(name) = creator.get_mut("name") {
-                    *name = serde_json::Value::String(format!(
-                        "Astraio Client - {}",
-                        collection.name
-                    ));
+                    *name =
+                        serde_json::Value::String(format!("Astraio Client - {}", collection.name));
                 }
             }
         }

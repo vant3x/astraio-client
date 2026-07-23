@@ -322,11 +322,7 @@ pub fn handle_device_token_poll(
     Task::none()
 }
 
-pub fn handle_auto_poll_toggle(
-    app: &mut AstraioApp,
-    index: usize,
-    enabled: bool,
-) -> Task<Message> {
+pub fn handle_auto_poll_toggle(app: &mut AstraioApp, index: usize, enabled: bool) -> Task<Message> {
     if let Some(view) = app.request_tabs.get_mut(index) {
         if let Auth::OAuth2(config) = &mut view.auth {
             config.auto_polling = enabled;

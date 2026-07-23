@@ -276,12 +276,11 @@ pub enum Message {
     ToggleSidebar,
     ShowAbout,
     Quit,
+    WindowOpened(iced::window::Id),
 }
 
 impl AstraioApp {
     fn new() -> (Self, Task<Message>) {
-        crate::ui::menu::ids();
-
         let (db_conn, environments) = match database::init() {
             Ok(conn) => {
                 let envs =
@@ -834,11 +833,18 @@ impl AstraioApp {
                 Task::none()
             }
             Message::ShowAbout => {
-                self.toast_manager.info("Astraio Client v0.3.0-beta.0");
+                self.toast_manager.info("Astraio Client v0.4.0");
                 Task::none()
             }
             Message::Quit => {
                 std::process::exit(0);
+            }
+            Message::WindowOpened(_id) => {
+                #[cfg(target_os = "macos")]
+                {
+                    crate::ui::menu::attach_macos();
+                }
+                Task::none()
             }
         }
     }
@@ -974,11 +980,14 @@ impl AstraioApp {
 
         let menu_subscription = from_recipe(MenuEventRecipe);
 
+        let window_opened = iced::window::open_events().map(Message::WindowOpened);
+
         Subscription::batch(vec![
             ws_subscription,
             keyboard_subscription,
             device_poll_subscription,
             menu_subscription,
+            window_opened,
         ])
     }
 

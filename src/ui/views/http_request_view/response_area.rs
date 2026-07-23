@@ -1,8 +1,8 @@
 use super::{HttpRequestView, Message, ResponseTab};
 use crate::ui::request_status::RequestStatus;
 use crate::ui::theme::status_color;
-use iced::widget::{button, column, container, row, rule, scrollable, text, text_input};
 use iced::widget::text_editor;
+use iced::widget::{button, column, container, row, rule, scrollable, text, text_input};
 use iced::{Alignment, Color, Element, Length, Theme};
 use iced_aw::{ContextMenu, TabLabel, Tabs};
 use iced_fonts::lucide;
@@ -205,7 +205,9 @@ impl HttpRequestView {
         }
     }
 
-    pub(super) fn create_response_headers_view(&self) -> Element<'_, Message, Theme, iced::Renderer> {
+    pub(super) fn create_response_headers_view(
+        &self,
+    ) -> Element<'_, Message, Theme, iced::Renderer> {
         if let Some(response) = &self.last_response {
             if response.headers.is_empty() {
                 return container(text("No headers available."))
@@ -328,7 +330,9 @@ impl HttpRequestView {
         }
     }
 
-    pub(super) fn create_response_timeline_view(&self) -> Element<'_, Message, Theme, iced::Renderer> {
+    pub(super) fn create_response_timeline_view(
+        &self,
+    ) -> Element<'_, Message, Theme, iced::Renderer> {
         if let Some(response) = &self.last_response {
             let mut items = column![].spacing(8);
 

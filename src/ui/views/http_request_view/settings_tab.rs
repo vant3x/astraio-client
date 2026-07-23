@@ -5,7 +5,9 @@ use iced::{Alignment, Color, Element, Length, Theme};
 use iced_fonts::lucide;
 
 impl HttpRequestView {
-    pub(super) fn create_settings_tab_content(&self) -> Element<'_, Message, Theme, iced::Renderer> {
+    pub(super) fn create_settings_tab_content(
+        &self,
+    ) -> Element<'_, Message, Theme, iced::Renderer> {
         let timeout_value = self.request_config.timeout.as_secs().to_string();
         let timeout_input = text_input("Timeout (secs)", &timeout_value)
             .on_input(Message::TimeoutChanged)

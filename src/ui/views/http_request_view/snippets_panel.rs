@@ -13,9 +13,8 @@ impl HttpRequestView {
         )
         .padding(8);
 
-        let import_btn =
-            button(row![lucide::download().size(12), text(" Import cURL")].spacing(4))
-                .on_press(Message::ImportCurlToggle);
+        let import_btn = button(row![lucide::download().size(12), text(" Import cURL")].spacing(4))
+            .on_press(Message::ImportCurlToggle);
 
         let close_button = button(lucide::x().size(14))
             .on_press(Message::HideSnippets)

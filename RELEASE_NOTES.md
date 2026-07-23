@@ -1,43 +1,18 @@
-# v0.2.2-beta.2 – 2026‑06‑30
+# v0.4.0 – 2026-07-23
 
 ## New features
-- **OpenAPI import UI**
-  - Added an **“Import OpenAPI”** button next to the existing “Import” button in the Collections header.
-  - File‑picker accepts `.json`, `.yaml`, `.yml`.
-  - Shows a toast with success/failure after import.
-  - Generates collections, folders, and stores them in SQLite.
-- **Export .env**
-  - New **“Export .env”** button in the Environment Manager.
-  - Saves all environment variables (`key=value` format) to a file named `{environment}.env` via a standard file‑save dialog.
-- **GraphQL refinements (v0.2.2-beta.2)**
-  - Added `Message::ImportOpenApi` / `ImportOpenApiData` to the collection UI.
-  - Integrated full OpenAPI import flow (parse, generate collection, persist to SQLite).
-  - Removed the unused `GraphQLResponseResult` alias that was causing CI warnings.
-  - Minor UI polish and consistency fixes.
-- **Version bump**
-  - Updated `Cargo.toml` to `0.2.2-beta.2`.
-- **Test suite**
-  - All **243 tests** continue to pass.
+- **Native OS menu bar** — Full File/Edit/View/Help menus via `muda` crate (macOS menu bar, Windows Win32 menu). Keyboard shortcuts shown inline (⌘T, ⌘S, ⌘F, etc.).
+- **Form URL-Encoded body type** — `application/x-www-form-urlencoded` support with key-value editor for login forms and OAuth2 token exchange.
+- **WebSocket Enter-to-send** — Pressing Enter sends the message when connected.
+- **Spinner on request loading** — Animated spinner during HTTP and GraphQL requests.
 
 ## Breaking changes
-- None (only additions and internal refactors).
+- **Rebrand: AstraNova → Astraio** — Database renamed from `astranova.db` to `astraio.db`. Data paths changed from `~/.astranova/` to `~/.astraio/`. Users migrating from v0.2.x should move their database file.
 
-## Known‑TODO
-- [ ] Schema viewer for imported models.  
-- [ ] Server‑variable auto‑completion & security‑scheme auto‑applied.  
-- [ ] Response validation and mock‑server generation.  
-- [ ] Batch import of selective endpoints.
+## Known limitations
+- Native menu bar works on macOS and Windows. Linux uses in-app fallback (no SO menu bar).
+- Windows menu accelerators (Ctrl+S, etc.) require `TranslateAcceleratorW` which iced doesn't expose — shortcuts work via in-app keyboard subscriptions, not via the native menu.
 
-## Full changelog (since v0.2.1-beta.1)
+---
 
-| Area                     | Details                                                                 |
-|--------------------------|-------------------------------------------------------------------------|
-| **OpenAPI**              | Added import button, file picker, collection generation, $ref handling. |
-| **Environments**         | Added “Export .env” button and functionality.                           |
-| **GraphQL**              | New Message variants, dead‑code cleanup, CI warning removal.            |
-| **CI / Lint**            | Removed unused alias `GraphQLResponseResult`; all warnings cleared.      |
-| **Tests**                | 243 tests passing.                                                      |
-| **Dependencies**         | Bumped minor version to `0.2.2-beta.2`; no new runtime dependencies.    |
-
----  
-*Generated on 2026‑06‑30.*
+*Generated on 2026-07-23.*

@@ -1164,7 +1164,9 @@ impl HttpRequestView {
             Message::PasteScripts => {
                 if let Ok(mut clipboard) = arboard::Clipboard::new() {
                     if let Ok(text) = clipboard.get_text() {
-                        if let Ok(scripts) = crate::protocols::scripts::RequestScripts::from_json(&text) {
+                        if let Ok(scripts) =
+                            crate::protocols::scripts::RequestScripts::from_json(&text)
+                        {
                             self.load_scripts(&scripts);
                         }
                     }
