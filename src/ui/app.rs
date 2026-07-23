@@ -137,15 +137,15 @@ pub enum View {
 }
 
 pub fn main() -> iced::Result {
-    iced::application(AstraNovaApp::new, AstraNovaApp::update, AstraNovaApp::view)
+    iced::application(AstraioApp::new, AstraioApp::update, AstraioApp::view)
         .title("Astraio Client")
-        .subscription(AstraNovaApp::subscription)
-        .theme(AstraNovaApp::theme)
+        .subscription(AstraioApp::subscription)
+        .theme(AstraioApp::theme)
         .font(iced_fonts::LUCIDE_FONT_BYTES)
         .run()
 }
 
-pub(crate) struct AstraNovaApp {
+pub(crate) struct AstraioApp {
     pub(crate) request_tabs: Vec<HttpRequestView>,
     pub(crate) active_request_tab_index: usize,
     pub(crate) http_client: Arc<reqwest::Client>,
@@ -249,7 +249,7 @@ pub enum Message {
     ExportCookiesComplete(Option<String>),
 }
 
-impl AstraNovaApp {
+impl AstraioApp {
     fn new() -> (Self, Task<Message>) {
         let (db_conn, environments) = match database::init() {
             Ok(conn) => {

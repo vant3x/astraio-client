@@ -358,7 +358,7 @@ impl LocalAuthCallback {
         let state = params.get("state").cloned().unwrap_or_default();
 
         let html = r#"<!DOCTYPE html>
-<html><head><title>AstraNova - Authorization Complete</title>
+<html><head><title>Astraio - Authorization Complete</title>
 <style>
   body { font-family: -apple-system, sans-serif; display: flex; justify-content: center;
          align-items: center; height: 100vh; margin: 0; background: #1a1a2e; color: #e0e0e0; }
@@ -371,7 +371,7 @@ impl LocalAuthCallback {
 <body><div class="card">
   <div class="check">&#10003;</div>
   <h1>Authorization Complete</h1>
-  <p>You can close this tab and return to AstraNova.</p>
+  <p>You can close this tab and return to Astraio.</p>
 </div></body></html>"#;
 
         let response = format!(

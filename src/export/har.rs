@@ -285,7 +285,7 @@ pub fn export_collection_to_har(
             if let Some(creator) = log.get_mut("creator") {
                 if let Some(name) = creator.get_mut("name") {
                     *name = serde_json::Value::String(format!(
-                        "AstraNova Client - {}",
+                        "Astraio Client - {}",
                         collection.name
                     ));
                 }
@@ -397,7 +397,7 @@ pub fn export_entries(entries: &[(&HttpRequest, &HttpResponse)]) -> String {
     let har = HarLog {
         version: "1.2".to_string(),
         creator: HarCreator {
-            name: "AstraNova Client".to_string(),
+            name: "Astraio Client".to_string(),
             version: env!("CARGO_PKG_VERSION").to_string(),
         },
         entries: har_entries,
@@ -467,7 +467,7 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(&har).unwrap();
 
         assert_eq!(parsed["log"]["version"], "1.2");
-        assert_eq!(parsed["log"]["creator"]["name"], "AstraNova Client");
+        assert_eq!(parsed["log"]["creator"]["name"], "Astraio Client");
         assert_eq!(parsed["log"]["entries"].as_array().unwrap().len(), 1);
 
         let entry = &parsed["log"]["entries"][0];

@@ -1,8 +1,8 @@
-use crate::ui::app::{AstraNovaApp, Message};
+use crate::ui::app::{AstraioApp, Message};
 use crate::ui::views::history_view;
 use iced::Task;
 
-pub fn handle_message(app: &mut AstraNovaApp, msg: history_view::Message) -> Task<Message> {
+pub fn handle_message(app: &mut AstraioApp, msg: history_view::Message) -> Task<Message> {
     match msg.clone() {
         history_view::Message::ConfirmClearHistory => {
             if let Err(e) = crate::services::history_service::clear(&app.db_conn) {
@@ -103,7 +103,7 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: history_view::Message) -> Tas
     Task::none()
 }
 
-fn refresh_history_entries(app: &mut AstraNovaApp) {
+fn refresh_history_entries(app: &mut AstraioApp) {
     let query = app.history_view.search_query.clone();
     let method = app.history_view.filter_method.clone();
     app.history_view.entries =

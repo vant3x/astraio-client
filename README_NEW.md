@@ -1,14 +1,14 @@
-# AstraNova Client
+# Astraio Client
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/Rust-1.75+-orange.svg)](https://www.rust-lang.org/)
 [![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey.svg)]()
 
-<img src="assets/astra-bg.png" alt="AstraNova Logo" width="300">
+<img src="assets/astra-bg.png" alt="Astraio Logo" width="300">
 
 A fast, open-source desktop API client built with **Rust** and **Iced**. Test, debug, and manage HTTP, WebSocket, and GraphQL requests with a native, cross-platform UI.
 
-[Website](https://astranova-client.vercel.app/) | [Download](https://astranova-client.vercel.app/) | [Report Bug](https://github.com/vant3x/astranova-client-rust/issues)
+[Website](https://astraio-client.vercel.app/) | [Download](https://astraio-client.vercel.app/) | [Report Bug](https://github.com/vant3x/astraio-client-rust/issues)
 
 ---
 
@@ -182,8 +182,8 @@ src/
 ### Install & Run
 
 ```bash
-git clone https://github.com/vant3x/astranova-client-rust.git
-cd astranova-client-rust
+git clone https://github.com/vant3x/astraio-client-rust.git
+cd astraio-client-rust
 cargo run --release
 ```
 
@@ -199,7 +199,7 @@ cargo test
 
 ```bash
 cargo build --release
-# Binary: target/release/astranova-client
+# Binary: target/release/astraio-client
 ```
 
 ---
@@ -225,7 +225,7 @@ cargo build --release
 If macOS blocks the app (unverified developer), run:
 
 ```bash
-xattr -cr /Applications/AstraNova.app
+xattr -cr /Applications/Astraio.app
 ```
 
 ### Windows

@@ -1,7 +1,7 @@
 use crate::http_client::client;
 use crate::http_client::config::RequestConfig;
 use crate::protocols::scripts::{ScriptContext, ScriptEngine};
-use crate::ui::app::{AstraNovaApp, Message};
+use crate::ui::app::{AstraioApp, Message};
 use crate::ui::views::http_request_view;
 use iced::Task;
 use std::sync::Arc;
@@ -32,7 +32,7 @@ pub(crate) fn build_client_cache_key(config: &RequestConfig) -> String {
 }
 
 pub fn handle_http_request_msg(
-    app: &mut AstraNovaApp,
+    app: &mut AstraioApp,
     index: usize,
     msg: http_request_view::Message,
 ) -> Task<Message> {

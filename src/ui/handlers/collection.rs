@@ -1,8 +1,8 @@
-use crate::ui::app::{AstraNovaApp, Message};
+use crate::ui::app::{AstraioApp, Message};
 use crate::ui::views::collection_view;
 use iced::Task;
 
-pub fn handle_message(app: &mut AstraNovaApp, msg: collection_view::Message) -> Task<Message> {
+pub fn handle_message(app: &mut AstraioApp, msg: collection_view::Message) -> Task<Message> {
     match msg.clone() {
         collection_view::Message::ToggleCollection(idx) => {
             if let Some(col) = app.collection_view.collections.get(idx) {
@@ -639,7 +639,7 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: collection_view::Message) -> 
     Task::none()
 }
 
-fn refresh_collection_data(app: &mut AstraNovaApp, col_id: i32) {
+fn refresh_collection_data(app: &mut AstraioApp, col_id: i32) {
     let folders =
         crate::services::collection_service::get_folders(&app.db_conn, col_id).unwrap_or_default();
     app.collection_view
@@ -650,7 +650,7 @@ fn refresh_collection_data(app: &mut AstraNovaApp, col_id: i32) {
         .sync_requests_for_collection(col_id, &reqs);
 }
 
-fn refresh_all_data(app: &mut AstraNovaApp) {
+fn refresh_all_data(app: &mut AstraioApp) {
     let cols = crate::services::collection_service::get_all(&app.db_conn).unwrap_or_default();
     app.collection_view.sync_collections(&cols);
 
@@ -670,7 +670,7 @@ fn refresh_all_data(app: &mut AstraNovaApp) {
     }
 }
 
-fn load_collection_request(app: &mut AstraNovaApp, req_id: i32) {
+fn load_collection_request(app: &mut AstraioApp, req_id: i32) {
     let req = match app.collection_view.requests.iter().find(|r| r.id == req_id) {
         Some(r) => r.clone(),
         None => return,
@@ -681,7 +681,7 @@ fn load_collection_request(app: &mut AstraNovaApp, req_id: i32) {
     app.active_request_tab_index = app.request_tabs.len() - 1;
 }
 
-fn save_current_to_collection(app: &mut AstraNovaApp) {
+fn save_current_to_collection(app: &mut AstraioApp) {
     let col_id = match &app.collection_view.selected_item {
         Some(collection_view::TreeItemId::Collection(idx)) => {
             app.collection_view.collections.get(*idx).map(|c| c.id)

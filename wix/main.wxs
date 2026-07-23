@@ -60,7 +60,7 @@
 
     <Product
         Id='*'
-        Name='AstraNova'
+        Name='Astraio'
         UpgradeCode='96030D32-2C73-420E-B750-4CD59934B254'
         Manufacturer='vant3x'
         Language='1033'
@@ -82,11 +82,11 @@
             DowngradeErrorMessage='A newer version of [ProductName] is already installed. Setup will now exit.'/>
 
         <Media Id='1' Cabinet='media1.cab' EmbedCab='yes' DiskPrompt='CD-ROM #1'/>
-        <Property Id='DiskPrompt' Value='astranova-client Installation'/>
+        <Property Id='DiskPrompt' Value='astraio-client Installation'/>
 
         <Directory Id='TARGETDIR' Name='SourceDir'>
             <Directory Id='$(var.PlatformProgramFilesFolder)' Name='PFiles'>
-                <Directory Id='APPLICATIONFOLDER' Name='astranova-client'>
+                <Directory Id='APPLICATIONFOLDER' Name='astraio-client'>
                     
                     <!--
                       Enabling the license sidecar file in the installer is a four step process:
@@ -122,7 +122,7 @@
                         <Component Id='binary0' Guid='*'>
                             <File
                                 Id='exe0'
-                                Name='astranova-client.exe'
+                                Name='astraio-client.exe'
                                 DiskId='1'
                                 Source='$(var.CargoTargetBinDir)\astraio-client.exe'
                                 KeyPath='yes'/>

@@ -1,10 +1,10 @@
 use crate::protocols::websocket::{connect_ws, WsRequest, WsStats, WsStatus};
-use crate::ui::app::{AstraNovaApp, Message};
+use crate::ui::app::{AstraioApp, Message};
 use crate::ui::views::websocket_view;
 use iced::Task;
 use std::sync::{Arc, Mutex};
 
-pub fn handle_message(app: &mut AstraNovaApp, message: websocket_view::Message) -> Task<Message> {
+pub fn handle_message(app: &mut AstraioApp, message: websocket_view::Message) -> Task<Message> {
     match message {
         websocket_view::Message::UrlChanged(url) => {
             app.websocket_view.url = url;
@@ -203,7 +203,7 @@ pub fn handle_message(app: &mut AstraNovaApp, message: websocket_view::Message) 
     }
 }
 
-fn handle_connect(app: &mut AstraNovaApp) -> Task<Message> {
+fn handle_connect(app: &mut AstraioApp) -> Task<Message> {
     let url = app.websocket_view.url.clone();
     let headers = app.websocket_view.headers.clone();
     let subprotocol = if app.websocket_view.subprotocol.is_empty() {
@@ -251,7 +251,7 @@ fn handle_connect(app: &mut AstraNovaApp) -> Task<Message> {
     )
 }
 
-fn handle_disconnect(app: &mut AstraNovaApp) -> Task<Message> {
+fn handle_disconnect(app: &mut AstraioApp) -> Task<Message> {
     log::info!("Disconnecting WebSocket");
     if let Some(shutdown) = app.ws_shutdown.take() {
         let _ = shutdown.send(());
@@ -282,7 +282,7 @@ fn handle_disconnect(app: &mut AstraNovaApp) -> Task<Message> {
     Task::none()
 }
 
-fn handle_disconnected(app: &mut AstraNovaApp, reason: String) -> Task<Message> {
+fn handle_disconnected(app: &mut AstraioApp, reason: String) -> Task<Message> {
     if reason == "cleared" {
         app.websocket_view.messages.clear();
         return Task::none();
@@ -392,7 +392,7 @@ fn handle_disconnected(app: &mut AstraNovaApp, reason: String) -> Task<Message> 
 }
 
 pub fn handle_ws_event(
-    app: &mut AstraNovaApp,
+    app: &mut AstraioApp,
     event: crate::protocols::websocket::WsEvent,
 ) -> Task<Message> {
     match event {
@@ -446,7 +446,7 @@ pub fn handle_ws_event(
 }
 
 pub fn handle_ws_connected(
-    app: &mut AstraNovaApp,
+    app: &mut AstraioApp,
     sender: crate::protocols::websocket::WsSender,
     receiver: Arc<
         Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<crate::protocols::websocket::WsEvent>>>,

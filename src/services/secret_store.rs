@@ -1,6 +1,6 @@
 use crate::error::AppError;
 
-const SERVICE_NAME: &str = "com.astranova.client";
+const SERVICE_NAME: &str = "com.astraio.client";
 
 #[derive(Debug, Clone)]
 pub struct SecretStore;

@@ -1,4 +1,12 @@
+mod auth_tab;
+mod body_tab;
 mod builders;
+mod cookies_tab;
+mod helpers;
+mod response_area;
+mod scripts_tab;
+mod settings_tab;
+mod snippets_panel;
 mod tests;
 mod views;
 

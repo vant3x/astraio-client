@@ -1,8 +1,8 @@
-use crate::ui::app::{AstraNovaApp, Message};
+use crate::ui::app::{AstraioApp, Message};
 use crate::ui::views::environment_manager;
 use iced::Task;
 
-pub fn handle_message(app: &mut AstraNovaApp, msg: environment_manager::Message) -> Task<Message> {
+pub fn handle_message(app: &mut AstraioApp, msg: environment_manager::Message) -> Task<Message> {
     app.env_manager_view.update(msg.clone());
     match msg {
         environment_manager::Message::CreateEnvironment => {
@@ -118,7 +118,7 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: environment_manager::Message)
 }
 
 pub fn handle_file_loaded(
-    app: &mut AstraNovaApp,
+    app: &mut AstraioApp,
     vars: Option<Vec<(String, String)>>,
 ) -> Task<Message> {
     if let Some(vars) = vars {

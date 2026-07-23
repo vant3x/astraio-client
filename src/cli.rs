@@ -9,12 +9,12 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 #[derive(Parser)]
-#[command(name = "astranova-cli")]
-#[command(about = "AstraNova CLI - HTTP client for automation and testing")]
+#[command(name = "astraio-cli")]
+#[command(about = "Astraio CLI - HTTP client for automation and testing")]
 #[command(version)]
 pub struct Cli {
-    /// Path to AstraNova database file
-    #[arg(short, long, default_value = "~/.astranova/data.db")]
+    /// Path to Astraio database file
+    #[arg(short, long, default_value = "~/.astraio/data.db")]
     pub database: Option<String>,
 
     /// Output format
@@ -165,7 +165,7 @@ pub struct ResponseInfo {
 }
 
 pub fn run(cli: Cli) -> Result<(), AppError> {
-    let db_path = expand_tilde(&cli.database.unwrap_or_else(|| "~/.astranova/data.db".to_string()));
+    let db_path = expand_tilde(&cli.database.unwrap_or_else(|| "~/.astraio/data.db".to_string()));
     let conn = Connection::open(&db_path)
         .map_err(|e| AppError::Database(format!("Failed to open database: {}", e)))?;
 

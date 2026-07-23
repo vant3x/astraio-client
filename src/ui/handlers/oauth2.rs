@@ -1,9 +1,9 @@
 use crate::data::auth::Auth;
 use crate::error::AppError;
-use crate::ui::app::{AstraNovaApp, Message};
+use crate::ui::app::{AstraioApp, Message};
 use iced::Task;
 
-pub fn handle_start_auth(app: &mut AstraNovaApp, index: usize) -> Task<Message> {
+pub fn handle_start_auth(app: &mut AstraioApp, index: usize) -> Task<Message> {
     if let Some(view) = app.request_tabs.get_mut(index) {
         if let Auth::OAuth2(config) = &mut view.auth {
             let pkce = if config.pkce_enabled {
@@ -50,7 +50,7 @@ pub fn handle_start_auth(app: &mut AstraNovaApp, index: usize) -> Task<Message> 
 }
 
 pub fn handle_auth_complete(
-    app: &mut AstraNovaApp,
+    app: &mut AstraioApp,
     index: usize,
     result: Result<String, AppError>,
     pkce_verifier: Option<String>,
@@ -101,7 +101,7 @@ pub fn handle_auth_complete(
 }
 
 pub fn handle_token_received(
-    app: &mut AstraNovaApp,
+    app: &mut AstraioApp,
     index: usize,
     result: Result<crate::data::oauth2::OAuth2TokenResponse, AppError>,
 ) -> Task<Message> {
@@ -143,7 +143,7 @@ pub fn handle_token_received(
     Task::none()
 }
 
-pub fn handle_refresh_token(app: &mut AstraNovaApp, index: usize) -> Task<Message> {
+pub fn handle_refresh_token(app: &mut AstraioApp, index: usize) -> Task<Message> {
     if let Some(view) = app.request_tabs.get(index) {
         if let Auth::OAuth2(config) = &view.auth {
             let http_client = app.http_client.clone();
@@ -196,7 +196,7 @@ pub fn handle_refresh_token(app: &mut AstraNovaApp, index: usize) -> Task<Messag
     Task::none()
 }
 
-pub fn handle_start_device_auth(app: &AstraNovaApp, index: usize) -> Task<Message> {
+pub fn handle_start_device_auth(app: &AstraioApp, index: usize) -> Task<Message> {
     if let Some(view) = app.request_tabs.get(index) {
         if let Auth::OAuth2(config) = &view.auth {
             if config.device_auth_url.is_empty() {
@@ -227,7 +227,7 @@ pub fn handle_start_device_auth(app: &AstraNovaApp, index: usize) -> Task<Messag
 }
 
 pub fn handle_device_auth_received(
-    app: &mut AstraNovaApp,
+    app: &mut AstraioApp,
     index: usize,
     result: Result<crate::data::oauth2::DeviceAuthorizationResponse, AppError>,
 ) -> Task<Message> {
@@ -264,7 +264,7 @@ pub fn handle_device_auth_received(
 }
 
 pub fn handle_device_token_poll(
-    app: &mut AstraNovaApp,
+    app: &mut AstraioApp,
     index: usize,
     result: Result<crate::data::oauth2::DeviceTokenResponse, AppError>,
 ) -> Task<Message> {
@@ -323,7 +323,7 @@ pub fn handle_device_token_poll(
 }
 
 pub fn handle_auto_poll_toggle(
-    app: &mut AstraNovaApp,
+    app: &mut AstraioApp,
     index: usize,
     enabled: bool,
 ) -> Task<Message> {

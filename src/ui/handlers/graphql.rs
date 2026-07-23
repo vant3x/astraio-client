@@ -1,8 +1,8 @@
-use crate::ui::app::{AstraNovaApp, Message};
+use crate::ui::app::{AstraioApp, Message};
 use crate::ui::views::graphql_view;
 use iced::Task;
 
-pub fn handle_message(app: &mut AstraNovaApp, msg: graphql_view::Message) -> Task<Message> {
+pub fn handle_message(app: &mut AstraioApp, msg: graphql_view::Message) -> Task<Message> {
     match msg {
         graphql_view::Message::SendRequest => {
             let mut temp_view = app.graphql_view.clone_for_send();

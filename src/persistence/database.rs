@@ -192,12 +192,12 @@ impl std::fmt::Display for Session {
 }
 
 fn get_db_path() -> std::result::Result<PathBuf, AppError> {
-    let proj_dirs = ProjectDirs::from("com", "astranova", "client")
+    let proj_dirs = ProjectDirs::from("com", "astraio", "client")
         .ok_or_else(|| AppError::Database("Failed to determine project directories".to_string()))?;
     let data_dir = proj_dirs.data_dir();
     std::fs::create_dir_all(data_dir)
         .map_err(|e| AppError::Io(format!("Failed to create data directory: {}", e)))?;
-    Ok(data_dir.join("astranova.db"))
+    Ok(data_dir.join("astraio.db"))
 }
 
 pub fn init_schema(conn: &Connection) -> std::result::Result<(), AppError> {

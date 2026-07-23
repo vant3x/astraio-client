@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Commercial License](https://img.shields.io/badge/License-Commercial-green.svg)](LICENSING.md)
 
-<img src="assets/astra-bg.png" alt="AstraNova Logo" width="300">
+<img src="assets/astra-bg.png" alt="Astraio Logo" width="300">
 
 [Web](https://astraio.vercel.app/) -
 [Download installer](https://astraio.vercel.app/) -
