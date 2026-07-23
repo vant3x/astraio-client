@@ -64,7 +64,7 @@ src/
 
 - Use [GitHub Issues](https://github.com/vant3x/astraio-client-rust/issues)
 - Include OS, Rust version, and steps to reproduce
-- For security issues, email security@astraio.dev directly
+- For security issues, email alejandrovelasquezmol@gmail.com directly
 
 ## License
 
