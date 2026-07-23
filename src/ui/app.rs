@@ -57,6 +57,32 @@ impl Recipe for WsRecipe {
     }
 }
 
+struct MenuEventRecipe;
+
+impl Recipe for MenuEventRecipe {
+    type Output = Message;
+
+    fn hash(&self, state: &mut iced_futures::subscription::Hasher) {
+        use std::hash::Hash;
+        std::any::TypeId::of::<MenuEventRecipe>().hash(state);
+    }
+
+    fn stream(self: Box<Self>, _input: EventStream) -> BoxStream<'static, Message> {
+        use std::time::Duration;
+
+        futures::stream::unfold((), |()| async {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            let msg = muda::MenuEvent::receiver()
+                .try_recv()
+                .ok()
+                .and_then(|event| crate::ui::menu::handle_menu_event(&event));
+            Some((msg, ()))
+        })
+        .filter_map(|msg| async { msg })
+        .boxed()
+    }
+}
+
 struct DevicePollRecipe {
     tab_index: usize,
     device_code: String,
@@ -247,10 +273,15 @@ pub enum Message {
     ImportCookiesData(Option<String>),
     ExportCookies,
     ExportCookiesComplete(Option<String>),
+    ToggleSidebar,
+    ShowAbout,
+    Quit,
 }
 
 impl AstraioApp {
     fn new() -> (Self, Task<Message>) {
+        crate::ui::menu::ids();
+
         let (db_conn, environments) = match database::init() {
             Ok(conn) => {
                 let envs =
@@ -798,6 +829,17 @@ impl AstraioApp {
                 }
                 Task::none()
             }
+            Message::ToggleSidebar => {
+                self.show_collections = !self.show_collections;
+                Task::none()
+            }
+            Message::ShowAbout => {
+                self.toast_manager.info("Astraio Client v0.3.0-beta.0");
+                Task::none()
+            }
+            Message::Quit => {
+                std::process::exit(0);
+            }
         }
     }
 
@@ -930,10 +972,13 @@ impl AstraioApp {
 
         let device_poll_subscription = self.device_poll_subscription();
 
+        let menu_subscription = from_recipe(MenuEventRecipe);
+
         Subscription::batch(vec![
             ws_subscription,
             keyboard_subscription,
             device_poll_subscription,
+            menu_subscription,
         ])
     }
 
