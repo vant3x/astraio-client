@@ -13,6 +13,7 @@ use crate::ui::request_status::RequestStatus;
 use iced::highlighter;
 use iced::widget::image::Handle as ImageHandle;
 use iced::widget::text_editor;
+use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 pub(crate) const LOGO_BG_BYTES: &[u8] = include_bytes!("../../../../assets/astra-bg.png");
@@ -202,6 +203,19 @@ pub enum Message {
     PostResponseScriptChanged(text_editor::Action),
     SaveScripts,
     ScriptsSaved(Result<(), String>),
+    CopyScripts,
+    PasteScripts,
+    ScriptOutputUpdated(crate::ui::views::http_request_view::ScriptOutput),
+    SessionNewNameChanged(String),
+    SessionSave(String),
+    SessionLoad(String),
+    SessionDelete(String),
+    SessionConfirmDelete(String),
+    SessionCancelDelete,
+    SessionRenameStart(String),
+    SessionRenameValueChanged(String),
+    SessionRenameConfirm,
+    SessionRenameCancel,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -229,6 +243,16 @@ pub enum ScriptTab {
     #[default]
     PreRequest,
     PostResponse,
+    Output,
+}
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub struct ScriptOutput {
+    pub pre_logs: Vec<String>,
+    pub pre_errors: Vec<String>,
+    pub post_logs: Vec<String>,
+    pub post_errors: Vec<String>,
+    pub extracted_vars: Vec<(String, String)>,
 }
 
 pub use crate::ui::theme::method_color;
@@ -279,11 +303,18 @@ pub struct HttpRequestView {
     pub pre_request_script_editor: text_editor::Content,
     pub post_response_script_editor: text_editor::Content,
     pub active_script_tab: ScriptTab,
+    pub script_output: ScriptOutput,
     pub cookie_count: usize,
     pub cookie_domain_count: usize,
     pub cookie_manager: crate::ui::views::cookie_manager::CookieManagerView,
     pub cookie_domains: Vec<(String, usize)>,
     pub cookie_domain_cookies: Vec<CookieSnapshot>,
+    pub sessions: Vec<crate::persistence::database::Session>,
+    pub new_session_name: String,
+    pub selected_session: Option<String>,
+    pub pending_delete_session: Option<String>,
+    pub renaming_session: Option<String>,
+    pub rename_value: String,
 }
 
 impl Clone for HttpRequestView {
@@ -339,11 +370,85 @@ impl Clone for HttpRequestView {
                 &self.post_response_script_editor.text(),
             ),
             active_script_tab: self.active_script_tab.clone(),
+            script_output: self.script_output.clone(),
             cookie_count: self.cookie_count,
             cookie_domain_count: self.cookie_domain_count,
             cookie_manager: self.cookie_manager.clone(),
             cookie_domains: self.cookie_domains.clone(),
             cookie_domain_cookies: self.cookie_domain_cookies.clone(),
+            sessions: self.sessions.clone(),
+            new_session_name: self.new_session_name.clone(),
+            selected_session: self.selected_session.clone(),
+            pending_delete_session: self.pending_delete_session.clone(),
+            renaming_session: self.renaming_session.clone(),
+            rename_value: self.rename_value.clone(),
+        }
+    }
+}
+
+impl HttpRequestView {
+    pub fn clone_for_send(&self) -> Self {
+        Self {
+            url_input: self.url_input.clone(),
+            method: self.method.clone(),
+            body_input: text_editor::Content::with_text(&self.body_input.text()),
+            auth: self.auth.clone(),
+            headers_editor: self.headers_editor.clone(),
+            params_editor: self.params_editor.clone(),
+            request_content_type: self.request_content_type,
+            request_config: self.request_config.clone(),
+            body_type: self.body_type,
+            multipart_entries: self.multipart_entries.clone(),
+            multipart_next_id: self.multipart_next_id,
+            form_entries: self.form_entries.clone(),
+            form_next_id: self.form_next_id,
+            scripts: self.scripts.clone(),
+            active_tab: self.active_tab.clone(),
+            active_response_tab: self.active_response_tab.clone(),
+            request_status: self.request_status.clone(),
+            last_response: None,
+            response_body_editor: text_editor::Content::new(),
+            status_code: None,
+            content_type: None,
+            response_duration: None,
+            response_size: None,
+            highlighter_theme: self.highlighter_theme,
+            show_snippets: false,
+            show_import_curl: false,
+            import_curl_input: String::new(),
+            snippet_format: self.snippet_format,
+            snippet_content: text_editor::Content::new(),
+            word_wrap: self.word_wrap,
+            pending_request_data: None,
+            logo_handle: self.logo_handle.clone(),
+            show_response_search: false,
+            response_search_query: String::new(),
+            response_search_matches: Vec::new(),
+            response_search_index: 0,
+            show_image_preview: false,
+            image_preview_handle: None,
+            show_bearer_token: self.show_bearer_token,
+            show_api_key_value: self.show_api_key_value,
+            abort_handle: None,
+            pre_request_script_editor: text_editor::Content::with_text(
+                &self.pre_request_script_editor.text(),
+            ),
+            post_response_script_editor: text_editor::Content::with_text(
+                &self.post_response_script_editor.text(),
+            ),
+            active_script_tab: self.active_script_tab.clone(),
+            script_output: ScriptOutput::default(),
+            cookie_count: 0,
+            cookie_domain_count: 0,
+            cookie_manager: Default::default(),
+            cookie_domains: Vec::new(),
+            cookie_domain_cookies: Vec::new(),
+            sessions: Vec::new(),
+            new_session_name: String::new(),
+            selected_session: None,
+            pending_delete_session: None,
+            renaming_session: None,
+            rename_value: String::new(),
         }
     }
 }
@@ -405,11 +510,18 @@ impl Default for HttpRequestView {
             pre_request_script_editor: text_editor::Content::new(),
             post_response_script_editor: text_editor::Content::new(),
             active_script_tab: ScriptTab::default(),
+            script_output: ScriptOutput::default(),
             cookie_count: 0,
             cookie_domain_count: 0,
             cookie_manager: crate::ui::views::cookie_manager::CookieManagerView::default(),
             cookie_domains: Vec::new(),
             cookie_domain_cookies: Vec::new(),
+            sessions: Vec::new(),
+            new_session_name: String::new(),
+            selected_session: None,
+            pending_delete_session: None,
+            renaming_session: None,
+            rename_value: String::new(),
         }
     }
 }
@@ -1031,6 +1143,84 @@ impl HttpRequestView {
             }
             Message::ScriptsSaved(_) => {
                 // Handled in app.rs
+            }
+            Message::CopyScripts => {
+                if let Ok(scripts) = self.parse_scripts_from_editors() {
+                    if let Ok(json) = scripts.to_json() {
+                        if let Ok(mut clipboard) = arboard::Clipboard::new() {
+                            let _ = clipboard.set_text(json);
+                        }
+                    }
+                }
+            }
+            Message::PasteScripts => {
+                if let Ok(mut clipboard) = arboard::Clipboard::new() {
+                    if let Ok(text) = clipboard.get_text() {
+                        if let Ok(scripts) = crate::protocols::scripts::RequestScripts::from_json(&text) {
+                            self.load_scripts(&scripts);
+                        }
+                    }
+                }
+            }
+            Message::ScriptOutputUpdated(output) => {
+                self.script_output = output;
+            }
+            Message::SessionNewNameChanged(name) => {
+                self.new_session_name = name;
+            }
+            Message::SessionSave(name) => {
+                let name = name.trim().to_string();
+                if name.is_empty() {
+                    return;
+                }
+                self.new_session_name.clear();
+                // Actual DB save handled in app.rs
+            }
+            Message::SessionLoad(session_id) => {
+                // Actual data loading (cookies, headers, auth) handled in app.rs
+                self.selected_session = Some(session_id);
+            }
+            Message::SessionDelete(session_id) => {
+                self.pending_delete_session = Some(session_id);
+            }
+            Message::SessionConfirmDelete(session_id) => {
+                self.sessions.retain(|s| s.id != session_id);
+                self.pending_delete_session = None;
+                if self.selected_session.as_ref() == Some(&session_id) {
+                    self.selected_session = None;
+                }
+                // Persistence handled in app.rs
+            }
+            Message::SessionCancelDelete => {
+                self.pending_delete_session = None;
+            }
+            Message::SessionRenameStart(session_id) => {
+                if let Some(session) = self.sessions.iter().find(|s| s.id == session_id) {
+                    self.rename_value = session.name.clone();
+                }
+                self.renaming_session = Some(session_id);
+            }
+            Message::SessionRenameValueChanged(value) => {
+                self.rename_value = value;
+            }
+            Message::SessionRenameConfirm => {
+                if let Some(ref session_id) = self.renaming_session.clone() {
+                    let new_name = self.rename_value.trim().to_string();
+                    if !new_name.is_empty() {
+                        if let Some(session) =
+                            self.sessions.iter_mut().find(|s| &s.id == session_id)
+                        {
+                            session.name = new_name;
+                        }
+                    }
+                }
+                self.renaming_session = None;
+                self.rename_value.clear();
+                // Persistence handled in app.rs
+            }
+            Message::SessionRenameCancel => {
+                self.renaming_session = None;
+                self.rename_value.clear();
             }
         }
     }

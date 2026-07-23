@@ -1335,6 +1335,98 @@ impl HttpRequestView {
                 )
                 .on_press(Message::ClearCookies),
                 rule::horizontal(10),
+                text("Sessions").size(16),
+                {
+                    let new_session_input =
+                        iced::widget::text_input("New session name...", &self.new_session_name)
+                            .on_input(Message::SessionNewNameChanged)
+                            .padding(8)
+                            .width(Length::Fill);
+
+                    let save_btn = if self.new_session_name.trim().is_empty() {
+                        button(row![lucide::save().size(12), text(" Save").size(12)].spacing(4))
+                    } else {
+                        button(
+                            row![lucide::save().size(12), text(" Save").size(12)].spacing(4),
+                        )
+                        .on_press(Message::SessionSave(self.new_session_name.clone()))
+                    };
+
+                    let mut session_list = column![].spacing(4);
+
+                    if self.sessions.is_empty() {
+                        session_list = session_list.push(
+                            text("No sessions saved yet")
+                                .size(13)
+                                .color(Color::from_rgb(0.5, 0.5, 0.5)),
+                        );
+                    } else {
+                        for session in &self.sessions {
+                            let is_renaming = self
+                                .renaming_session
+                                .as_ref()
+                                .map(|s| s == &session.id)
+                                .unwrap_or(false);
+
+                            let is_pending_delete = self
+                                .pending_delete_session
+                                .as_ref()
+                                .map(|s| s == &session.id)
+                                .unwrap_or(false);
+
+                            let session_row = if is_renaming {
+                                let rename_input =
+                                    iced::widget::text_input("Rename...", &self.rename_value)
+                                        .on_input(Message::SessionRenameValueChanged)
+                                        .padding(4)
+                                        .width(Length::Fill);
+                                row![
+                                    rename_input,
+                                    button(text("✓").size(12))
+                                        .on_press(Message::SessionRenameConfirm),
+                                    button(text("✗").size(12))
+                                        .on_press(Message::SessionRenameCancel),
+                                ]
+                                .spacing(4)
+                                .align_y(Alignment::Center)
+                            } else if is_pending_delete {
+                                row![
+                                    text(format!("Delete \"{}\"?", session.name)).size(13),
+                                    button(text("Yes").size(12).color(Color::from_rgb(0.9, 0.3, 0.3)))
+                                        .on_press(Message::SessionConfirmDelete(
+                                            session.id.clone(),
+                                        )),
+                                    button(text("No").size(12))
+                                        .on_press(Message::SessionCancelDelete),
+                                ]
+                                .spacing(4)
+                                .align_y(Alignment::Center)
+                            } else {
+                                row![
+                                    button(text(&session.name).size(13))
+                                        .on_press(Message::SessionLoad(session.id.clone())),
+                                    button(lucide::pencil().size(11))
+                                        .on_press(Message::SessionRenameStart(session.id.clone())),
+                                    button(lucide::trash().size(11))
+                                        .on_press(Message::SessionDelete(session.id.clone())),
+                                ]
+                                .spacing(4)
+                                .align_y(Alignment::Center)
+                            };
+
+                            session_list = session_list.push(session_row);
+                        }
+                    }
+
+                    column![
+                        row![new_session_input, save_btn]
+                            .spacing(8)
+                            .align_y(Alignment::Center),
+                        session_list,
+                    ]
+                    .spacing(8)
+                },
+                rule::horizontal(10),
                 button(row![lucide::rotate_ccw().size(14), text(" Reset to Defaults")].spacing(4))
                     .on_press(Message::ResetSettings),
             ]
@@ -1452,15 +1544,9 @@ impl HttpRequestView {
 
         let header = row![
             text("Name").size(12).color(Color::from_rgb(0.6, 0.6, 0.6)),
-            text("Value")
-                .size(12)
-                .color(Color::from_rgb(0.6, 0.6, 0.6)),
-            text("Path")
-                .size(12)
-                .color(Color::from_rgb(0.6, 0.6, 0.6)),
-            text("Flags")
-                .size(12)
-                .color(Color::from_rgb(0.6, 0.6, 0.6)),
+            text("Value").size(12).color(Color::from_rgb(0.6, 0.6, 0.6)),
+            text("Path").size(12).color(Color::from_rgb(0.6, 0.6, 0.6)),
+            text("Flags").size(12).color(Color::from_rgb(0.6, 0.6, 0.6)),
             text("").size(12),
         ]
         .spacing(8)
@@ -1479,16 +1565,12 @@ impl HttpRequestView {
                 let is_editing = manager
                     .editing_cookie
                     .as_ref()
-                    .map(|(d, n, p)| {
-                        d == &cookie.domain && n == &cookie.name && p == &cookie.path
-                    })
+                    .map(|(d, n, p)| d == &cookie.domain && n == &cookie.name && p == &cookie.path)
                     .unwrap_or(false);
 
                 let value_cell: Element<'_, Message, Theme, iced::Renderer> = if is_editing {
                     iced::widget::text_input("value", &manager.edit_value)
-                        .on_input(|s| {
-                            Message::CookieManagerMsg(CmMsg::EditValueChanged(s))
-                        })
+                        .on_input(|s| Message::CookieManagerMsg(CmMsg::EditValueChanged(s)))
                         .padding(4)
                         .width(Length::Fill)
                         .into()
@@ -1499,27 +1581,21 @@ impl HttpRequestView {
                 let badges = self.render_cookie_badges(cookie);
 
                 let edit_save_btn = if is_editing {
-                    button(lucide::check().size(11)).on_press(Message::CookieManagerMsg(
-                        CmMsg::SaveEdit,
-                    ))
+                    button(lucide::check().size(11))
+                        .on_press(Message::CookieManagerMsg(CmMsg::SaveEdit))
                 } else {
                     button(lucide::pencil().size(11)).on_press(Message::CookieManagerMsg(
-                        CmMsg::StartEdit(
-                            domain.clone(),
-                            cookie.name.clone(),
-                            cookie.path.clone(),
-                        ),
+                        CmMsg::StartEdit(domain.clone(), cookie.name.clone(), cookie.path.clone()),
                     ))
                 };
 
-                let delete_btn =
-                    button(lucide::trash().size(11)).on_press(Message::CookieManagerMsg(
-                        CmMsg::DeleteCookie(
-                            domain.clone(),
-                            cookie.name.clone(),
-                            cookie.path.clone(),
-                        ),
-                    ));
+                let delete_btn = button(lucide::trash().size(11)).on_press(
+                    Message::CookieManagerMsg(CmMsg::DeleteCookie(
+                        domain.clone(),
+                        cookie.name.clone(),
+                        cookie.path.clone(),
+                    )),
+                );
 
                 let row_widget = row![
                     text(&cookie.name).size(12),
@@ -1547,14 +1623,10 @@ impl HttpRequestView {
                         .on_input(|s| Message::CookieManagerMsg(CmMsg::CookieSearchChanged(s)))
                         .padding(8)
                         .width(Length::Fill),
-                    button(
-                        row![lucide::upload().size(12), text(" Import").size(12)].spacing(4)
-                    )
-                    .on_press(Message::CookieManagerMsg(CmMsg::ImportCookies)),
-                    button(
-                        row![lucide::download().size(12), text(" Export").size(12)].spacing(4)
-                    )
-                    .on_press(Message::CookieManagerMsg(CmMsg::ExportCookies)),
+                    button(row![lucide::upload().size(12), text(" Import").size(12)].spacing(4))
+                        .on_press(Message::CookieManagerMsg(CmMsg::ImportCookies)),
+                    button(row![lucide::download().size(12), text(" Export").size(12)].spacing(4))
+                        .on_press(Message::CookieManagerMsg(CmMsg::ExportCookies)),
                 ]
                 .spacing(8)
                 .align_y(Alignment::Center),
@@ -1574,7 +1646,10 @@ impl HttpRequestView {
         .into()
     }
 
-    fn render_cookie_badges(&self, cookie: &CookieSnapshot) -> Element<'_, Message, Theme, iced::Renderer> {
+    fn render_cookie_badges(
+        &self,
+        cookie: &CookieSnapshot,
+    ) -> Element<'_, Message, Theme, iced::Renderer> {
         use crate::ui::views::cookie_manager::BadgeKind;
         let mut badges = row![].spacing(4);
 
@@ -1616,20 +1691,82 @@ impl HttpRequestView {
             button("Post-response").on_press(Message::ScriptTabSelected(ScriptTab::PostResponse))
         };
 
-        let tab_buttons = row![pre_request_btn, post_response_btn].spacing(5);
+        let output_btn = if self.active_script_tab == ScriptTab::Output {
+            button("Output")
+                .on_press(Message::ScriptTabSelected(ScriptTab::Output))
+                .style(iced::widget::button::primary)
+        } else {
+            button("Output").on_press(Message::ScriptTabSelected(ScriptTab::Output))
+        };
 
-        let editor_content = match self.active_script_tab {
+        let tab_buttons = row![pre_request_btn, post_response_btn, output_btn].spacing(5);
+
+        let action_buttons = row![
+            button("Copy Scripts").on_press(Message::CopyScripts),
+            button("Paste Scripts").on_press(Message::PasteScripts),
+            button("Save").on_press(Message::SaveScripts),
+        ]
+        .spacing(5);
+
+        let editor_content: Element<'_, Message> = match self.active_script_tab {
             ScriptTab::PreRequest => text_editor(&self.pre_request_script_editor)
                 .on_action(Message::PreRequestScriptChanged)
                 .highlight("json", self.highlighter_theme)
-                .height(Length::Fill),
+                .height(Length::Fill)
+                .into(),
             ScriptTab::PostResponse => text_editor(&self.post_response_script_editor)
                 .on_action(Message::PostResponseScriptChanged)
                 .highlight("json", self.highlighter_theme)
-                .height(Length::Fill),
+                .height(Length::Fill)
+                .into(),
+            ScriptTab::Output => {
+                let mut output_text = String::new();
+                if !self.script_output.pre_logs.is_empty() {
+                    output_text.push_str("=== Pre-request logs ===\n");
+                    for log in &self.script_output.pre_logs {
+                        output_text.push_str(&format!("  {}\n", log));
+                    }
+                    output_text.push('\n');
+                }
+                if !self.script_output.pre_errors.is_empty() {
+                    output_text.push_str("=== Pre-request errors ===\n");
+                    for err in &self.script_output.pre_errors {
+                        output_text.push_str(&format!("  {}\n", err));
+                    }
+                    output_text.push('\n');
+                }
+                if !self.script_output.post_logs.is_empty() {
+                    output_text.push_str("=== Post-response logs ===\n");
+                    for log in &self.script_output.post_logs {
+                        output_text.push_str(&format!("  {}\n", log));
+                    }
+                    output_text.push('\n');
+                }
+                if !self.script_output.post_errors.is_empty() {
+                    output_text.push_str("=== Post-response errors ===\n");
+                    for err in &self.script_output.post_errors {
+                        output_text.push_str(&format!("  {}\n", err));
+                    }
+                    output_text.push('\n');
+                }
+                if !self.script_output.extracted_vars.is_empty() {
+                    output_text.push_str("=== Extracted variables ===\n");
+                    for (k, v) in &self.script_output.extracted_vars {
+                        let preview: String = v.chars().take(80).collect();
+                        output_text.push_str(&format!("  {} = {}\n", k, preview));
+                    }
+                    output_text.push('\n');
+                }
+                if output_text.is_empty() {
+                    output_text = "No script output yet. Send a request to see results.".to_string();
+                }
+                scrollable(text(output_text).size(12))
+                    .height(Length::Fill)
+                    .into()
+            }
         };
 
-        let help_text = text("Define actions as a JSON array. Supported: set_variable, set_header, remove_header, set_body, set_url, set_method, assert_status, assert_header, assert_body, extract_json, extract_header, log, delay.")
+        let help_text = text("Actions: set_variable, set_header, remove_header, set_body, set_body_json, set_url, set_method, set_query, assert_status, assert_header, assert_body, assert_json_path, extract_json, extract_regex, extract_header, log, delay, transform_to_upper, transform_to_lower, transform_trim, encode_base64, decode_base64, hash_sha256, hmac_sha256, if_status. Tokens: {{$timestamp}} {{$uuid}} {{$randomInt}} {{$isoNow}}. Paths: items[0].id bracket notation.")
             .size(11)
             .color(Color::from_rgb(0.5, 0.5, 0.5));
 
@@ -1637,7 +1774,7 @@ impl HttpRequestView {
             column![
                 text("Scripts").size(16),
                 help_text,
-                tab_buttons,
+                row![tab_buttons, action_buttons].spacing(10),
                 editor_content,
             ]
             .spacing(8)
@@ -1755,10 +1892,7 @@ fn cookie_badge<'a>(
         .style(move |_theme: &Theme| iced::widget::container::Style {
             background: Some(bg.into()),
             text_color: Some(Color::WHITE),
-            border: iced::Border::default()
-                .rounded(4)
-                .color(bg)
-                .width(0),
+            border: iced::Border::default().rounded(4).color(bg).width(0),
             ..Default::default()
         })
         .padding(iced::Padding::from([2, 4]))

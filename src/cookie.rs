@@ -58,8 +58,8 @@ fn parse_cookie_expiry(s: &str) -> Option<i64> {
             let hour: u32 = time_parts[0].parse().ok()?;
             let min: u32 = time_parts[1].parse().ok()?;
             let sec: u32 = time_parts[2].parse().ok()?;
-            let naive = chrono::NaiveDate::from_ymd_opt(year, month, day)?
-                .and_hms_opt(hour, min, sec)?;
+            let naive =
+                chrono::NaiveDate::from_ymd_opt(year, month, day)?.and_hms_opt(hour, min, sec)?;
             Some(naive.and_utc().timestamp())
         })
 }
@@ -274,6 +274,7 @@ impl CookieJar {
         self.cookies.clear();
     }
 
+    #[allow(dead_code)]
     pub fn remove_expired(&mut self) {
         let now = chrono::Utc::now().timestamp();
         for cookies in self.cookies.values_mut() {

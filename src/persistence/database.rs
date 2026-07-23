@@ -394,6 +394,7 @@ pub fn init() -> std::result::Result<Connection, AppError> {
 }
 
 /// Persist a single cookie to SQLite (efficient for response handlers).
+#[allow(dead_code)]
 pub fn save_cookie(
     conn: &Connection,
     cookie: &crate::cookie::Cookie,
@@ -426,9 +427,7 @@ pub fn save_cookies(
     jar: &crate::cookie::CookieJar,
 ) -> std::result::Result<(), AppError> {
     let now = crate::utils::timestamp_seconds();
-    let all_domains: Vec<String> = {
-        jar.domains().iter().map(|(d, _)| d.to_string()).collect()
-    };
+    let all_domains: Vec<String> = { jar.domains().iter().map(|(d, _)| d.to_string()).collect() };
 
     let tx = conn
         .unchecked_transaction()
@@ -518,7 +517,10 @@ pub fn clear_cookies_db(conn: &Connection) -> std::result::Result<(), AppError> 
 }
 
 /// Remove all cookies for a specific domain.
-pub fn clear_domain_cookies_db(conn: &Connection, domain: &str) -> std::result::Result<(), AppError> {
+pub fn clear_domain_cookies_db(
+    conn: &Connection,
+    domain: &str,
+) -> std::result::Result<(), AppError> {
     conn.execute("DELETE FROM cookies WHERE domain = ?1", params![domain])
         .map_err(|e| AppError::Database(format!("Failed to clear domain cookies: {}", e)))?;
     Ok(())
@@ -593,10 +595,8 @@ pub fn load_sessions(conn: &Connection) -> std::result::Result<Vec<Session>, App
         .map_err(|e| AppError::Database(format!("Failed to query sessions: {}", e)))?;
 
     let mut sessions = Vec::new();
-    for row in rows {
-        if let Ok(s) = row {
-            sessions.push(s);
-        }
+    for s in rows.flatten() {
+        sessions.push(s);
     }
     Ok(sessions)
 }
@@ -1025,6 +1025,7 @@ impl SaveRequestParams {
         headers: &[(String, String)],
         body: Option<&str>,
         params: &[(String, String)],
+        scripts: Option<&str>,
     ) -> Self {
         Self {
             collection_id,
@@ -1039,7 +1040,7 @@ impl SaveRequestParams {
             auth_data: None,
             params: params.to_vec(),
             config_json: None,
-            scripts: None,
+            scripts: scripts.map(str::to_string),
         }
     }
 }

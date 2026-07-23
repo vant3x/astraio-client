@@ -5,7 +5,7 @@ use iced::Task;
 pub fn handle_message(app: &mut AstraNovaApp, msg: graphql_view::Message) -> Task<Message> {
     match msg {
         graphql_view::Message::SendRequest => {
-            let mut temp_view = app.graphql_view.clone();
+            let mut temp_view = app.graphql_view.clone_for_send();
 
             // Apply collection variables if available
             if let Some(env) = &app.active_environment {
@@ -34,7 +34,9 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: graphql_view::Message) -> Tas
                                 .push(("cookie".to_string(), cookie_header));
                         }
                     } else {
-                        log::error!("Failed to acquire cookie_jar lock for GraphQL cookie injection");
+                        log::error!(
+                            "Failed to acquire cookie_jar lock for GraphQL cookie injection"
+                        );
                     }
 
                     let needs_custom_client = http_request.config.proxy_url.is_some()
@@ -122,7 +124,7 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: graphql_view::Message) -> Tas
             }
         }
         graphql_view::Message::IntrospectSchema => {
-            let mut temp_view = app.graphql_view.clone();
+            let mut temp_view = app.graphql_view.clone_for_send();
             if let Some(env) = &app.active_environment {
                 temp_view.apply_environment(env);
             }
@@ -336,7 +338,15 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: graphql_view::Message) -> Tas
             Task::none()
         }
         graphql_view::Message::ResponseReceived(Ok(_)) => {
-            if let graphql_view::Message::ResponseReceived(Ok((_, _, ref headers, _, _, ref request_url))) = msg {
+            if let graphql_view::Message::ResponseReceived(Ok((
+                _,
+                _,
+                ref headers,
+                _,
+                _,
+                ref request_url,
+            ))) = msg
+            {
                 let mut captured_cookies = false;
                 if let Ok(mut jar) = app.cookie_jar.lock() {
                     for (key, value) in headers {

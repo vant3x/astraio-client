@@ -22,6 +22,23 @@ pub struct PostmanItem {
     pub item: Vec<PostmanItem>,
     #[serde(default)]
     pub request: Option<PostmanRequest>,
+    #[serde(default)]
+    pub event: Option<Vec<PostmanEvent>>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct PostmanEvent {
+    pub listen: String,
+    #[serde(default)]
+    pub script: Option<PostmanScript>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct PostmanScript {
+    #[serde(default)]
+    pub exec: Vec<String>,
+    #[serde(default)]
+    pub r#type: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -34,6 +51,8 @@ pub struct PostmanRequest {
     pub body: Option<PostmanBody>,
     #[serde(default)]
     pub url: Option<PostmanUrl>,
+    #[serde(default)]
+    pub event: Option<Vec<PostmanEvent>>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -92,6 +111,7 @@ pub struct ImportedRequest {
     pub headers: Vec<(String, String)>,
     pub body: Option<String>,
     pub params: Vec<(String, String)>,
+    pub scripts: Option<String>,
 }
 
 pub fn parse_postman_collection(json: &str) -> Result<ImportedCollection, AppError> {
@@ -140,6 +160,39 @@ fn parse_postman_request(item: &PostmanItem) -> Option<ImportedRequest> {
     let body = request.body.as_ref().and_then(|b| b.raw.clone());
     let params = extract_params(request.url.as_ref()?);
 
+    let mut pre_request_actions = Vec::new();
+    let mut post_response_actions = Vec::new();
+
+    let events = request.event.as_ref().or(item.event.as_ref());
+    if let Some(events) = events {
+        for event in events {
+            if let Some(script) = &event.script {
+                let code = script.exec.join("\n");
+                if !code.trim().is_empty() {
+                    let action = serde_json::json!({
+                        "action": "log",
+                        "message": format!("[Postman {}] {}", event.listen, code)
+                    });
+                    match event.listen.as_str() {
+                        "prerequest" => pre_request_actions.push(action),
+                        "test" => post_response_actions.push(action),
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+
+    let scripts = if !pre_request_actions.is_empty() || !post_response_actions.is_empty() {
+        let scripts_json = serde_json::json!({
+            "pre_request": pre_request_actions,
+            "post_response": post_response_actions,
+        });
+        Some(scripts_json.to_string())
+    } else {
+        None
+    };
+
     Some(ImportedRequest {
         name: item.name.clone(),
         method: if request.method.is_empty() {
@@ -151,6 +204,7 @@ fn parse_postman_request(item: &PostmanItem) -> Option<ImportedRequest> {
         headers,
         body,
         params,
+        scripts,
     })
 }
 
@@ -359,5 +413,68 @@ mod tests {
     fn parse_invalid_json_returns_error() {
         let result = parse_postman_collection("not json");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_request_with_scripts() {
+        let json = r#"{
+            "info": { "name": "API" },
+            "item": [
+                {
+                    "name": "Login",
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": { "mode": "raw", "raw": "{\"user\":\"admin\"}" },
+                        "url": { "raw": "https://api.example.com/login" }
+                    },
+                    "event": [
+                        {
+                            "listen": "prerequest",
+                            "script": {
+                                "exec": ["pm.environment.set('timestamp', Date.now());"],
+                                "type": "text/javascript"
+                            }
+                        },
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": ["pm.test('Status is 200', function() { pm.response.to.have.status(200); });"],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ]
+                }
+            ]
+        }"#;
+
+        let collection = parse_postman_collection(json).unwrap();
+        assert_eq!(collection.requests.len(), 1);
+        assert!(collection.requests[0].scripts.is_some());
+        let scripts = collection.requests[0].scripts.as_ref().unwrap();
+        assert!(scripts.contains("prerequest"));
+        assert!(scripts.contains("test"));
+        assert!(scripts.contains("pm.environment.set"));
+        assert!(scripts.contains("pm.test"));
+    }
+
+    #[test]
+    fn parse_request_without_scripts() {
+        let json = r#"{
+            "info": { "name": "API" },
+            "item": [
+                {
+                    "name": "Get Users",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": { "raw": "https://api.example.com/users" }
+                    }
+                }
+            ]
+        }"#;
+
+        let collection = parse_postman_collection(json).unwrap();
+        assert!(collection.requests[0].scripts.is_none());
     }
 }

@@ -174,6 +174,42 @@ impl Clone for GraphQLView {
     }
 }
 
+impl GraphQLView {
+    pub fn clone_for_send(&self) -> Self {
+        Self {
+            url_input: self.url_input.clone(),
+            query_input: text_editor::Content::with_text(&self.query_input.text()),
+            variables_input: text_editor::Content::with_text(&self.variables_input.text()),
+            operation_name: self.operation_name.clone(),
+            headers_editor: self.headers_editor.clone(),
+            auth: self.auth.clone(),
+            request_config: self.request_config.clone(),
+            active_tab: self.active_tab,
+            active_response_tab: self.active_response_tab,
+            request_status: self.request_status.clone(),
+            last_response: None,
+            response_body_editor: text_editor::Content::new(),
+            status_code: None,
+            content_type: None,
+            response_headers: Vec::new(),
+            response_duration: None,
+            response_size: None,
+            highlighter_theme: self.highlighter_theme,
+            word_wrap: self.word_wrap,
+            query_validation: None,
+            schema: self.schema.clone(),
+            schema_loading: false,
+            schema_search: self.schema_search.clone(),
+            schema_selected_type: None,
+            show_save_menu: false,
+            last_save_status: None,
+            autocomplete_suggestions: Vec::new(),
+            show_bearer_token: self.show_bearer_token,
+            show_api_key_value: self.show_api_key_value,
+        }
+    }
+}
+
 impl Default for GraphQLView {
     fn default() -> Self {
         Self {

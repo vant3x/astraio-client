@@ -163,7 +163,6 @@ pub(crate) struct AstraNovaApp {
     pub(crate) current_view: View,
     pub(crate) show_history: bool,
     pub(crate) show_collections: bool,
-    pub(crate) show_sessions: bool,
     pub(crate) show_env_info: bool,
     pub(crate) ws_sender: Option<WsSender>,
     pub(crate) ws_receiver: Option<Arc<Mutex<Option<mpsc::UnboundedReceiver<WsEvent>>>>>,
@@ -176,7 +175,6 @@ pub(crate) struct AstraNovaApp {
     pub(crate) dark_mode: bool,
     pub(crate) secret_store: crate::services::secret_store::SecretStore,
     pub(crate) global_config: crate::http_client::config::GlobalConfig,
-    pub(crate) session_manager: crate::ui::views::session_manager::SessionManagerView,
 }
 
 #[derive(Debug, Clone)]
@@ -200,7 +198,6 @@ pub enum Message {
     ToggleHistory,
     CollectionMsg(collection_view::Message),
     ToggleCollections,
-    ToggleSessions,
     ToggleEnvInfo,
     ToggleTheme,
     WebSocketMsg(websocket_view::Message),
@@ -250,7 +247,6 @@ pub enum Message {
     ImportCookiesData(Option<String>),
     ExportCookies,
     ExportCookiesComplete(Option<String>),
-    SessionManagerMsg(crate::ui::views::session_manager::Message),
 }
 
 impl AstraNovaApp {
@@ -307,14 +303,14 @@ impl AstraNovaApp {
         // Load global config
         let global_config = crate::http_client::config::GlobalConfig::load(&db_conn);
 
-        let sessions = crate::persistence::database::load_sessions(&db_conn)
-            .unwrap_or_else(|e| {
-                log::warn!("Failed to load sessions: {}", e);
-                Vec::new()
-            });
+        let sessions = crate::persistence::database::load_sessions(&db_conn).unwrap_or_else(|e| {
+            log::warn!("Failed to load sessions: {}", e);
+            Vec::new()
+        });
 
         let default_tab = HttpRequestView {
             request_config: global_config.request_config.clone(),
+            sessions: sessions.clone(),
             ..HttpRequestView::default()
         };
 
@@ -348,10 +344,9 @@ impl AstraNovaApp {
             graphql_view: GraphQLView::default(),
             active_protocol: Protocol::Http,
             current_view: View::Main,
-    show_history: false,
-    show_collections: false,
-    show_sessions: false,
-    show_env_info: false,
+            show_history: false,
+            show_collections: false,
+            show_env_info: false,
             ws_sender: None,
             ws_receiver: None,
             ws_shutdown: None,
@@ -363,11 +358,6 @@ impl AstraNovaApp {
             dark_mode,
             secret_store,
             global_config,
-            session_manager: {
-                let mut sm = crate::ui::views::session_manager::SessionManagerView::default();
-                sm.sessions = sessions;
-                sm
-            },
         };
         (app, Task::none())
     }
@@ -381,6 +371,8 @@ impl AstraNovaApp {
             Message::AddRequestTab => {
                 let mut new_view = HttpRequestView {
                     request_config: self.global_config.request_config.clone(),
+                    sessions: crate::persistence::database::load_sessions(&self.db_conn)
+                        .unwrap_or_default(),
                     ..HttpRequestView::default()
                 };
                 if let Some(env) = &self.active_environment {
@@ -472,15 +464,6 @@ impl AstraNovaApp {
                             Vec::new()
                         });
                     self.collection_view.sync_collections(&cols);
-                }
-                Task::none()
-            }
-            Message::ToggleSessions => {
-                self.show_sessions = !self.show_sessions;
-                if self.show_sessions {
-                    self.session_manager.sessions =
-                        crate::persistence::database::load_sessions(&self.db_conn)
-                            .unwrap_or_default();
                 }
                 Task::none()
             }
@@ -740,22 +723,17 @@ impl AstraNovaApp {
                 self.sync_cookie_data_to_tabs();
                 Task::none()
             }
-            Message::ImportCookies => {
-                Task::perform(
-                    async {
-                        rfd::AsyncFileDialog::new()
-                            .add_filter(
-                                "Cookie files",
-                                &["txt", "json", "cookie", "cookies"],
-                            )
-                            .pick_file()
-                            .await
-                            .map(|f| f.path().to_path_buf())
-                            .and_then(|p| std::fs::read_to_string(p).ok())
-                    },
-                    Message::ImportCookiesData,
-                )
-            }
+            Message::ImportCookies => Task::perform(
+                async {
+                    rfd::AsyncFileDialog::new()
+                        .add_filter("Cookie files", &["txt", "json", "cookie", "cookies"])
+                        .pick_file()
+                        .await
+                        .map(|f| f.path().to_path_buf())
+                        .and_then(|p| std::fs::read_to_string(p).ok())
+                },
+                Message::ImportCookiesData,
+            ),
             Message::ImportCookiesData(content) => {
                 if let Some(content) = content {
                     let new_jar = if let Ok(jar) = crate::cookie::CookieJar::from_json(&content) {
@@ -781,7 +759,9 @@ impl AstraNovaApp {
                             log::warn!("Failed to persist imported cookies: {}", e);
                         }
                     } else {
-                        log::error!("Failed to acquire cookie_jar lock for persisting imported cookies");
+                        log::error!(
+                            "Failed to acquire cookie_jar lock for persisting imported cookies"
+                        );
                     }
                     self.sync_cookie_data_to_tabs();
                     self.toast_manager
@@ -809,9 +789,7 @@ impl AstraNovaApp {
                                 Some(())
                             })
                     },
-                    |result| {
-                        Message::ExportCookiesComplete(result.map(|_| "Exported".to_string()))
-                    },
+                    |result| Message::ExportCookiesComplete(result.map(|_| "Exported".to_string())),
                 )
             }
             Message::ExportCookiesComplete(result) => {
@@ -820,217 +798,11 @@ impl AstraNovaApp {
                 }
                 Task::none()
             }
-            Message::SessionManagerMsg(msg) => {
-                use crate::ui::views::session_manager::Message as SmMsg;
-                match msg {
-                    SmMsg::SessionSelected(id) => {
-                        self.session_manager.selected_session = Some(id);
-                    }
-                    SmMsg::NewSessionNameChanged(name) => {
-                        self.session_manager.new_session_name = name;
-                    }
-                    SmMsg::SaveSession(name) => {
-                        let name = name.trim().to_string();
-                        if name.is_empty() {
-                            return Task::none();
-                        }
-                        let id = format!(
-                            "{}-{}",
-                            chrono::Utc::now().timestamp_millis(),
-                            &name[..name.len().min(8)]
-                        );
-                        let cookies_json = self
-                            .cookie_jar
-                            .lock()
-                            .map(|jar| jar.to_json_pretty().unwrap_or_else(|_| "[]".to_string()))
-                            .unwrap_or_else(|e| {
-                                log::error!("Failed to acquire cookie_jar lock for session save: {}", e);
-                                "[]".to_string()
-                            });
-
-                        let active_view = self.request_tabs.get(self.active_request_tab_index);
-                        let headers_json = active_view
-                            .map(|v| {
-                                let entries: Vec<serde_json::Value> = v
-                                    .headers_editor
-                                    .entries
-                                    .iter()
-                                    .map(|e| {
-                                        serde_json::json!({
-                                            "key": e.key,
-                                            "value": e.value,
-                                            "secret": e.secret,
-                                        })
-                                    })
-                                    .collect();
-                                serde_json::to_string_pretty(&entries)
-                                    .unwrap_or_else(|_| "[]".to_string())
-                            })
-                            .unwrap_or_else(|| "[]".to_string());
-
-                        let auth_json = active_view
-                            .map(|v| serde_json::to_string(&v.auth).ok())
-                            .flatten();
-
-                        let now = chrono::Utc::now()
-                            .format("%Y-%m-%d %H:%M:%S")
-                            .to_string();
-                        let session = crate::persistence::database::Session {
-                            id: id.clone(),
-                            name,
-                            cookies_json,
-                            headers_json,
-                            auth_json,
-                            created_at: now.clone(),
-                            updated_at: now,
-                        };
-                        if let Err(e) =
-                            crate::persistence::database::save_session(&self.db_conn, &session)
-                        {
-                            self.toast_manager
-                                .error(format!("Failed to save session: {}", e));
-                        } else {
-                            self.session_manager.sessions =
-                                crate::persistence::database::load_sessions(&self.db_conn)
-                                    .unwrap_or_default();
-                            self.session_manager.new_session_name.clear();
-                            self.toast_manager
-                                .success(format!("Session saved: {}", session.name));
-                        }
-                    }
-                    SmMsg::LoadSession(id) => {
-                        let session = self
-                            .session_manager
-                            .sessions
-                            .iter()
-                            .find(|s| s.id == id)
-                            .cloned();
-                        if let Some(session) = session {
-                            if let Ok(jar) =
-                                crate::cookie::CookieJar::from_json(&session.cookies_json)
-                            {
-                                if let Ok(mut app_jar) = self.cookie_jar.lock() {
-                                    *app_jar = jar;
-                                } else {
-                                    log::error!("Failed to acquire cookie_jar lock for session load");
-                                }
-                                if let Ok(jar) = self.cookie_jar.lock() {
-                                    if let Err(e) = crate::persistence::database::save_cookies(
-                                        &self.db_conn,
-                                        &jar,
-                                    ) {
-                                        log::warn!("Failed to persist loaded cookies: {}", e);
-                                    }
-                                } else {
-                                    log::error!("Failed to acquire cookie_jar lock for persisting loaded cookies");
-                                }
-                                self.sync_cookie_data_to_tabs();
-                            }
-                            if let Some(view) =
-                                self.request_tabs.get_mut(self.active_request_tab_index)
-                            {
-                                if let Ok(headers) =
-                                    serde_json::from_str::<Vec<serde_json::Value>>(
-                                        &session.headers_json,
-                                    )
-                                {
-                                    view.headers_editor.entries.clear();
-                                    for (i, h) in headers.iter().enumerate() {
-                                        view.headers_editor.entries.push(
-                                            crate::ui::components::key_value_editor::KeyValueEntry {
-                                                id: i,
-                                                key: h["key"]
-                                                    .as_str()
-                                                    .unwrap_or("")
-                                                    .to_string(),
-                                                value: h["value"]
-                                                    .as_str()
-                                                    .unwrap_or("")
-                                                    .to_string(),
-                                                secret: h["secret"].as_bool().unwrap_or(false),
-                                            },
-                                        );
-                                    }
-                                }
-                                if let Some(auth_json) = &session.auth_json {
-                                    if let Ok(auth) =
-                                        serde_json::from_str::<crate::data::auth::Auth>(auth_json)
-                                    {
-                                        view.auth = auth;
-                                    }
-                                }
-                            }
-                            self.toast_manager
-                                .success(format!("Session loaded: {}", session.name));
-                        }
-                    }
-                    SmMsg::DeleteSession(id) => {
-                        self.session_manager.pending_delete = Some(id);
-                    }
-                    SmMsg::ConfirmDeleteSession(id) => {
-                        self.session_manager.pending_delete = None;
-                        if let Err(e) =
-                            crate::persistence::database::delete_session(&self.db_conn, &id)
-                        {
-                            self.toast_manager
-                                .error(format!("Failed to delete session: {}", e));
-                        } else {
-                            self.session_manager.sessions =
-                                crate::persistence::database::load_sessions(&self.db_conn)
-                                    .unwrap_or_default();
-                            if self.session_manager.selected_session.as_ref() == Some(&id) {
-                                self.session_manager.selected_session = None;
-                            }
-                            self.toast_manager.success("Session deleted".to_string());
-                        }
-                    }
-                    SmMsg::CancelDeleteSession => {
-                        self.session_manager.pending_delete = None;
-                    }
-                    SmMsg::RenameSessionStart(id) => {
-                        let name = self
-                            .session_manager
-                            .sessions
-                            .iter()
-                            .find(|s| s.id == id)
-                            .map(|s| s.name.clone())
-                            .unwrap_or_default();
-                        self.session_manager.renaming_session = Some(id);
-                        self.session_manager.rename_value = name;
-                    }
-                    SmMsg::RenameSessionValueChanged(v) => {
-                        self.session_manager.rename_value = v;
-                    }
-                    SmMsg::RenameSessionConfirm => {
-                        if let Some(id) = self.session_manager.renaming_session.clone() {
-                            let new_name = self.session_manager.rename_value.trim().to_string();
-                            if !new_name.is_empty() {
-                                let _ =
-                                    crate::persistence::database::rename_session(
-                                        &self.db_conn,
-                                        &id,
-                                        &new_name,
-                                    );
-                                self.session_manager.sessions =
-                                    crate::persistence::database::load_sessions(&self.db_conn)
-                                        .unwrap_or_default();
-                            }
-                        }
-                        self.session_manager.renaming_session = None;
-                        self.session_manager.rename_value.clear();
-                    }
-                    SmMsg::RenameSessionCancel => {
-                        self.session_manager.renaming_session = None;
-                        self.session_manager.rename_value.clear();
-                    }
-                }
-                Task::none()
-            }
         }
     }
 
     pub(crate) fn sync_cookie_data_to_tabs(&mut self) {
-        let snapshot = match self.cookie_jar.lock() {
+        let (domains, total, domain_count) = match self.cookie_jar.lock() {
             Ok(jar) => {
                 let domains: Vec<(String, usize)> = jar
                     .domains()
@@ -1039,24 +811,7 @@ impl AstraNovaApp {
                     .collect();
                 let total = jar.total_count();
                 let domain_count = jar.domain_count();
-
-                let mut all_cookies: Vec<crate::ui::views::http_request_view::CookieSnapshot> =
-                    Vec::with_capacity(total);
-                for (d, _) in &domains {
-                    for c in jar.cookies_for_domain(d) {
-                        all_cookies.push(crate::ui::views::http_request_view::CookieSnapshot {
-                            name: c.name.clone(),
-                            value: c.value.clone(),
-                            domain: c.domain.clone(),
-                            path: c.path.clone(),
-                            secure: c.secure,
-                            http_only: c.http_only,
-                            same_site: c.same_site.to_string(),
-                            expires: c.expires.clone(),
-                        });
-                    }
-                }
-                (domains, total, domain_count, all_cookies)
+                (domains, total, domain_count)
             }
             Err(e) => {
                 log::error!("Failed to acquire cookie_jar lock for sync: {}", e);
@@ -1064,12 +819,33 @@ impl AstraNovaApp {
             }
         };
 
-        let (domains, total, domain_count, all_cookies) = snapshot;
-        for tab in &mut self.request_tabs {
+        let active_idx = self.active_request_tab_index;
+        for (i, tab) in self.request_tabs.iter_mut().enumerate() {
             tab.cookie_count = total;
             tab.cookie_domain_count = domain_count;
             tab.cookie_domains = domains.clone();
-            tab.cookie_domain_cookies.clone_from(&all_cookies);
+            if i == active_idx {
+                if let Ok(jar) = self.cookie_jar.lock() {
+                    let mut all_cookies = Vec::with_capacity(total);
+                    for (d, _) in &domains {
+                        for c in jar.cookies_for_domain(d) {
+                            all_cookies.push(crate::ui::views::http_request_view::CookieSnapshot {
+                                name: c.name.clone(),
+                                value: c.value.clone(),
+                                domain: c.domain.clone(),
+                                path: c.path.clone(),
+                                secure: c.secure,
+                                http_only: c.http_only,
+                                same_site: c.same_site.to_string(),
+                                expires: c.expires.clone(),
+                            });
+                        }
+                    }
+                    tab.cookie_domain_cookies = all_cookies;
+                }
+            } else {
+                tab.cookie_domain_cookies.clear();
+            }
         }
     }
 
@@ -1219,10 +995,6 @@ impl AstraNovaApp {
             button(row![lucide::folder().size(14), text(" Collections")].spacing(4))
                 .on_press(Message::ToggleCollections);
 
-        let sessions_button =
-            button(row![lucide::bookmark().size(14), text(" Sessions")].spacing(4))
-                .on_press(Message::ToggleSessions);
-
         let theme_button = if self.dark_mode {
             button(row![lucide::sun().size(14), text(" Light")].spacing(4))
                 .on_press(Message::ToggleTheme)
@@ -1245,9 +1017,6 @@ impl AstraNovaApp {
         .placeholder("No Environment");
 
         let mut env_controls = row![
-            history_button,
-            collections_button,
-            sessions_button,
             theme_button,
             protocol_selector,
             env_selector,
@@ -1268,10 +1037,17 @@ impl AstraNovaApp {
             );
         }
 
-        let toolbar = row![add_tab_button, close_tab_button, env_controls]
-            .spacing(10)
-            .padding(10)
-            .align_y(Alignment::Center);
+        let toolbar = row![
+            add_tab_button,
+            close_tab_button,
+            text("").width(Length::Fixed(4.0)),
+            history_button,
+            collections_button,
+            env_controls
+        ]
+        .spacing(10)
+        .padding(10)
+        .align_y(Alignment::Center);
 
         let env_help_section: Element<Message> = if let Some(active_env) = &self.active_environment
         {
@@ -1382,19 +1158,7 @@ impl AstraNovaApp {
                         None
                     };
 
-                    let sessions_panel_opt = if self.show_sessions {
-                        Some(
-                            container(self.session_manager.view().map(Message::SessionManagerMsg))
-                                .width(Length::FillPortion(1))
-                                .height(Length::Fill),
-                        )
-                    } else {
-                        None
-                    };
-
-                    let has_right = history_panel_opt.is_some()
-                        || collections_panel_opt.is_some()
-                        || sessions_panel_opt.is_some();
+                    let has_right = history_panel_opt.is_some() || collections_panel_opt.is_some();
 
                     if !has_right {
                         container(main_content)
@@ -1407,9 +1171,6 @@ impl AstraNovaApp {
                             row = row.push(rule::vertical(1)).push(p);
                         }
                         if let Some(p) = collections_panel_opt {
-                            row = row.push(rule::vertical(1)).push(p);
-                        }
-                        if let Some(p) = sessions_panel_opt {
                             row = row.push(rule::vertical(1)).push(p);
                         }
                         container(row)

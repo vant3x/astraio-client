@@ -251,10 +251,10 @@ impl CollectionView {
                 None
             }
             Message::RemoveCollectionVariable(col_idx, var_idx) => {
-                if self.show_variables_for_collection == Some(col_idx) {
-                    if var_idx < self.editing_variables.len() {
-                        self.editing_variables.remove(var_idx);
-                    }
+                if self.show_variables_for_collection == Some(col_idx)
+                    && var_idx < self.editing_variables.len()
+                {
+                    self.editing_variables.remove(var_idx);
                 }
                 None
             }
@@ -718,9 +718,8 @@ impl CollectionView {
                             .size(11)
                             .padding(3)
                             .width(Length::FillPortion(2)),
-                        button(lucide::trash().size(10)).on_press(
-                            Message::RemoveCollectionVariable(col_idx, v_idx),
-                        ),
+                        button(lucide::trash().size(10))
+                            .on_press(Message::RemoveCollectionVariable(col_idx, v_idx),),
                     ]
                     .spacing(4)
                     .align_y(Alignment::Center);
@@ -729,18 +728,12 @@ impl CollectionView {
 
                 let var_actions = row![
                     Self::indent(2),
-                    button(
-                        row![lucide::plus().size(10), text(" Add").size(10)].spacing(2)
-                    )
-                    .on_press(Message::AddCollectionVariable(col_idx)),
-                    button(
-                        row![lucide::check().size(10), text(" Save").size(10)].spacing(2)
-                    )
-                    .on_press(Message::SaveCollectionVariables(col_idx)),
-                    button(
-                        row![lucide::x().size(10), text(" Cancel").size(10)].spacing(2)
-                    )
-                    .on_press(Message::ToggleVariablesPanel(col_idx)),
+                    button(row![lucide::plus().size(10), text(" Add").size(10)].spacing(2))
+                        .on_press(Message::AddCollectionVariable(col_idx)),
+                    button(row![lucide::check().size(10), text(" Save").size(10)].spacing(2))
+                        .on_press(Message::SaveCollectionVariables(col_idx)),
+                    button(row![lucide::x().size(10), text(" Cancel").size(10)].spacing(2))
+                        .on_press(Message::ToggleVariablesPanel(col_idx)),
                 ]
                 .spacing(6);
                 tree = tree.push(var_actions);

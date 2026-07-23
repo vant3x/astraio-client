@@ -36,6 +36,64 @@ pub fn handle_http_request_msg(
     index: usize,
     msg: http_request_view::Message,
 ) -> Task<Message> {
+    // Handle SessionLoad separately to avoid borrow conflicts with app.sync_cookie_data_to_tabs
+    if let http_request_view::Message::SessionLoad(session_id) = &msg {
+        let session_data = app
+            .request_tabs
+            .get(index)
+            .and_then(|v| v.sessions.iter().find(|s| s.id == *session_id))
+            .map(|s| {
+                (
+                    s.cookies_json.clone(),
+                    s.headers_json.clone(),
+                    s.auth_json.clone(),
+                )
+            });
+
+        if let Some((cookies_json, headers_json, auth_json)) = session_data {
+            // Load cookies into jar (app-level)
+            if let Ok(jar) = crate::cookie::CookieJar::from_json(&cookies_json) {
+                {
+                    if let Ok(mut app_jar) = app.cookie_jar.lock() {
+                        *app_jar = jar;
+                    } else {
+                        log::error!("Failed to acquire cookie_jar lock for session load");
+                    }
+                }
+                if let Ok(jar) = app.cookie_jar.lock() {
+                    if let Err(e) = crate::persistence::database::save_cookies(&app.db_conn, &jar) {
+                        log::warn!("Failed to persist loaded cookies: {}", e);
+                    }
+                }
+                app.sync_cookie_data_to_tabs();
+            }
+
+            // Re-acquire view to load headers/auth
+            if let Some(view) = app.request_tabs.get_mut(index) {
+                if let Ok(headers) = serde_json::from_str::<Vec<serde_json::Value>>(&headers_json) {
+                    view.headers_editor.entries.clear();
+                    for (i, h) in headers.iter().enumerate() {
+                        view.headers_editor.entries.push(
+                            crate::ui::components::key_value_editor::KeyValueEntry {
+                                id: i,
+                                key: h["key"].as_str().unwrap_or("").to_string(),
+                                value: h["value"].as_str().unwrap_or("").to_string(),
+                                secret: h["secret"].as_bool().unwrap_or(false),
+                            },
+                        );
+                    }
+                }
+                if let Some(auth_json) = &auth_json {
+                    if let Ok(auth) = serde_json::from_str::<crate::data::auth::Auth>(auth_json) {
+                        view.auth = auth;
+                    }
+                }
+                view.selected_session = Some(session_id.clone());
+            }
+        }
+        return Task::none();
+    }
+
     let view = match app.request_tabs.get_mut(index) {
         Some(v) => v,
         None => return Task::none(),
@@ -43,7 +101,7 @@ pub fn handle_http_request_msg(
 
     match msg {
         http_request_view::Message::SendRequest => {
-            let mut temp_view = view.clone();
+            let mut temp_view = view.clone_for_send();
 
             // Collect collection variables if a collection is selected
             let collection_vars: Vec<(String, String)> =
@@ -159,6 +217,7 @@ pub fn handle_http_request_msg(
 
             let pre_request_script = temp_view.scripts.pre_request.clone();
             let mut delay_ms: Option<u64> = None;
+            let mut script_output = http_request_view::ScriptOutput::default();
             if !pre_request_script.actions.is_empty() {
                 for action in &pre_request_script.actions {
                     if let crate::protocols::scripts::ScriptAction::Delay { ms } = action {
@@ -170,11 +229,11 @@ pub fn handle_http_request_msg(
                     &mut request,
                     &mut script_context,
                 ) {
-                    app.toast_manager
-                        .error(format!("Pre-request script error: {}", e));
-                    return Task::none();
+                    script_output.pre_errors.push(e.to_string());
                 }
-                for log in &script_context.logs {
+                script_output.pre_logs.append(&mut script_context.logs);
+                script_output.pre_errors.append(&mut script_context.errors);
+                for log in &script_output.pre_logs {
                     app.toast_manager.info(format!("[Pre-request] {}", log));
                 }
             }
@@ -248,8 +307,6 @@ pub fn handle_http_request_msg(
                         Ok(mut resp) => {
                             let mut warnings: Vec<String> = Vec::new();
                             let mut post_ctx = script_context;
-                            post_ctx.logs.clear();
-                            post_ctx.errors.clear();
                             if let Err(e) = ScriptEngine::execute_post_response(
                                 &post_response_script,
                                 &resp,
@@ -257,9 +314,16 @@ pub fn handle_http_request_msg(
                             ) {
                                 warnings.push(format!("Post-response script error: {}", e));
                             }
-                            for log in &post_ctx.logs {
+                            script_output.post_logs.append(&mut post_ctx.logs);
+                            script_output.post_errors.append(&mut post_ctx.errors);
+                            for (k, v) in &post_ctx.variables {
+                                script_output.extracted_vars.push((k.clone(), v.clone()));
+                            }
+                            for log in &script_output.post_logs {
                                 warnings.push(log.clone());
                             }
+                            let output_json = serde_json::to_string(&script_output).unwrap_or_default();
+                            warnings.push(format!("__SCRIPT_OUTPUT__{}", output_json));
                             resp.url = request_url;
                             resp.method = request_method
                                 .parse()
@@ -285,8 +349,14 @@ pub fn handle_http_request_msg(
                 return Task::none();
             };
             for warning in warnings {
-                app.toast_manager
-                    .warning(format!("[Post-response] {}", warning));
+                if let Some(json) = warning.strip_prefix("__SCRIPT_OUTPUT__") {
+                    if let Ok(output) = serde_json::from_str::<http_request_view::ScriptOutput>(json) {
+                        view.script_output = output;
+                    }
+                } else {
+                    app.toast_manager
+                        .warning(format!("[Post-response] {}", warning));
+                }
             }
             match result {
                 Ok(response) => {
@@ -300,21 +370,21 @@ pub fn handle_http_request_msg(
                                     jar.insert_from_set_cookie(value, &response.url);
                                 }
                             }
-                            (jar.total_count(), jar.domain_count())
+                            let total = jar.total_count();
+                            let domains = jar.domain_count();
+                            if let Err(e) =
+                                crate::persistence::database::save_cookies(&app.db_conn, &jar)
+                            {
+                                log::warn!("Failed to persist cookies: {}", e);
+                            }
+                            (total, domains)
                         } else {
+                            log::error!("Failed to acquire cookie_jar lock for response cookies");
                             (0, 0)
                         }
                     };
                     view.cookie_count = new_total;
                     view.cookie_domain_count = new_domains;
-
-                    if let Ok(jar) = app.cookie_jar.lock() {
-                        if let Err(e) =
-                            crate::persistence::database::save_cookies(&app.db_conn, &jar)
-                        {
-                            log::warn!("Failed to persist cookies: {}", e);
-                        }
-                    }
 
                     let history_result = crate::services::history_service::save_raw(
                         &app.db_conn,
@@ -330,9 +400,11 @@ pub fn handle_http_request_msg(
                         &app.db_conn,
                         crate::persistence::database::DEFAULT_HISTORY_LIMIT,
                     );
-                    app.history_view.entries =
-                        crate::services::history_service::get_all(&app.db_conn, 200)
-                            .unwrap_or_default();
+                    if app.show_history {
+                        app.history_view.entries =
+                            crate::services::history_service::get_all(&app.db_conn, 200)
+                                .unwrap_or_default();
+                    }
 
                     if response.status >= 400 {
                         app.toast_manager
@@ -576,6 +648,83 @@ pub fn handle_http_request_msg(
                     Task::none()
                 }
             }
+        }
+        http_request_view::Message::SessionSave(name) => {
+            let name = name.trim().to_string();
+            if name.is_empty() {
+                return Task::none();
+            }
+            let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+            let cookies_json = app
+                .cookie_jar
+                .lock()
+                .map(|jar| jar.to_json_pretty())
+                .unwrap_or_else(|_| Ok("{}".to_string()))
+                .unwrap_or_else(|_| "{}".to_string());
+            let headers_json = serde_json::to_string(
+                &view
+                    .headers_editor
+                    .entries
+                    .iter()
+                    .map(|e| {
+                        serde_json::json!({
+                            "key": e.key,
+                            "value": e.value,
+                            "secret": e.secret,
+                        })
+                    })
+                    .collect::<Vec<_>>(),
+            )
+            .unwrap_or_else(|_| "[]".to_string());
+            let auth_json = serde_json::to_string(&view.auth).ok();
+            let id = format!(
+                "{}-{}",
+                chrono::Utc::now().timestamp_millis(),
+                &name[..name.len().min(8)]
+            );
+            let session = crate::persistence::database::Session {
+                id: id.clone(),
+                name: name.clone(),
+                cookies_json,
+                headers_json,
+                auth_json,
+                created_at: now.clone(),
+                updated_at: now,
+            };
+            if let Err(e) = crate::persistence::database::save_session(&app.db_conn, &session) {
+                app.toast_manager
+                    .error(format!("Failed to save session: {}", e));
+            } else {
+                view.sessions.insert(0, session);
+                view.new_session_name.clear();
+                app.toast_manager
+                    .success(format!("Session saved: {}", name));
+            }
+            Task::none()
+        }
+        http_request_view::Message::SessionConfirmDelete(session_id) => {
+            if let Err(e) = crate::persistence::database::delete_session(&app.db_conn, &session_id)
+            {
+                log::error!("Failed to delete session: {}", e);
+            }
+            view.update(http_request_view::Message::SessionConfirmDelete(session_id));
+            Task::none()
+        }
+        http_request_view::Message::SessionRenameConfirm => {
+            if let Some(ref session_id) = view.renaming_session.clone() {
+                let new_name = view.rename_value.trim().to_string();
+                if !new_name.is_empty() {
+                    if let Err(e) = crate::persistence::database::rename_session(
+                        &app.db_conn,
+                        session_id,
+                        &new_name,
+                    ) {
+                        log::error!("Failed to rename session: {}", e);
+                    }
+                }
+            }
+            view.update(http_request_view::Message::SessionRenameConfirm);
+            Task::none()
         }
         other => {
             if let Some(view) = app.request_tabs.get_mut(index) {

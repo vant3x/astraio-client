@@ -53,6 +53,7 @@ pub fn parse_har_collection(
             headers,
             body,
             params,
+            scripts: None,
         };
 
         if let Some(h) = host {

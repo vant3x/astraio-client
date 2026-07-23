@@ -168,6 +168,7 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: collection_view::Message) -> 
                                                         &req.headers,
                                                         req.body.as_deref(),
                                                         &req.params,
+                                                        req.scripts.as_deref(),
                                                     ),
                                                 );
                                             }
@@ -187,6 +188,7 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: collection_view::Message) -> 
                                             &req.headers,
                                             req.body.as_deref(),
                                             &req.params,
+                                            req.scripts.as_deref(),
                                         ),
                                     );
                                 }
@@ -248,6 +250,7 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: collection_view::Message) -> 
                                                         &req.headers,
                                                         req.body.as_deref(),
                                                         &req.params,
+                                                        None,
                                                     ),
                                                 );
                                                 requests_count += 1;
@@ -268,6 +271,7 @@ pub fn handle_message(app: &mut AstraNovaApp, msg: collection_view::Message) -> 
                                             &req.headers,
                                             req.body.as_deref(),
                                             &req.params,
+                                            None,
                                         ),
                                     );
                                     requests_count += 1;
