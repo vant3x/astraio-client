@@ -46,6 +46,8 @@ open = "5"
 iced_fonts = { version = "0.3.0", features = ["lucide"] }
 keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
 muda = { version = "0.17", default-features = false }
+[target.'cfg(target_os = "linux")'.dependencies]
+muda = { version = "0.17", features = ["gtk"] }
 
 [dependencies.zbus]
 version = ">=5.0, <5.12"
