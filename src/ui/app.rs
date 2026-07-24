@@ -966,7 +966,13 @@ impl AstraioApp {
             Subscription::none()
         };
 
-        let keyboard_subscription = iced::event::listen_with(|event, _status, _window| {
+        let keyboard_subscription = iced::event::listen_with(|event, status, _window| {
+            // Only handle events that no widget claimed (Ignored)
+            // This lets text_input handle copy/paste/select-all natively
+            if status != iced::event::Status::Ignored {
+                return None;
+            }
+
             if let iced::event::Event::Keyboard(iced::keyboard::Event::KeyPressed {
                 key,
                 modifiers,

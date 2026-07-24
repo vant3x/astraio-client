@@ -87,16 +87,18 @@ fn build_menu() -> (MenuIds, Menu) {
 
     let find = MenuItem::new("Find...", true, Some(acc(CMD_OR_CTRL, Code::KeyF)));
 
+    let cut_item = MenuItem::new("Cut", true, None);
+    let copy_item = MenuItem::new("Copy", true, None);
+    let paste_item = MenuItem::new("Paste", true, None);
+    let select_all_item = MenuItem::new("Select All", true, None);
+
     let edit_menu = Submenu::new("Edit", true);
     edit_menu
         .append_items(&[
-            &PredefinedMenuItem::undo(None),
-            &PredefinedMenuItem::redo(None),
-            &PredefinedMenuItem::separator(),
-            &PredefinedMenuItem::cut(None),
-            &PredefinedMenuItem::copy(None),
-            &PredefinedMenuItem::paste(None),
-            &PredefinedMenuItem::select_all(None),
+            &cut_item as &dyn muda::IsMenuItem,
+            &copy_item,
+            &paste_item,
+            &select_all_item,
             &PredefinedMenuItem::separator(),
             &find,
         ])
