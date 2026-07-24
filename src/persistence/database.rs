@@ -344,6 +344,34 @@ pub fn init_schema(conn: &Connection) -> std::result::Result<(), AppError> {
     )
     .ok();
 
+    // FTS5 virtual table for fast full-text search on request history
+    conn.execute_batch(
+        "CREATE VIRTUAL TABLE IF NOT EXISTS request_history_fts USING fts5(
+            url, method, request_data, response_data,
+            content='request_history',
+            content_rowid='id'
+        );
+
+        -- Triggers to keep FTS index in sync with the main table
+        CREATE TRIGGER IF NOT EXISTS request_history_ai AFTER INSERT ON request_history BEGIN
+            INSERT INTO request_history_fts(rowid, url, method, request_data, response_data)
+            VALUES (new.id, new.url, new.method, new.request_data, new.response_data);
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS request_history_ad AFTER DELETE ON request_history BEGIN
+            INSERT INTO request_history_fts(request_history_fts, rowid, url, method, request_data, response_data)
+            VALUES ('delete', old.id, old.url, old.method, old.request_data, old.response_data);
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS request_history_au AFTER UPDATE ON request_history BEGIN
+            INSERT INTO request_history_fts(request_history_fts, rowid, url, method, request_data, response_data)
+            VALUES ('delete', old.id, old.url, old.method, old.request_data, old.response_data);
+            INSERT INTO request_history_fts(rowid, url, method, request_data, response_data)
+            VALUES (new.id, new.url, new.method, new.request_data, new.response_data);
+        END;"
+    )
+    .ok();
+
     // Cookies table — idempotent migration
     conn.execute(
         "CREATE TABLE IF NOT EXISTS cookies (
@@ -390,6 +418,9 @@ pub fn init() -> std::result::Result<Connection, AppError> {
     conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")
         .map_err(|e| AppError::Database(format!("Failed to set pragmas: {}", e)))?;
     init_schema(&conn)?;
+    // Rebuild FTS index for any existing rows (handles upgrades)
+    conn.execute_batch("INSERT INTO request_history_fts(request_history_fts) VALUES('rebuild');")
+        .ok();
     Ok(conn)
 }
 
@@ -799,34 +830,56 @@ pub fn search_request_history(
     let has_query = !query.is_empty();
     let has_method = !method_filter.is_empty();
 
-    let sql = match (has_query, has_method) {
-        (true, true) => "SELECT id, method, url, status, duration_ms, timestamp, request_data, response_data FROM request_history WHERE (url LIKE ?1 OR method LIKE ?1 OR request_data LIKE ?1 OR response_data LIKE ?1) AND method LIKE ?2 ORDER BY id DESC LIMIT ?3",
-        (true, false) => "SELECT id, method, url, status, duration_ms, timestamp, request_data, response_data FROM request_history WHERE (url LIKE ?1 OR method LIKE ?1 OR request_data LIKE ?1 OR response_data LIKE ?1) ORDER BY id DESC LIMIT ?2",
-        (false, true) => "SELECT id, method, url, status, duration_ms, timestamp, request_data, response_data FROM request_history WHERE method LIKE ?1 ORDER BY id DESC LIMIT ?2",
-        (false, false) => "SELECT id, method, url, status, duration_ms, timestamp, request_data, response_data FROM request_history ORDER BY id DESC LIMIT ?1",
-    };
+    if has_query {
+        // Use FTS5 for full-text search when there's a search query
+        let fts_pattern = format!("{}*", query.replace('"', ""));
+        let sql = if has_method {
+            "SELECT h.id, h.method, h.url, h.status, h.duration_ms, h.timestamp, h.request_data, h.response_data
+             FROM request_history h
+             INNER JOIN request_history_fts fts ON h.id = fts.rowid
+             WHERE request_history_fts MATCH ?1 AND h.method LIKE ?2
+             ORDER BY h.id DESC LIMIT ?3"
+        } else {
+            "SELECT h.id, h.method, h.url, h.status, h.duration_ms, h.timestamp, h.request_data, h.response_data
+             FROM request_history h
+             INNER JOIN request_history_fts fts ON h.id = fts.rowid
+             WHERE request_history_fts MATCH ?1
+             ORDER BY h.id DESC LIMIT ?2"
+        };
 
-    let pattern = format!("%{}%", query);
-    let method_pattern = format!("%{}%", method_filter);
-    let limit_val = limit as i64;
+        let method_pattern = format!("%{}%", method_filter);
+        let limit_val = limit as i64;
 
-    let params: Vec<Box<dyn rusqlite::types::ToSql>> = match (has_query, has_method) {
-        (true, true) => vec![
-            Box::new(pattern),
-            Box::new(method_pattern),
-            Box::new(limit_val),
-        ],
-        (true, false) => vec![Box::new(pattern), Box::new(limit_val)],
-        (false, true) => vec![Box::new(method_pattern), Box::new(limit_val)],
-        (false, false) => vec![Box::new(limit_val)],
-    };
+        let mut stmt = conn.prepare(sql)?;
+        let entries: Vec<RequestHistoryEntry> = if has_method {
+            stmt.query_and_then(rusqlite::params![fts_pattern, method_pattern, limit_val], map_history_row)?
+                .collect::<Result<Vec<_>, _>>()?
+        } else {
+            stmt.query_and_then(rusqlite::params![fts_pattern, limit_val], map_history_row)?
+                .collect::<Result<Vec<_>, _>>()?
+        };
+        Ok(entries)
+    } else {
+        // Fall back to LIKE for method-only filtering (no FTS needed)
+        let sql = if has_method {
+            "SELECT id, method, url, status, duration_ms, timestamp, request_data, response_data FROM request_history WHERE method LIKE ?1 ORDER BY id DESC LIMIT ?2"
+        } else {
+            "SELECT id, method, url, status, duration_ms, timestamp, request_data, response_data FROM request_history ORDER BY id DESC LIMIT ?1"
+        };
 
-    let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
-    let mut stmt = conn.prepare(sql)?;
-    let entries: Vec<RequestHistoryEntry> = stmt
-        .query_and_then(param_refs.as_slice(), map_history_row)?
-        .collect::<Result<Vec<_>, _>>()?;
-    Ok(entries)
+        let method_pattern = format!("%{}%", method_filter);
+        let limit_val = limit as i64;
+
+        let mut stmt = conn.prepare(sql)?;
+        let entries: Vec<RequestHistoryEntry> = if has_method {
+            stmt.query_and_then(rusqlite::params![method_pattern, limit_val], map_history_row)?
+                .collect::<Result<Vec<_>, _>>()?
+        } else {
+            stmt.query_and_then(rusqlite::params![limit_val], map_history_row)?
+                .collect::<Result<Vec<_>, _>>()?
+        };
+        Ok(entries)
+    }
 }
 
 pub fn get_request_history_entry_by_id(

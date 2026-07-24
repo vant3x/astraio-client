@@ -18,6 +18,7 @@ use tokio::sync::mpsc;
 
 use super::views::graphql_view::{self, GraphQLView};
 use super::views::http_request_view::{self, HttpRequestView};
+use super::views::http_request_view::CookieSnapshot;
 
 use iced::futures::stream::BoxStream;
 use iced::futures::{self, StreamExt as _};
@@ -201,6 +202,13 @@ pub(crate) struct AstraioApp {
     pub(crate) dark_mode: bool,
     pub(crate) secret_store: crate::services::secret_store::SecretStore,
     pub(crate) global_config: crate::http_client::config::GlobalConfig,
+    pub(crate) main_window_id: Option<iced::window::Id>,
+}
+
+impl Drop for AstraioApp {
+    fn drop(&mut self) {
+        self.cleanup();
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -388,8 +396,45 @@ impl AstraioApp {
             dark_mode,
             secret_store,
             global_config,
+            main_window_id: None,
         };
         (app, Task::none())
+    }
+
+    fn cleanup(&mut self) {
+        // Shutdown active WebSocket connections gracefully
+        if let Some(shutdown_tx) = self.ws_shutdown.take() {
+            let _ = shutdown_tx.send(());
+        }
+        // Abort any lingering WebSocket tasks
+        if let Some(handle) = self.ws_write_handle.take() {
+            if let Ok(mut guard) = handle.lock() {
+                if let Some(h) = guard.take() {
+                    h.abort();
+                }
+            }
+        }
+        if let Some(handle) = self.ws_read_handle.take() {
+            if let Ok(mut guard) = handle.lock() {
+                if let Some(h) = guard.take() {
+                    h.abort();
+                }
+            }
+        }
+        if let Some(handle) = self.ws_ping_handle.take() {
+            if let Ok(mut guard) = handle.lock() {
+                if let Some(h) = guard.take() {
+                    h.abort();
+                }
+            }
+        }
+        // Persist cookies on shutdown
+        if let Ok(jar) = self.cookie_jar.lock() {
+            if let Err(e) = crate::persistence::database::save_cookies(&self.db_conn, &jar) {
+                log::warn!("Failed to persist cookies on shutdown: {}", e);
+            }
+        }
+        log::info!("Astraio cleanup complete");
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
@@ -837,9 +882,16 @@ impl AstraioApp {
                 Task::none()
             }
             Message::Quit => {
-                std::process::exit(0);
+                if let Some(id) = self.main_window_id {
+                    iced::window::close(id)
+                } else {
+                    Task::none()
+                }
             }
-            Message::WindowOpened(_id) => {
+            Message::WindowOpened(id) => {
+                if self.main_window_id.is_none() {
+                    self.main_window_id = Some(id);
+                }
                 #[cfg(target_os = "macos")]
                 {
                     crate::ui::menu::attach_macos();
@@ -850,49 +902,56 @@ impl AstraioApp {
     }
 
     pub(crate) fn sync_cookie_data_to_tabs(&mut self) {
-        let (domains, total, domain_count) = match self.cookie_jar.lock() {
-            Ok(jar) => {
-                let domains: Vec<(String, usize)> = jar
-                    .domains()
-                    .into_iter()
-                    .map(|(d, c)| (d.to_string(), c))
-                    .collect();
-                let total = jar.total_count();
-                let domain_count = jar.domain_count();
-                (domains, total, domain_count)
-            }
+        let jar = match self.cookie_jar.lock() {
+            Ok(jar) => jar,
             Err(e) => {
                 log::error!("Failed to acquire cookie_jar lock for sync: {}", e);
                 return;
             }
         };
 
+        let domains: Vec<(String, usize)> = jar
+            .domains()
+            .into_iter()
+            .map(|(d, c)| (d.to_string(), c))
+            .collect();
+        let total = jar.total_count();
+        let domain_count = jar.domain_count();
+
         let active_idx = self.active_request_tab_index;
-        for (i, tab) in self.request_tabs.iter_mut().enumerate() {
-            tab.cookie_count = total;
-            tab.cookie_domain_count = domain_count;
-            tab.cookie_domains = domains.clone();
-            if i == active_idx {
-                if let Ok(jar) = self.cookie_jar.lock() {
-                    let mut all_cookies = Vec::with_capacity(total);
-                    for (d, _) in &domains {
-                        for c in jar.cookies_for_domain(d) {
-                            all_cookies.push(crate::ui::views::http_request_view::CookieSnapshot {
-                                name: c.name.clone(),
-                                value: c.value.clone(),
-                                domain: c.domain.clone(),
-                                path: c.path.clone(),
-                                secure: c.secure,
-                                http_only: c.http_only,
-                                same_site: c.same_site.to_string(),
-                                expires: c.expires.clone(),
-                            });
-                        }
-                    }
-                    tab.cookie_domain_cookies = all_cookies;
+
+        let active_cookies: Option<Vec<CookieSnapshot>> = if !self.request_tabs.is_empty() {
+            let mut all_cookies = Vec::with_capacity(total);
+            for (d, _) in &domains {
+                for c in jar.cookies_for_domain(d) {
+                    all_cookies.push(CookieSnapshot {
+                        name: c.name.clone(),
+                        value: c.value.clone(),
+                        domain: c.domain.clone(),
+                        path: c.path.clone(),
+                        secure: c.secure,
+                        http_only: c.http_only,
+                        same_site: c.same_site.to_string(),
+                        expires: c.expires.clone(),
+                    });
                 }
-            } else {
-                tab.cookie_domain_cookies.clear();
+            }
+            Some(all_cookies)
+        } else {
+            None
+        };
+        drop(jar);
+
+        if let Some(cookies) = active_cookies {
+            for (i, tab) in self.request_tabs.iter_mut().enumerate() {
+                tab.cookie_count = total;
+                tab.cookie_domain_count = domain_count;
+                tab.cookie_domains = domains.clone();
+                if i == active_idx {
+                    tab.cookie_domain_cookies = cookies.clone();
+                } else {
+                    tab.cookie_domain_cookies.clear();
+                }
             }
         }
     }
@@ -992,6 +1051,8 @@ impl AstraioApp {
     }
 
     fn device_poll_subscription(&self) -> Subscription<Message> {
+        let mut subscriptions = Vec::new();
+
         for (index, tab) in self.request_tabs.iter().enumerate() {
             if let crate::data::auth::Auth::OAuth2(config) = &tab.auth {
                 if config.auto_polling
@@ -999,7 +1060,7 @@ impl AstraioApp {
                     && !config.token_url.is_empty()
                 {
                     let interval = config.device_code_interval.unwrap_or(5);
-                    return from_recipe(DevicePollRecipe {
+                    subscriptions.push(from_recipe(DevicePollRecipe {
                         tab_index: index,
                         device_code: config.device_code.clone(),
                         client_id: config.client_id.clone(),
@@ -1007,11 +1068,16 @@ impl AstraioApp {
                         token_url: config.token_url.clone(),
                         interval_secs: interval,
                         http_client: self.http_client.clone(),
-                    });
+                    }));
                 }
             }
         }
-        Subscription::none()
+
+        if subscriptions.is_empty() {
+            Subscription::none()
+        } else {
+            Subscription::batch(subscriptions)
+        }
     }
 
     fn theme(&self) -> iced::Theme {
