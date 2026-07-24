@@ -93,7 +93,7 @@ pub fn handle_message(app: &mut AstraioApp, msg: environment_manager::Message) -
                     async move {
                         let file = rfd::AsyncFileDialog::new()
                             .add_filter("Env file", &["env"])
-                            .set_file_name(&format!("{}.env", env_name))
+                            .set_file_name(format!("{}.env", env_name))
                             .save_file()
                             .await;
                         if let Some(file_handle) = file {

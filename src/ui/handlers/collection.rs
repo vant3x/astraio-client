@@ -435,7 +435,7 @@ pub fn handle_message(app: &mut AstraioApp, msg: collection_view::Message) -> Ta
                             async move {
                                 let file = rfd::AsyncFileDialog::new()
                                     .add_filter("Postman Collection", &["json"])
-                                    .set_file_name(&format!("{}.json", col_name))
+                                    .set_file_name(format!("{}.json", col_name))
                                     .save_file()
                                     .await;
                                 if let Some(file_handle) = file {
@@ -468,7 +468,7 @@ pub fn handle_message(app: &mut AstraioApp, msg: collection_view::Message) -> Ta
                     async move {
                         let file = rfd::AsyncFileDialog::new()
                             .add_filter("HTTP Archive (HAR)", &["har"])
-                            .set_file_name(&format!("{}.har", col_name))
+                            .set_file_name(format!("{}.har", col_name))
                             .save_file()
                             .await;
                         if let Some(file_handle) = file {

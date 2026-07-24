@@ -514,7 +514,7 @@ pub fn handle_http_request_msg(
                     let suggested_name = format!("response.{}", ext);
 
                     let save_dialog = rfd::AsyncFileDialog::new()
-                        .set_file_name(&suggested_name)
+                        .set_file_name(suggested_name)
                         .save_file()
                         .await;
 
