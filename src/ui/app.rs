@@ -17,8 +17,8 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 
 use super::views::graphql_view::{self, GraphQLView};
-use super::views::http_request_view::{self, HttpRequestView};
 use super::views::http_request_view::CookieSnapshot;
+use super::views::http_request_view::{self, HttpRequestView};
 
 use iced::futures::stream::BoxStream;
 use iced::futures::{self, StreamExt as _};

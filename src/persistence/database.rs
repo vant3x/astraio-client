@@ -852,8 +852,11 @@ pub fn search_request_history(
 
         let mut stmt = conn.prepare(sql)?;
         let entries: Vec<RequestHistoryEntry> = if has_method {
-            stmt.query_and_then(rusqlite::params![fts_pattern, method_pattern, limit_val], map_history_row)?
-                .collect::<Result<Vec<_>, _>>()?
+            stmt.query_and_then(
+                rusqlite::params![fts_pattern, method_pattern, limit_val],
+                map_history_row,
+            )?
+            .collect::<Result<Vec<_>, _>>()?
         } else {
             stmt.query_and_then(rusqlite::params![fts_pattern, limit_val], map_history_row)?
                 .collect::<Result<Vec<_>, _>>()?
@@ -872,8 +875,11 @@ pub fn search_request_history(
 
         let mut stmt = conn.prepare(sql)?;
         let entries: Vec<RequestHistoryEntry> = if has_method {
-            stmt.query_and_then(rusqlite::params![method_pattern, limit_val], map_history_row)?
-                .collect::<Result<Vec<_>, _>>()?
+            stmt.query_and_then(
+                rusqlite::params![method_pattern, limit_val],
+                map_history_row,
+            )?
+            .collect::<Result<Vec<_>, _>>()?
         } else {
             stmt.query_and_then(rusqlite::params![limit_val], map_history_row)?
                 .collect::<Result<Vec<_>, _>>()?
