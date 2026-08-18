@@ -74,7 +74,8 @@ pub fn handle_message(app: &mut AstraioApp, message: ai_chat_view::Message) -> T
             }
             app.ai_view.providers.remove(idx);
             if app.ai_view.active_provider_index == Some(idx) {
-                app.ai_view.active_provider_index = app.ai_view.providers.iter().position(|p| p.is_default);
+                app.ai_view.active_provider_index =
+                    app.ai_view.providers.iter().position(|p| p.is_default);
             } else if app.ai_view.active_provider_index.map_or(false, |i| i > idx) {
                 app.ai_view.active_provider_index =
                     app.ai_view.active_provider_index.map(|i| i - 1);
@@ -95,9 +96,7 @@ pub fn handle_message(app: &mut AstraioApp, message: ai_chat_view::Message) -> T
             }
             Task::none()
         }
-        ai_chat_view::Message::ApplyToRequest(content) => {
-            handle_apply_to_request(app, &content)
-        }
+        ai_chat_view::Message::ApplyToRequest(content) => handle_apply_to_request(app, &content),
         ai_chat_view::Message::AutoContextToggled(enabled) => {
             app.ai_view.auto_context = enabled;
             Task::none()
@@ -127,12 +126,14 @@ fn handle_send(app: &mut AstraioApp) -> Task<Message> {
     }
 
     app.ai_view.input.clear();
-    app.ai_view
-        .add_message(AiRole::User, input.clone(), 0);
+    app.ai_view.add_message(AiRole::User, input.clone(), 0);
 
     let Some(config) = get_active_provider_config(app) else {
-        app.ai_view
-            .add_message(AiRole::Assistant, "No AI provider configured. Open Settings to add one.".to_string(), 0);
+        app.ai_view.add_message(
+            AiRole::Assistant,
+            "No AI provider configured. Open Settings to add one.".to_string(),
+            0,
+        );
         return Task::none();
     };
 
@@ -186,7 +187,8 @@ fn handle_quick_action(app: &mut AstraioApp, action: ai_chat_view::QuickAction) 
     let prompt = match &action {
         ai_chat_view::QuickAction::GenerateRequest => {
             let prefix = action.prompt_prefix();
-            let context_hint = if let Some(req) = app.request_tabs.get(app.active_request_tab_index) {
+            let context_hint = if let Some(req) = app.request_tabs.get(app.active_request_tab_index)
+            {
                 if !req.url_input.is_empty() {
                     format!(" for URL: {}", req.url_input)
                 } else {
@@ -211,7 +213,9 @@ fn handle_quick_action(app: &mut AstraioApp, action: ai_chat_view::QuickAction) 
             } else {
                 format!(
                     "Generate {} mock data records in {} format: {}",
-                    app.ai_view.mock_data.count, app.ai_view.mock_data.format, app.ai_view.mock_data.description
+                    app.ai_view.mock_data.count,
+                    app.ai_view.mock_data.format,
+                    app.ai_view.mock_data.description
                 )
             }
         }
@@ -234,14 +238,20 @@ fn handle_apply_to_request(app: &mut AstraioApp, content: &str) -> Task<Message>
         if let Some(tab) = app.request_tabs.get_mut(app.active_request_tab_index) {
             tab.method = parsed.0;
             tab.url_input = parsed.1;
-            app.toast_manager
-                .success("Request applied from AI");
+            app.toast_manager.success("Request applied from AI");
         }
     }
     Task::none()
 }
 
-fn parse_http_request_from_ai(content: &str) -> Option<(String, String, Option<Vec<(String, String)>>, Option<String>)> {
+fn parse_http_request_from_ai(
+    content: &str,
+) -> Option<(
+    String,
+    String,
+    Option<Vec<(String, String)>>,
+    Option<String>,
+)> {
     let lines: Vec<&str> = content.lines().collect();
     let mut method = String::new();
     let mut url = String::new();
@@ -324,8 +334,10 @@ fn build_context(app: &AstraioApp) -> crate::ai::context::AiContextBuilder<'stat
     if let Some(tab) = app.request_tabs.get(app.active_request_tab_index) {
         // Store the built context info as owned strings in the system prompt
         // by capturing relevant info before building
-        let method: crate::http_client::request::HttpMethod =
-            tab.method.parse().unwrap_or(crate::http_client::request::HttpMethod::Get);
+        let method: crate::http_client::request::HttpMethod = tab
+            .method
+            .parse()
+            .unwrap_or(crate::http_client::request::HttpMethod::Get);
         builder = builder.with_request_owned(method, tab.url_input.clone());
     }
 
@@ -366,7 +378,8 @@ fn handle_save_provider(app: &mut AstraioApp) -> Task<Message> {
     let model = app.ai_view.editing_model.trim().to_string();
 
     if name.is_empty() || base_url.is_empty() || model.is_empty() {
-        app.toast_manager.error("Name, Base URL, and Model are required");
+        app.toast_manager
+            .error("Name, Base URL, and Model are required");
         return Task::none();
     }
 
@@ -384,8 +397,12 @@ fn handle_save_provider(app: &mut AstraioApp) -> Task<Message> {
     let secret_key = format!("{}_{}", config.provider, config.name);
 
     if !api_key.is_empty() {
-        if let Err(e) = app.secret_store.store_secret("ai", &secret_key, "api_key", &api_key) {
-            app.toast_manager.error(format!("Failed to store API key: {e}"));
+        if let Err(e) = app
+            .secret_store
+            .store_secret("ai", &secret_key, "api_key", &api_key)
+        {
+            app.toast_manager
+                .error(format!("Failed to store API key: {e}"));
             return Task::none();
         }
     }
@@ -402,7 +419,8 @@ fn handle_save_provider(app: &mut AstraioApp) -> Task<Message> {
             app.toast_manager.success("Provider saved");
         }
         Err(e) => {
-            app.toast_manager.error(format!("Failed to save provider: {e}"));
+            app.toast_manager
+                .error(format!("Failed to save provider: {e}"));
         }
     }
 

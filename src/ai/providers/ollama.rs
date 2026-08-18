@@ -109,13 +109,10 @@ impl AiProviderAdapter for OllamaProvider {
             })?;
 
         let status = response.status();
-        let text = response
-            .text()
-            .await
-            .map_err(|e| AiProviderError {
-                message: format!("Failed to read response: {e}"),
-                code: None,
-            })?;
+        let text = response.text().await.map_err(|e| AiProviderError {
+            message: format!("Failed to read response: {e}"),
+            code: None,
+        })?;
 
         if !status.is_success() {
             let api_err: Result<OllamaError, _> = serde_json::from_str(&text);

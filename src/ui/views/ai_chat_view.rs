@@ -89,7 +89,9 @@ impl QuickAction {
             QuickAction::GenerateRequest => "Generate an HTTP request for: ",
             QuickAction::ExplainResponse => "Explain this API response and identify any issues: ",
             QuickAction::GenerateScript => "Generate a pre-request JavaScript script that: ",
-            QuickAction::GenerateMockData => "Generate realistic mock data for an API endpoint that returns: ",
+            QuickAction::GenerateMockData => {
+                "Generate realistic mock data for an API endpoint that returns: "
+            }
             QuickAction::DebugError => "Help me debug this API error: ",
             QuickAction::TransformFormat => "Transform this data: ",
         }
@@ -251,11 +253,9 @@ impl AiChatView {
         ]
         .spacing(4);
 
-        let settings_btn = button(
-            row![lucide::settings().size(14)].spacing(4)
-        )
-        .style(ghost_button_style())
-        .on_press(Message::ToggleSettings);
+        let settings_btn = button(row![lucide::settings().size(14)].spacing(4))
+            .style(ghost_button_style())
+            .on_press(Message::ToggleSettings);
 
         row![
             text("AI Assistant").size(16).font(iced::Font::default()),
@@ -303,7 +303,9 @@ impl AiChatView {
             "No provider configured".to_string()
         };
 
-        let provider_text = text(provider_label).size(12).color(ThemeColors::TEXT_SECONDARY);
+        let provider_text = text(provider_label)
+            .size(12)
+            .color(ThemeColors::TEXT_SECONDARY);
 
         let context_toggle = button(
             row![
@@ -323,11 +325,16 @@ impl AiChatView {
             .style(ghost_button_style())
             .on_press(Message::ClearChat);
 
-        row![provider_text, iced::widget::Space::new().width(Length::Fill), context_toggle, clear_btn]
-            .spacing(8)
-            .align_y(Alignment::Center)
-            .padding(iced::Padding::from([6, 12]))
-            .into()
+        row![
+            provider_text,
+            iced::widget::Space::new().width(Length::Fill),
+            context_toggle,
+            clear_btn
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center)
+        .padding(iced::Padding::from([6, 12]))
+        .into()
     }
 
     fn render_messages(&self) -> Element<'_, Message, Theme, Renderer> {
@@ -349,17 +356,34 @@ impl AiChatView {
 
     fn render_empty_state(&self) -> Element<'_, Message, Theme, Renderer> {
         let icon = lucide::sparkles().size(48);
-        let title = text("AI Assistant").size(20).color(ThemeColors::TEXT_PRIMARY);
+        let title = text("AI Assistant")
+            .size(20)
+            .color(ThemeColors::TEXT_PRIMARY);
         let subtitle = text("Ask me anything about APIs, generate requests, or create mock data")
             .size(13)
             .color(ThemeColors::TEXT_SECONDARY);
 
         let tips = column![
-            tip_row(lucide::send::<Theme, Renderer>().size(12).into(), "Generate HTTP requests from descriptions"),
-            tip_row(lucide::info::<Theme, Renderer>().size(12).into(), "Explain API responses"),
-            tip_row(lucide::code::<Theme, Renderer>().size(12).into(), "Create pre/post-request scripts"),
-            tip_row(lucide::database::<Theme, Renderer>().size(12).into(), "Generate mock data for testing"),
-            tip_row(lucide::bug::<Theme, Renderer>().size(12).into(), "Debug API errors"),
+            tip_row(
+                lucide::send::<Theme, Renderer>().size(12).into(),
+                "Generate HTTP requests from descriptions"
+            ),
+            tip_row(
+                lucide::info::<Theme, Renderer>().size(12).into(),
+                "Explain API responses"
+            ),
+            tip_row(
+                lucide::code::<Theme, Renderer>().size(12).into(),
+                "Create pre/post-request scripts"
+            ),
+            tip_row(
+                lucide::database::<Theme, Renderer>().size(12).into(),
+                "Generate mock data for testing"
+            ),
+            tip_row(
+                lucide::bug::<Theme, Renderer>().size(12).into(),
+                "Debug API errors"
+            ),
         ]
         .spacing(6)
         .padding(iced::Padding::from([16, 0]));
@@ -374,7 +398,11 @@ impl AiChatView {
         .into()
     }
 
-    fn render_bubble<'s>(&'s self, idx: usize, msg: &'s ChatBubble) -> Element<'s, Message, Theme, Renderer> {
+    fn render_bubble<'s>(
+        &'s self,
+        idx: usize,
+        msg: &'s ChatBubble,
+    ) -> Element<'s, Message, Theme, Renderer> {
         let is_user = msg.role == AiRole::User;
         let is_assistant = msg.role == AiRole::Assistant;
 
@@ -392,22 +420,25 @@ impl AiChatView {
                 ThemeColors::PURPLE
             });
 
-        let timestamp = text(&msg.timestamp)
-            .size(10)
-            .color(ThemeColors::TEXT_DIM);
+        let timestamp = text(&msg.timestamp).size(10).color(ThemeColors::TEXT_DIM);
 
-        let header = row![role_icon, role_label, timestamp].spacing(6).align_y(Alignment::Center);
+        let header = row![role_icon, role_label, timestamp]
+            .spacing(6)
+            .align_y(Alignment::Center);
 
         let content_text: Element<'_, Message, Theme, Renderer> =
             if msg.content.is_empty() && msg.is_streaming {
-            row![
-                text("Thinking").size(13).color(ThemeColors::TEXT_SECONDARY),
-                text("...").size(13).color(ThemeColors::TEXT_MUTED),
-            ]
-            .into()
-        } else {
-            text(&msg.content).size(13).color(ThemeColors::TEXT_PRIMARY).into()
-        };
+                row![
+                    text("Thinking").size(13).color(ThemeColors::TEXT_SECONDARY),
+                    text("...").size(13).color(ThemeColors::TEXT_MUTED),
+                ]
+                .into()
+            } else {
+                text(&msg.content)
+                    .size(13)
+                    .color(ThemeColors::TEXT_PRIMARY)
+                    .into()
+            };
 
         let mut has_actions = false;
         let mut actions = row![].spacing(4);
@@ -420,11 +451,9 @@ impl AiChatView {
             );
             if self.has_applyable_request(&msg.content) {
                 actions = actions.push(
-                    button(
-                        row![lucide::arrow_right().size(11), text("Apply").size(10)].spacing(4),
-                    )
-                    .style(accent_button_style())
-                    .on_press(Message::ApplyToRequest(msg.content.clone())),
+                    button(row![lucide::arrow_right().size(11), text("Apply").size(10)].spacing(4))
+                        .style(accent_button_style())
+                        .on_press(Message::ApplyToRequest(msg.content.clone())),
                 );
             }
         }
@@ -441,11 +470,11 @@ impl AiChatView {
             Color::from_rgb(0.16, 0.16, 0.20)
         };
 
-        container(bubble_content.padding(12).max_width(if is_user {
-            500.0
-        } else {
-            700.0
-        }))
+        container(
+            bubble_content
+                .padding(12)
+                .max_width(if is_user { 500.0 } else { 700.0 }),
+        )
         .style(move |_theme: &Theme| container::Style {
             background: Some(iced::Background::Color(bubble_bg)),
             border: iced::Border::default().rounded(8),
@@ -456,9 +485,13 @@ impl AiChatView {
 
     fn has_applyable_request(&self, content: &str) -> bool {
         let upper = content.to_uppercase();
-        (upper.contains("GET ") || upper.contains("POST ") || upper.contains("PUT ")
-            || upper.contains("PATCH ") || upper.contains("DELETE "))
-            && (upper.contains("HTTP/") || upper.contains("HTTPS://")
+        (upper.contains("GET ")
+            || upper.contains("POST ")
+            || upper.contains("PUT ")
+            || upper.contains("PATCH ")
+            || upper.contains("DELETE "))
+            && (upper.contains("HTTP/")
+                || upper.contains("HTTPS://")
                 || upper.contains("CONTENT-TYPE"))
     }
 
@@ -508,8 +541,7 @@ impl AiChatView {
             .padding(iced::Padding::from([10, 12]));
 
         let send_btn = if self.is_streaming || self.input.trim().is_empty() {
-            button(row![lucide::send().size(14)].spacing(4))
-                .style(disabled_button_style())
+            button(row![lucide::send().size(14)].spacing(4)).style(disabled_button_style())
         } else {
             button(row![lucide::send().size(14)].spacing(4))
                 .style(accent_button_style())
@@ -524,11 +556,9 @@ impl AiChatView {
     }
 
     fn render_settings(&self) -> Element<'_, Message, Theme, Renderer> {
-        let back_btn = button(
-            row![lucide::arrow_left().size(14), text("Back to Chat")].spacing(4),
-        )
-        .style(ghost_button_style())
-        .on_press(Message::ToggleSettings);
+        let back_btn = button(row![lucide::arrow_left().size(14), text("Back to Chat")].spacing(4))
+            .style(ghost_button_style())
+            .on_press(Message::ToggleSettings);
 
         let title = text("AI Provider Settings").size(16);
 
@@ -536,9 +566,7 @@ impl AiChatView {
 
         for (idx, config) in self.providers.iter().enumerate() {
             let default_badge = if config.is_default {
-                text(" (default)")
-                    .size(10)
-                    .color(ThemeColors::SUCCESS)
+                text(" (default)").size(10).color(ThemeColors::SUCCESS)
             } else {
                 text("").size(10)
             };
@@ -579,7 +607,9 @@ impl AiChatView {
         }
 
         let add_section = column![
-            text("Add New Provider").size(14).color(ThemeColors::TEXT_PRIMARY),
+            text("Add New Provider")
+                .size(14)
+                .color(ThemeColors::TEXT_PRIMARY),
             text("Provider").size(12).color(ThemeColors::TEXT_SECONDARY),
             iced::widget::pick_list(
                 AiProvider::all().to_vec(),
@@ -607,11 +637,9 @@ impl AiChatView {
                 .on_input(Message::ModelChanged)
                 .size(13)
                 .padding(8),
-            button(
-                row![lucide::plus().size(14), text("Add Provider")].spacing(4)
-            )
-            .style(accent_button_style())
-            .on_press(Message::SaveProviderConfig),
+            button(row![lucide::plus().size(14), text("Add Provider")].spacing(4))
+                .style(accent_button_style())
+                .on_press(Message::SaveProviderConfig),
         ]
         .spacing(6)
         .padding(12);
@@ -654,7 +682,8 @@ impl AiChatView {
             |f| Message::TabChanged(AiTab::MockData), // placeholder
         );
 
-        let generate_btn = if self.mock_data.is_generating || self.mock_data.description.is_empty() {
+        let generate_btn = if self.mock_data.is_generating || self.mock_data.description.is_empty()
+        {
             button(row![lucide::loader().size(14), text("Generate")].spacing(4))
                 .style(disabled_button_style())
         } else {
@@ -681,12 +710,10 @@ impl AiChatView {
             .into()
         } else {
             scrollable(
-                column![
-                    text(&self.mock_data.output)
-                        .size(12)
-                        .color(ThemeColors::TEXT_PRIMARY)
-                ]
-                .padding(12)
+                column![text(&self.mock_data.output)
+                    .size(12)
+                    .color(ThemeColors::TEXT_PRIMARY)]
+                .padding(12),
             )
             .height(Length::Fill)
             .into()
@@ -716,10 +743,13 @@ fn tip_row<'a>(
     icon: Element<'a, Message, Theme, Renderer>,
     label: &'a str,
 ) -> Element<'a, Message, Theme, Renderer> {
-    row![icon, text(label).size(12).color(ThemeColors::TEXT_SECONDARY)]
-        .spacing(8)
-        .align_y(Alignment::Center)
-        .into()
+    row![
+        icon,
+        text(label).size(12).color(ThemeColors::TEXT_SECONDARY)
+    ]
+    .spacing(8)
+    .align_y(Alignment::Center)
+    .into()
 }
 
 fn primary_button_style<'a>() -> button::StyleFn<'a, Theme> {

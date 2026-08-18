@@ -47,7 +47,11 @@ impl<'a> AiContextBuilder<'a> {
     }
 
     /// Use owned data when the HttpRequest is a local temporary.
-    pub fn with_request_owned(mut self, method: HttpMethod, url: String) -> AiContextBuilder<'static> {
+    pub fn with_request_owned(
+        mut self,
+        method: HttpMethod,
+        url: String,
+    ) -> AiContextBuilder<'static> {
         AiContextBuilder {
             current_request: None,
             current_response: None,
@@ -94,7 +98,12 @@ impl<'a> AiContextBuilder<'a> {
         let req_method = self
             .owned_method
             .as_deref()
-            .or_else(|| self.current_request.map(|r| r.method.to_string()).as_deref().map(|_| ""))
+            .or_else(|| {
+                self.current_request
+                    .map(|r| r.method.to_string())
+                    .as_deref()
+                    .map(|_| "")
+            })
             .map(|s| s.to_string());
         let req_url = self
             .owned_url
@@ -162,9 +171,7 @@ impl<'a> AiContextBuilder<'a> {
             parts.push(String::new());
             parts.push(format!(
                 "ENVIRONMENT{}:",
-                env_name
-                    .map(|n| format!(" ({n})"))
-                    .unwrap_or_default()
+                env_name.map(|n| format!(" ({n})")).unwrap_or_default()
             ));
             for (k, v) in &self.owned_env_vars {
                 parts.push(format!("  {{{{{k}}}}} = {v}"));
