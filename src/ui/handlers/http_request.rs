@@ -2,7 +2,8 @@ use crate::http_client::client;
 use crate::http_client::config::RequestConfig;
 use crate::protocols::script_engine::ScriptEngineV2;
 use crate::protocols::scripts::{ScriptContext, ScriptEngine};
-use crate::ui::app::{AstraioApp, Message};
+use crate::ui::app::AstraioApp;
+use crate::ui::message::Message;
 use crate::ui::views::http_request_view;
 use iced::Task;
 use std::sync::{Arc, Mutex};
@@ -426,9 +427,9 @@ pub fn handle_http_request_msg(
             } else {
                 // Streaming path: UI stays responsive while body downloads
                 let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-                let stream_id = app.http_stream_id;
-                app.http_stream_id += 1;
-                app.http_stream_receivers
+                let stream_id = app.http_stream.next_stream_id();
+                app.http_stream
+                    .receivers
                     .insert(index, (stream_id, Arc::new(Mutex::new(Some(rx)))));
 
                 let http_client_clone = http_client;
@@ -519,9 +520,21 @@ pub fn handle_http_request_msg(
                         crate::persistence::database::DEFAULT_HISTORY_LIMIT,
                     );
                     if app.show_history {
-                        app.history_view.entries =
-                            crate::services::history_service::get_all(&app.db_conn, 200)
-                                .unwrap_or_default();
+                        // Append new entry in-memory instead of reloading 200 rows
+                        let new_entry = crate::persistence::database::RequestHistoryEntry {
+                            id: app.db_conn.last_insert_rowid() as i32,
+                            method: response.method.to_string(),
+                            url: response.url.clone(),
+                            status: Some(response.status),
+                            duration_ms: Some(response.duration.as_millis() as u64),
+                            timestamp: crate::utils::timestamp_seconds(),
+                            request_data: request_data.clone(),
+                            response_data: response_data.clone(),
+                        };
+                        app.history_view.entries.insert(0, new_entry);
+                        if app.history_view.entries.len() > 200 {
+                            app.history_view.entries.truncate(200);
+                        }
                     }
 
                     if response.status >= 400 {
@@ -686,7 +699,7 @@ pub fn handle_http_request_msg(
             if let Some(handle) = view.abort_handle.take() {
                 handle.abort();
             }
-            app.http_stream_receivers.remove(&index);
+            app.http_stream.receivers.remove(&index);
             view.update(http_request_view::Message::SetIdle);
             app.toast_manager.warning("Request cancelled".to_string());
             Task::none()

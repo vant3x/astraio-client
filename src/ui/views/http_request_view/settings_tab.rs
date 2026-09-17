@@ -67,13 +67,6 @@ impl HttpRequestView {
             .padding(10);
 
         let verify_ssl = self.request_config.tls.verify_ssl;
-        let cookie_store = self.request_config.cookie_store;
-        let cookie_toggle = button(if cookie_store {
-            "Cookie Store: ON"
-        } else {
-            "Cookie Store: OFF"
-        })
-        .on_press(Message::CookieStoreToggled(!cookie_store));
 
         let ssl_toggle = button(if verify_ssl {
             "Verify SSL: ON"
@@ -132,16 +125,14 @@ impl HttpRequestView {
             .on_input(Message::ClientKeyPathChanged)
             .padding(10);
 
-        let theme_selector = iced::widget::pick_list(
-            iced::highlighter::Theme::ALL,
-            Some(self.highlighter_theme),
-            Message::ThemeSelected,
-        )
-        .padding(10);
-
         container(scrollable(
             column![
                 text("Request Settings").size(18),
+                text("Per-request overrides for network behavior.")
+                    .size(12)
+                    .color(Color::from_rgb(0.5, 0.5, 0.5)),
+                rule::horizontal(10),
+                text("Timeout & Redirects").size(16),
                 row![text("Timeout:"), timeout_input]
                     .spacing(10)
                     .align_y(Alignment::Center),
@@ -163,63 +154,13 @@ impl HttpRequestView {
                 row![proxy_username_input, proxy_password_input]
                     .spacing(10)
                     .width(Length::Fill),
-                cookie_toggle,
-                ssl_toggle,
-                ssl_warning,
                 rule::horizontal(10),
                 text("TLS / mTLS").size(16),
+                ssl_toggle,
+                ssl_warning,
                 ca_cert_input,
                 client_cert_input,
                 client_key_input,
-                rule::horizontal(10),
-                text("Appearance").size(16),
-                row![text("Highlight Theme:"), theme_selector]
-                    .spacing(10)
-                    .align_y(Alignment::Center),
-                rule::horizontal(10),
-                text("Security").size(16),
-                text("Stored secrets (OAuth2 tokens, passwords, API keys) are kept in the OS keychain.")
-                    .size(12)
-                    .color(Color::from_rgb(0.5, 0.5, 0.5)),
-                button(
-                    row![
-                        lucide::trash().size(14),
-                        text(" Clear All Keychain Secrets").size(13),
-                    ]
-                    .spacing(4),
-                )
-                .on_press(Message::ClearKeychainSecrets),
-                rule::horizontal(10),
-                text("Cookies").size(16),
-                {
-                    let cookie_info = if self.cookie_count > 0 {
-                        format!(
-                            "{} cookies across {} domains",
-                            self.cookie_count, self.cookie_domain_count
-                        )
-                    } else {
-                        "No cookies stored".to_string()
-                    };
-                    let info_color = if self.cookie_count > 0 {
-                        Color::from_rgb(0.3, 0.7, 0.3)
-                    } else {
-                        Color::from_rgb(0.5, 0.5, 0.5)
-                    };
-                    row![
-                        lucide::cookie().size(14),
-                        text(cookie_info).size(13).color(info_color),
-                    ]
-                    .spacing(6)
-                    .align_y(Alignment::Center)
-                },
-                button(
-                    row![
-                        lucide::trash().size(14),
-                        text(" Clear All Cookies").size(13),
-                    ]
-                    .spacing(4),
-                )
-                .on_press(Message::ClearCookies),
                 rule::horizontal(10),
                 text("Sessions").size(16),
                 {
@@ -232,10 +173,8 @@ impl HttpRequestView {
                     let save_btn = if self.new_session_name.trim().is_empty() {
                         button(row![lucide::save().size(12), text(" Save").size(12)].spacing(4))
                     } else {
-                        button(
-                            row![lucide::save().size(12), text(" Save").size(12)].spacing(4),
-                        )
-                        .on_press(Message::SessionSave(self.new_session_name.clone()))
+                        button(row![lucide::save().size(12), text(" Save").size(12)].spacing(4))
+                            .on_press(Message::SessionSave(self.new_session_name.clone()))
                     };
 
                     let mut session_list = column![].spacing(4);
@@ -259,11 +198,10 @@ impl HttpRequestView {
                                 .is_some_and(|s| s == &session.id);
 
                             let session_row = if is_renaming {
-                                let rename_input =
-                                    text_input("Rename...", &self.rename_value)
-                                        .on_input(Message::SessionRenameValueChanged)
-                                        .padding(4)
-                                        .width(Length::Fill);
+                                let rename_input = text_input("Rename...", &self.rename_value)
+                                    .on_input(Message::SessionRenameValueChanged)
+                                    .padding(4)
+                                    .width(Length::Fill);
                                 row![
                                     rename_input,
                                     button(text("\u{2713}").size(12))
@@ -276,10 +214,10 @@ impl HttpRequestView {
                             } else if is_pending_delete {
                                 row![
                                     text(format!("Delete \"{}\"?", session.name)).size(13),
-                                    button(text("Yes").size(12).color(Color::from_rgb(0.9, 0.3, 0.3)))
-                                        .on_press(Message::SessionConfirmDelete(
-                                            session.id.clone(),
-                                        )),
+                                    button(
+                                        text("Yes").size(12).color(Color::from_rgb(0.9, 0.3, 0.3))
+                                    )
+                                    .on_press(Message::SessionConfirmDelete(session.id.clone(),)),
                                     button(text("No").size(12))
                                         .on_press(Message::SessionCancelDelete),
                                 ]

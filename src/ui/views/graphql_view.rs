@@ -1463,13 +1463,28 @@ impl GraphQLView {
                     _ => Color::from_rgb(0.5, 0.5, 0.5),
                 };
 
-                let type_label = row![
-                    text(format!("[{}]", schema_type.kind))
-                        .size(11)
-                        .color(kind_color),
-                    text(&schema_type.name).size(13),
-                ]
-                .spacing(5);
+                let mut type_col = column![].spacing(1);
+                type_col = type_col.push(
+                    row![
+                        text(format!("[{}]", schema_type.kind))
+                            .size(11)
+                            .color(kind_color),
+                        text(&schema_type.name).size(13),
+                    ]
+                    .spacing(5),
+                );
+
+                if let Some(desc) = &schema_type.description {
+                    if !desc.is_empty() {
+                        let truncated: String = desc.chars().take(60).collect();
+                        let suffix = if desc.len() > 60 { "..." } else { "" };
+                        type_col = type_col.push(
+                            text(format!("{truncated}{suffix}"))
+                                .size(10)
+                                .color(Color::from_rgb(0.5, 0.5, 0.5)),
+                        );
+                    }
+                }
 
                 let is_selected = self
                     .schema_selected_type
@@ -1477,9 +1492,9 @@ impl GraphQLView {
                     .is_some_and(|s| s == &schema_type.name);
 
                 let item = if is_selected {
-                    button(type_label).on_press(Message::SchemaTypeSelected(String::new()))
+                    button(type_col).on_press(Message::SchemaTypeSelected(String::new()))
                 } else {
-                    button(type_label)
+                    button(type_col)
                         .on_press(Message::SchemaTypeSelected(schema_type.name.clone()))
                 };
 
@@ -1550,8 +1565,14 @@ impl GraphQLView {
                             .align_y(Alignment::Center);
 
                             if field.is_deprecated {
+                                let deprecation_text = match &field.deprecation_reason {
+                                    Some(reason) if !reason.is_empty() => {
+                                        format!(" [deprecated: {reason}]")
+                                    }
+                                    _ => " [deprecated]".to_string(),
+                                };
                                 let field_name_row = field_name_row.push(
-                                    text(" [deprecated]")
+                                    text(deprecation_text)
                                         .size(10)
                                         .color(Color::from_rgb(0.8, 0.4, 0.1)),
                                 );
@@ -1661,24 +1682,32 @@ impl GraphQLView {
                                 .color(Color::from_rgb(0.5, 0.5, 0.5)),
                         );
                         for val in &selected_type.enum_values {
+                            let mut val_row = column![].spacing(1);
                             let mut val_text = row![text(&val.name).size(12)].spacing(4);
                             if val.is_deprecated {
+                                let deprecation_text = match &val.deprecation_reason {
+                                    Some(reason) if !reason.is_empty() => {
+                                        format!(" [deprecated: {reason}]")
+                                    }
+                                    _ => " [deprecated]".to_string(),
+                                };
                                 val_text = val_text.push(
-                                    text(" [deprecated]")
+                                    text(deprecation_text)
                                         .size(10)
                                         .color(Color::from_rgb(0.8, 0.4, 0.1)),
                                 );
                             }
+                            val_row = val_row.push(val_text);
                             if let Some(desc) = &val.description {
                                 if !desc.is_empty() {
-                                    val_text = val_text.push(
-                                        text(format!("- {desc}"))
+                                    val_row = val_row.push(
+                                        text(format!("  {desc}"))
                                             .size(10)
                                             .color(Color::from_rgb(0.5, 0.5, 0.5)),
                                     );
                                 }
                             }
-                            detail = detail.push(val_text);
+                            detail = detail.push(val_row);
                         }
                     }
 

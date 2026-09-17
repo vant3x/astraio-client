@@ -41,6 +41,9 @@ pub enum AppError {
 
     #[error("OAuth2 error: {0}")]
     OAuth2(String),
+
+    #[error("Runtime error: {0}")]
+    Runtime(String),
 }
 
 impl From<rusqlite::Error> for AppError {

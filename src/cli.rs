@@ -37,7 +37,7 @@ pub struct Cli {
     pub command: Commands,
 }
 
-#[derive(Debug, Clone, clap::ValueEnum)]
+#[derive(Debug, Clone, PartialEq, Eq, clap::ValueEnum)]
 pub enum OutputFormat {
     Text,
     Json,
@@ -165,23 +165,33 @@ pub struct ResponseInfo {
 }
 
 pub fn run(cli: Cli) -> Result<(), AppError> {
-    let db_path = expand_tilde(&cli.database.unwrap_or_else(|| "~/.astraio/data.db".to_string()));
+    let rt = tokio::runtime::Runtime::new()
+        .map_err(|e| AppError::Runtime(format!("Failed to create tokio runtime: {}", e)))?;
+    rt.block_on(run_async(cli))
+}
+
+async fn run_async(cli: Cli) -> Result<(), AppError> {
+    let db_path = expand_tilde(&cli.database.clone().unwrap_or_else(|| "~/.astraio/data.db".to_string()));
     let conn = Connection::open(&db_path)
         .map_err(|e| AppError::Database(format!("Failed to open database: {}", e)))?;
 
-    // Run keyring migration if needed
     let store = crate::services::secret_store::SecretStore::new();
     let _ = crate::services::secret_store::migrate_plaintext_tokens_to_keyring(&store, &conn);
 
+    let timeout = cli.timeout;
+    let insecure = cli.insecure;
+    let format = cli.format;
+    let environment = cli.environment;
+
     match cli.command {
         Commands::Run { id, url, method, body, headers } => {
-            run_single_request(&conn, id, url, method, body, headers, &cli)?;
+            run_single_request(&conn, id, url, method, body, headers, timeout, insecure, &format, environment.as_deref()).await?;
         }
         Commands::Collection { id, name, stop_on_failure, delay } => {
-            run_collection(&conn, id, name, stop_on_failure, delay, &cli)?;
+            run_collection(&conn, id, name, stop_on_failure, delay, timeout, insecure, &format, environment.as_deref()).await?;
         }
         Commands::Quick { url, method, body, headers } => {
-            run_quick_request(&url, &method, body, headers, &cli)?;
+            run_quick_request(&url, &method, body, headers, timeout, insecure, &format).await?;
         }
         Commands::List { r#type, collection } => {
             list_items(&conn, &r#type, collection)?;
@@ -216,14 +226,18 @@ fn parse_header(raw: &str) -> Option<(String, String)> {
     Some((key, value))
 }
 
-fn run_single_request(
+#[allow(clippy::too_many_arguments)]
+async fn run_single_request(
     conn: &Connection,
     id: i32,
     url: Option<String>,
     method: Option<String>,
     body: Option<String>,
     headers: Option<Vec<String>>,
-    cli: &Cli,
+    timeout: u64,
+    insecure: bool,
+    format: &OutputFormat,
+    environment: Option<&str>,
 ) -> Result<(), AppError> {
     let entry = database::get_collection_request_by_id(conn, id)?
         .ok_or_else(|| AppError::Parse(format!("Request with ID {} not found", id)))?;
@@ -251,25 +265,29 @@ fn run_single_request(
     }
 
     // Apply environment variables if specified
-    if let Some(env_name) = &cli.environment {
+    if let Some(env_name) = environment {
         if let Some(env) = get_environment_by_name(conn, env_name) {
             apply_environment_to_request(&mut request, &env);
         }
     }
 
-    let result = execute_request(&request, cli.timeout, cli.insecure)?;
-    print_result(&result, &cli.format);
+    let result = execute_request(&request, timeout, insecure).await?;
+    print_result(&result, format);
 
     Ok(())
 }
 
-fn run_collection(
+#[allow(clippy::too_many_arguments)]
+async fn run_collection(
     conn: &Connection,
     id: Option<i32>,
     name: Option<String>,
     stop_on_failure: bool,
     delay: u64,
-    cli: &Cli,
+    timeout: u64,
+    insecure: bool,
+    format: &OutputFormat,
+    _environment: Option<&str>,
 ) -> Result<(), AppError> {
     let collection_id = if let Some(id) = id {
         id
@@ -281,7 +299,7 @@ fn run_collection(
         return Err(AppError::Validation("Either --id or --name must be provided".to_string()));
     };
 
-    let requests = database::get_collection_requests(conn, collection_id)?;
+    let requests = database::get_collection_requests(conn, collection_id, None)?;
     let mut results = Vec::new();
     let mut passed = 0;
     let mut failed = 0;
@@ -292,7 +310,7 @@ fn run_collection(
         print!("[{}/{}] {} {} ... ", i + 1, requests.len(), entry.method, entry.name);
 
         let request = build_request_from_entry(entry)?;
-        match execute_request(&request, cli.timeout, cli.insecure) {
+        match execute_request(&request, timeout, insecure).await {
             Ok(result) => {
                 if let Some(status) = result.response.as_ref().map(|r| r.status) {
                     if result.success {
@@ -343,7 +361,7 @@ fn run_collection(
     println!("\n--- Summary ---");
     println!("Total: {}, Passed: {}, Failed: {}", requests.len(), passed, failed);
 
-    if cli.format == OutputFormat::Json {
+    if *format == OutputFormat::Json {
         let summary = serde_json::json!({
             "total": requests.len(),
             "passed": passed,
@@ -356,12 +374,14 @@ fn run_collection(
     Ok(())
 }
 
-fn run_quick_request(
+async fn run_quick_request(
     url: &str,
     method: &str,
     body: Option<String>,
     headers: Option<Vec<String>>,
-    cli: &Cli,
+    timeout: u64,
+    insecure: bool,
+    format: &OutputFormat,
 ) -> Result<(), AppError> {
     let mut request = HttpRequest {
         method: method.parse().map_err(|_| AppError::Parse(format!("Invalid HTTP method: {}", method)))?,
@@ -383,8 +403,8 @@ fn run_quick_request(
         }
     }
 
-    let result = execute_request(&request, cli.timeout, cli.insecure)?;
-    print_result(&result, &cli.format);
+    let result = execute_request(&request, timeout, insecure).await?;
+    print_result(&result, format);
 
     Ok(())
 }
@@ -404,7 +424,7 @@ fn list_items(
         }
         "requests" => {
             let cid = collection_id.ok_or_else(|| AppError::Validation("--collection required for listing requests".to_string()))?;
-            let requests = database::get_collection_requests(conn, cid)?;
+            let requests = database::get_collection_requests(conn, cid, None)?;
             println!("Requests in collection {} ({}):\n", cid, requests.len());
             for r in &requests {
                 println!("  [{}] {} {} {}", r.id, r.method, r.name, r.url);
@@ -429,7 +449,7 @@ fn export_collection(
 ) -> Result<(), AppError> {
     let collection = database::get_collection_by_id(conn, id)?
         .ok_or_else(|| AppError::Parse(format!("Collection {} not found", id)))?;
-    let requests = database::get_collection_requests(conn, id)?;
+    let requests = database::get_collection_requests(conn, id, None)?;
 
     let export_data = serde_json::json!({
         "collection": collection,
@@ -519,40 +539,26 @@ fn build_request_from_entry(entry: &CollectionRequest) -> Result<HttpRequest, Ap
 }
 
 fn apply_environment_to_request(request: &mut HttpRequest, env: &Environment) {
-    let vars = parse_env_variables(&env.variables);
+    let vars = &env.variables;
 
     // Replace in URL
-    for (key, value) in &vars {
+    for (key, value) in vars {
         request.url = request.url.replace(&format!("{{{{{}}}}}", key), value);
     }
 
     // Replace in headers
     for (_, value) in &mut request.headers {
-        for (key, val) in &vars {
+        for (key, val) in vars {
             *value = value.replace(&format!("{{{{{}}}}}", key), val);
         }
     }
 
     // Replace in body
     if let Some(body) = &mut request.body {
-        for (key, value) in &vars {
+        for (key, value) in vars {
             *body = body.replace(&format!("{{{{{}}}}}", key), value);
         }
     }
-}
-
-fn parse_env_variables(variables: &str) -> Vec<(String, String)> {
-    let mut vars = Vec::new();
-    for line in variables.lines() {
-        if let Some((key, value)) = line.split_once('=') {
-            let key = key.trim().to_string();
-            let value = value.trim().to_string();
-            if !key.is_empty() {
-                vars.push((key, value));
-            }
-        }
-    }
-    vars
 }
 
 fn get_environment_by_name(conn: &Connection, name: &str) -> Option<Environment> {
@@ -562,7 +568,7 @@ fn get_environment_by_name(conn: &Connection, name: &str) -> Option<Environment>
         .find(|e| e.name == name)
 }
 
-fn execute_request(
+async fn execute_request(
     request: &HttpRequest,
     timeout: u64,
     insecure: bool,
@@ -595,7 +601,7 @@ fn execute_request(
         req_builder = req_builder.body(body.clone());
     }
 
-    let response = req_builder.send()?;
+    let response = req_builder.send().await?;
     let duration = start.elapsed();
     let status = response.status().as_u16();
     let headers: Vec<(String, String)> = response
@@ -603,11 +609,11 @@ fn execute_request(
         .iter()
         .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
         .collect();
-    let body = response.text()?;
+    let body = response.text().await?;
     let size = body.len();
 
     Ok(CliResult {
-        success: status >= 200 && status < 300,
+        success: (200..300).contains(&status),
         request: RequestInfo {
             method: request.method.to_string(),
             url: request.url.clone(),

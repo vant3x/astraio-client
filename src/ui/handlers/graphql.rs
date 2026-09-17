@@ -1,4 +1,5 @@
-use crate::ui::app::{AstraioApp, Message};
+use crate::ui::app::AstraioApp;
+use crate::ui::message::Message;
 use crate::ui::views::graphql_view;
 use iced::Task;
 
@@ -196,6 +197,8 @@ pub fn handle_message(app: &mut AstraioApp, msg: graphql_view::Message) -> Task<
             let query = view.query_input.text();
             let variables = view.variables_input.text();
             let operation_name = view.operation_name.clone();
+            let status_code = view.status_code;
+            let response_duration = view.response_duration;
 
             let graphql_request = crate::protocols::graphql::GraphQLRequest {
                 query: query.clone(),
@@ -222,8 +225,8 @@ pub fn handle_message(app: &mut AstraioApp, msg: graphql_view::Message) -> Task<
                 &app.db_conn,
                 "GRAPHQL",
                 &url,
-                view.status_code,
-                view.response_duration.map(|d| d.as_millis() as u64),
+                status_code,
+                response_duration.map(|d| d.as_millis() as u64),
                 request_data.as_deref(),
                 response_data.as_deref(),
             );
@@ -233,9 +236,21 @@ pub fn handle_message(app: &mut AstraioApp, msg: graphql_view::Message) -> Task<
                     app.graphql_view
                         .update(graphql_view::Message::SavedToHistory(Ok(())));
                     let _ = crate::services::history_service::trim(&app.db_conn, 500);
-                    let entries = crate::services::history_service::get_all(&app.db_conn, 200)
-                        .unwrap_or_default();
-                    app.history_view.entries = entries;
+                    // Append new entry in-memory instead of reloading 200 rows
+                    let new_entry = crate::persistence::database::RequestHistoryEntry {
+                        id: app.db_conn.last_insert_rowid() as i32,
+                        method: "GRAPHQL".to_string(),
+                        url: url.clone(),
+                        status: status_code,
+                        duration_ms: response_duration.map(|d| d.as_millis() as u64),
+                        timestamp: crate::utils::timestamp_seconds(),
+                        request_data: request_data.clone(),
+                        response_data: response_data.clone(),
+                    };
+                    app.history_view.entries.insert(0, new_entry);
+                    if app.history_view.entries.len() > 200 {
+                        app.history_view.entries.truncate(200);
+                    }
                 }
                 Err(e) => {
                     app.graphql_view

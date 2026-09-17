@@ -1,4 +1,5 @@
-use crate::ui::app::{AstraioApp, Message};
+use crate::ui::app::AstraioApp;
+use crate::ui::message::Message;
 use crate::ui::views::collection_view;
 use iced::Task;
 
@@ -798,7 +799,7 @@ fn load_graphql_from_collection(
         }
     }
 
-    app.active_protocol = crate::ui::app::Protocol::GraphQL;
+    app.active_protocol = crate::ui::message::Protocol::GraphQL;
 }
 
 fn save_current_to_collection(app: &mut AstraioApp) {

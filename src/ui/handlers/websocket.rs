@@ -1,5 +1,6 @@
 use crate::protocols::websocket::{connect_ws, WsRequest, WsStats, WsStatus};
-use crate::ui::app::{AstraioApp, Message};
+use crate::ui::app::AstraioApp;
+use crate::ui::message::Message;
 use crate::ui::views::websocket_view;
 use iced::Task;
 use std::sync::{Arc, Mutex};
@@ -280,29 +281,8 @@ fn handle_connect(app: &mut AstraioApp) -> Task<Message> {
 
 fn handle_disconnect(app: &mut AstraioApp) -> Task<Message> {
     log::info!("Disconnecting WebSocket");
-    if let Some(shutdown) = app.ws_shutdown.take() {
-        let _ = shutdown.send(());
-    }
-
-    // Abort all active handles to prevent memory leaks
-    if let Some(write_handle) = app.ws_write_handle.take() {
-        if let Some(handle) = write_handle.lock().ok().and_then(|mut h| h.take()) {
-            handle.abort();
-        }
-    }
-    if let Some(read_handle) = app.ws_read_handle.take() {
-        if let Some(handle) = read_handle.lock().ok().and_then(|mut h| h.take()) {
-            handle.abort();
-        }
-    }
-    if let Some(ping_handle) = app.ws_ping_handle.take() {
-        if let Some(handle) = ping_handle.lock().ok().and_then(|mut h| h.take()) {
-            handle.abort();
-        }
-    }
-
-    app.ws_sender = None;
-    app.ws_receiver = None;
+    app.ws.shutdown();
+    app.ws.reset();
     app.websocket_view.ws_sender = None;
     app.websocket_view.status = WsStatus::Disconnected;
     app.websocket_view.current_retries = 0;
@@ -344,12 +324,24 @@ fn handle_disconnected(app: &mut AstraioApp, reason: String) -> Task<Message> {
             &app.db_conn,
             crate::persistence::database::DEFAULT_HISTORY_LIMIT,
         );
-        app.history_view.entries =
-            crate::services::history_service::get_all(&app.db_conn, 200).unwrap_or_default();
+        // Append new entry in-memory instead of reloading 200 rows
+        let new_entry = crate::persistence::database::RequestHistoryEntry {
+            id: app.db_conn.last_insert_rowid() as i32,
+            method: "WS".to_string(),
+            url: url.clone(),
+            status: Some(connected),
+            duration_ms,
+            timestamp: crate::utils::timestamp_seconds(),
+            request_data,
+            response_data,
+        };
+        app.history_view.entries.insert(0, new_entry);
+        if app.history_view.entries.len() > 200 {
+            app.history_view.entries.truncate(200);
+        }
     }
 
-    app.ws_sender = None;
-    app.ws_receiver = None;
+    app.ws.reset();
     app.websocket_view.ws_sender = None;
     app.websocket_view.status = WsStatus::Disconnected;
 
@@ -434,26 +426,8 @@ pub fn handle_ws_event(
             if app.websocket_view.auto_reconnect
                 && app.websocket_view.current_retries < app.websocket_view.max_retries
             {
-                if let Some(shutdown) = app.ws_shutdown.take() {
-                    let _ = shutdown.send(());
-                }
-                if let Some(h) = app.ws_write_handle.take() {
-                    if let Some(handle) = h.lock().ok().and_then(|mut h| h.take()) {
-                        handle.abort();
-                    }
-                }
-                if let Some(h) = app.ws_read_handle.take() {
-                    if let Some(handle) = h.lock().ok().and_then(|mut h| h.take()) {
-                        handle.abort();
-                    }
-                }
-                if let Some(h) = app.ws_ping_handle.take() {
-                    if let Some(handle) = h.lock().ok().and_then(|mut h| h.take()) {
-                        handle.abort();
-                    }
-                }
-                app.ws_sender = None;
-                app.ws_receiver = None;
+                app.ws.shutdown();
+                app.ws.reset();
                 app.websocket_view.ws_sender = None;
                 return handle_disconnected(app, e);
             }
@@ -474,30 +448,15 @@ pub fn handle_ws_connected(
     read_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
     ping_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
 ) {
-    // Abort existing handles before setting new ones to prevent memory leaks
-    if let Some(old_write) = app.ws_write_handle.take() {
-        if let Some(handle) = old_write.lock().ok().and_then(|mut h| h.take()) {
-            handle.abort();
-        }
-    }
-    if let Some(old_read) = app.ws_read_handle.take() {
-        if let Some(handle) = old_read.lock().ok().and_then(|mut h| h.take()) {
-            handle.abort();
-        }
-    }
-    if let Some(old_ping) = app.ws_ping_handle.take() {
-        if let Some(handle) = old_ping.lock().ok().and_then(|mut h| h.take()) {
-            handle.abort();
-        }
-    }
+    app.ws.abort_handles();
 
-    app.ws_sender = Some(sender.clone());
+    app.ws.sender = Some(sender.clone());
     app.websocket_view.ws_sender = Some(sender);
-    app.ws_receiver = Some(receiver);
-    app.ws_shutdown = shutdown_tx;
-    app.ws_write_handle = Some(write_handle);
-    app.ws_read_handle = Some(read_handle);
-    app.ws_ping_handle = Some(ping_handle);
+    app.ws.receiver = Some(receiver);
+    app.ws.shutdown = shutdown_tx;
+    app.ws.write_handle = Some(write_handle);
+    app.ws.read_handle = Some(read_handle);
+    app.ws.ping_handle = Some(ping_handle);
     app.websocket_view.status = WsStatus::Connected;
     app.websocket_view.current_retries = 0;
     app.websocket_view.stats.connected_at = Some(std::time::Instant::now());

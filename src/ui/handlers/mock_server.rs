@@ -1,16 +1,17 @@
-use crate::ui::app::{AstraioApp, Message};
+use crate::ui::app::AstraioApp;
+use crate::ui::message::Message;
 use crate::ui::views::mock_server_view;
 use iced::Task;
 pub fn handle_message(app: &mut AstraioApp, msg: mock_server_view::Message) -> Task<Message> {
     match msg {
         mock_server_view::Message::ToggleAddServer => {
-            app.mock_server_view.show_add_server = !app.mock_server_view.show_add_server;
-            if !app.mock_server_view.show_add_server {
-                app.mock_server_view.new_server_name.clear();
+            app.mock.view.show_add_server = !app.mock.view.show_add_server;
+            if !app.mock.view.show_add_server {
+                app.mock.view.new_server_name.clear();
             }
         }
         mock_server_view::Message::NewServerNameChanged(name) => {
-            app.mock_server_view.new_server_name = name;
+            app.mock.view.new_server_name = name;
         }
         mock_server_view::Message::CreateServer(name) => {
             if name.trim().is_empty() {
@@ -23,9 +24,9 @@ pub fn handle_message(app: &mut AstraioApp, msg: mock_server_view::Message) -> T
                 port,
             ) {
                 Ok(servers) => {
-                    app.mock_server_view.sync_servers(&servers);
-                    app.mock_server_view.new_server_name = String::new();
-                    app.mock_server_view.show_add_server = false;
+                    app.mock.view.sync_servers(&servers);
+                    app.mock.view.new_server_name = String::new();
+                    app.mock.view.show_add_server = false;
                     app.toast_manager.success(format!(
                         "Created '{}' on port {}",
                         name.trim(),
@@ -39,19 +40,19 @@ pub fn handle_message(app: &mut AstraioApp, msg: mock_server_view::Message) -> T
             }
         }
         mock_server_view::Message::SelectServer(id) => {
-            app.mock_server_view.selected_server_id = id;
-            app.mock_server_view.endpoint_edit = None;
+            app.mock.view.selected_server_id = id;
+            app.mock.view.endpoint_edit = None;
         }
         mock_server_view::Message::DeleteServer(id) => {
-            if let Some(handle) = app.mock_server_handles.remove(&id) {
+            if let Some(handle) = app.mock.handles.remove(&id) {
                 crate::protocols::mock_server::stop_mock_server(handle);
-                app.mock_server_view.statuses.remove(&id);
+                app.mock.view.statuses.remove(&id);
             }
             match crate::services::mock_server_service::delete_and_refresh(&app.db_conn, id) {
                 Ok(servers) => {
-                    app.mock_server_view.sync_servers(&servers);
-                    if app.mock_server_view.selected_server_id == Some(id) {
-                        app.mock_server_view.selected_server_id = None;
+                    app.mock.view.sync_servers(&servers);
+                    if app.mock.view.selected_server_id == Some(id) {
+                        app.mock.view.selected_server_id = None;
                     }
                     app.toast_manager.success("Mock server deleted");
                 }
@@ -59,7 +60,7 @@ pub fn handle_message(app: &mut AstraioApp, msg: mock_server_view::Message) -> T
             }
         }
         mock_server_view::Message::StartServer(id) => {
-            let config = match app.mock_server_view.servers.iter().find(|s| s.id == id) {
+            let config = match app.mock.view.servers.iter().find(|s| s.id == id) {
                 Some(c) => c.clone(),
                 None => return Task::none(),
             };
@@ -69,7 +70,7 @@ pub fn handle_message(app: &mut AstraioApp, msg: mock_server_view::Message) -> T
                 config.name,
                 config.port
             );
-            app.mock_server_view.statuses.insert(
+            app.mock.view.statuses.insert(
                 id,
                 crate::protocols::mock_server::MockServerStatus::Starting,
             );
@@ -90,17 +91,17 @@ pub fn handle_message(app: &mut AstraioApp, msg: mock_server_view::Message) -> T
             );
         }
         mock_server_view::Message::StopServer(id) => {
-            if let Some(handle) = app.mock_server_handles.remove(&id) {
+            if let Some(handle) = app.mock.handles.remove(&id) {
                 crate::protocols::mock_server::stop_mock_server(handle);
             }
-            app.mock_server_view
+            app.mock.view
                 .statuses
                 .insert(id, crate::protocols::mock_server::MockServerStatus::Stopped);
             app.toast_manager.info("Mock server stopped");
         }
         mock_server_view::Message::AddEndpoint(server_id) => {
             let body = r#"{"message": "Hello, World!"}"#.to_string();
-            app.mock_server_view.endpoint_edit = Some(mock_server_view::EndpointEditState {
+            app.mock.view.endpoint_edit = Some(mock_server_view::EndpointEditState {
                 mock_server_id: server_id,
                 endpoint_id: None,
                 method: "GET".to_string(),
@@ -114,9 +115,9 @@ pub fn handle_message(app: &mut AstraioApp, msg: mock_server_view::Message) -> T
             });
         }
         mock_server_view::Message::EditEndpoint(endpoint_id) => {
-            let server_id = app.mock_server_view.selected_server_id.unwrap_or(0);
+            let server_id = app.mock.view.selected_server_id.unwrap_or(0);
             if let Some(server) = app
-                .mock_server_view
+                .mock.view
                 .servers
                 .iter()
                 .find(|s| s.id == server_id)
@@ -136,7 +137,7 @@ pub fn handle_message(app: &mut AstraioApp, msg: mock_server_view::Message) -> T
                             },
                         )
                         .collect();
-                    app.mock_server_view.endpoint_edit =
+                    app.mock.view.endpoint_edit =
                         Some(mock_server_view::EndpointEditState {
                             mock_server_id: server_id,
                             endpoint_id: Some(ep.id),
@@ -158,37 +159,37 @@ pub fn handle_message(app: &mut AstraioApp, msg: mock_server_view::Message) -> T
             }
         }
         mock_server_view::Message::EndpointMethodSelected(method) => {
-            if let Some(ref mut edit) = app.mock_server_view.endpoint_edit {
+            if let Some(ref mut edit) = app.mock.view.endpoint_edit {
                 edit.method = method;
             }
         }
         mock_server_view::Message::EndpointPathChanged(path) => {
-            if let Some(ref mut edit) = app.mock_server_view.endpoint_edit {
+            if let Some(ref mut edit) = app.mock.view.endpoint_edit {
                 edit.path = path;
             }
         }
         mock_server_view::Message::EndpointStatusChanged(status) => {
-            if let Some(ref mut edit) = app.mock_server_view.endpoint_edit {
+            if let Some(ref mut edit) = app.mock.view.endpoint_edit {
                 edit.status = status;
             }
         }
         mock_server_view::Message::EndpointBodyAction(action) => {
-            if let Some(ref mut edit) = app.mock_server_view.endpoint_edit {
+            if let Some(ref mut edit) = app.mock.view.endpoint_edit {
                 edit.body.perform(action);
             }
         }
         mock_server_view::Message::EndpointDelayChanged(delay) => {
-            if let Some(ref mut edit) = app.mock_server_view.endpoint_edit {
+            if let Some(ref mut edit) = app.mock.view.endpoint_edit {
                 edit.delay_ms = delay;
             }
         }
         mock_server_view::Message::EndpointHeadersEditor(msg) => {
-            if let Some(ref mut edit) = app.mock_server_view.endpoint_edit {
+            if let Some(ref mut edit) = app.mock.view.endpoint_edit {
                 edit.headers.update(msg);
             }
         }
         mock_server_view::Message::SaveEndpoint => {
-            if let Some(edit) = app.mock_server_view.endpoint_edit.take() {
+            if let Some(edit) = app.mock.view.endpoint_edit.take() {
                 let status_code: u16 = edit.status.parse().unwrap_or(200);
                 let body_text = edit.body.text();
                 let body_opt = if body_text.is_empty() {
@@ -234,7 +235,7 @@ pub fn handle_message(app: &mut AstraioApp, msg: mock_server_view::Message) -> T
                     Ok(_) => {
                         let servers = crate::services::mock_server_service::get_all(&app.db_conn)
                             .unwrap_or_default();
-                        app.mock_server_view.sync_servers(&servers);
+                        app.mock.view.sync_servers(&servers);
                         app.toast_manager.success("Endpoint saved");
                     }
                     Err(e) => {
@@ -245,7 +246,7 @@ pub fn handle_message(app: &mut AstraioApp, msg: mock_server_view::Message) -> T
             }
         }
         mock_server_view::Message::CancelEndpointEdit => {
-            app.mock_server_view.endpoint_edit = None;
+            app.mock.view.endpoint_edit = None;
         }
         mock_server_view::Message::DeleteEndpoint(endpoint_id, server_id) => {
             match crate::services::mock_server_service::delete_endpoint(
@@ -256,17 +257,17 @@ pub fn handle_message(app: &mut AstraioApp, msg: mock_server_view::Message) -> T
                 Ok(_) => {
                     let servers = crate::services::mock_server_service::get_all(&app.db_conn)
                         .unwrap_or_default();
-                    app.mock_server_view.sync_servers(&servers);
+                    app.mock.view.sync_servers(&servers);
                     app.toast_manager.success("Endpoint deleted");
                 }
                 Err(e) => log::error!("Error deleting endpoint: {e}"),
             }
         }
         mock_server_view::Message::EndpointSearchChanged(query) => {
-            app.mock_server_view.endpoint_search = query;
+            app.mock.view.endpoint_search = query;
         }
         mock_server_view::Message::ClearLogs => {
-            app.mock_server_view.logs.clear();
+            app.mock.view.logs.clear();
         }
     }
 

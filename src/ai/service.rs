@@ -8,6 +8,7 @@ pub struct AiService {
     providers: Vec<(AiProviderConfig, Arc<dyn AiProviderAdapter>)>,
 }
 
+#[allow(dead_code)]
 impl AiService {
     pub fn new() -> Self {
         Self {

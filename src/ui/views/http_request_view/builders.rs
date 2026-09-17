@@ -352,6 +352,7 @@ impl HttpRequestView {
     }
 
     #[cfg(test)]
+    #[allow(dead_code)]
     pub fn has_unresolved_variables(&self) -> Vec<String> {
         let mut unresolved = Vec::new();
         let check = |s: &str| -> Vec<String> {

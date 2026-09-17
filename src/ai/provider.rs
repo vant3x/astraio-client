@@ -2,6 +2,7 @@ use super::types::{AiChatRequest, AiChatResponse, AiProviderError};
 use async_trait::async_trait;
 
 #[async_trait]
+#[allow(dead_code)]
 pub trait AiProviderAdapter: Send + Sync {
     async fn chat(&self, request: AiChatRequest) -> Result<AiChatResponse, AiProviderError>;
 

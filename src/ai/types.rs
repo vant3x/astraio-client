@@ -109,6 +109,7 @@ pub struct AiChatRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct AiChatResponse {
     pub content: String,
     pub model: String,
@@ -116,6 +117,7 @@ pub struct AiChatResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[allow(dead_code)]
 pub struct AiUsage {
     pub prompt_tokens: u32,
     pub completion_tokens: u32,
@@ -140,6 +142,7 @@ impl std::fmt::Display for AiProviderError {
 impl std::error::Error for AiProviderError {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct AiConversation {
     pub id: Option<i32>,
     pub provider_config_id: i32,
@@ -150,6 +153,7 @@ pub struct AiConversation {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct AiMessage {
     pub id: Option<i32>,
     pub conversation_id: i32,

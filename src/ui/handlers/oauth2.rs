@@ -1,6 +1,7 @@
 use crate::data::auth::Auth;
 use crate::error::AppError;
-use crate::ui::app::{AstraioApp, Message};
+use crate::ui::app::AstraioApp;
+use crate::ui::message::Message;
 use iced::Task;
 
 pub fn handle_start_auth(app: &mut AstraioApp, index: usize) -> Task<Message> {

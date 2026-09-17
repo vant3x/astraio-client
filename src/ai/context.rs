@@ -30,16 +30,19 @@ impl<'a> AiContextBuilder<'a> {
         }
     }
 
+    #[allow(dead_code)]
     pub fn with_request(mut self, req: &'a HttpRequest) -> Self {
         self.current_request = Some(req);
         self
     }
 
+    #[allow(dead_code)]
     pub fn with_response(mut self, resp: &'a HttpResponse) -> Self {
         self.current_response = Some(resp);
         self
     }
 
+    #[allow(dead_code)]
     pub fn with_environment(mut self, name: &'a str, vars: Vec<(&'a str, &'a str)>) -> Self {
         self.active_env_name = Some(name);
         self.env_variables = vars;
@@ -47,11 +50,7 @@ impl<'a> AiContextBuilder<'a> {
     }
 
     /// Use owned data when the HttpRequest is a local temporary.
-    pub fn with_request_owned(
-        mut self,
-        method: HttpMethod,
-        url: String,
-    ) -> AiContextBuilder<'static> {
+    pub fn with_request_owned(self, method: HttpMethod, url: String) -> AiContextBuilder<'static> {
         AiContextBuilder {
             current_request: None,
             current_response: None,

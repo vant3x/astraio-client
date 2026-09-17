@@ -274,7 +274,6 @@ impl CookieJar {
         self.cookies.clear();
     }
 
-    #[allow(dead_code)]
     pub fn remove_expired(&mut self) {
         let now = chrono::Utc::now().timestamp();
         for cookies in self.cookies.values_mut() {

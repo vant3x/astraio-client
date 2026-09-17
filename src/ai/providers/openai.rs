@@ -38,22 +38,26 @@ struct ChatMessage {
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct ChatCompletionResponse {
     choices: Vec<ChatChoice>,
     usage: Option<CompletionUsage>,
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct ChatChoice {
     message: ChatMessageResponse,
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct ChatMessageResponse {
     content: Option<String>,
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct CompletionUsage {
     prompt_tokens: u32,
     completion_tokens: u32,
@@ -66,6 +70,7 @@ struct StreamChunk {
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct StreamChoice {
     delta: Option<StreamDelta>,
     finish_reason: Option<String>,
@@ -82,6 +87,7 @@ struct ApiError {
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct ApiErrorDetail {
     message: String,
     #[serde(rename = "type")]

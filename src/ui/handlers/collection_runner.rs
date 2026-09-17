@@ -1,7 +1,8 @@
 use crate::http_client::config::RequestConfig;
 use crate::http_client::request::{HttpMethod, HttpRequest};
 use crate::persistence::database::CollectionRequest;
-use crate::ui::app::{AstraioApp, Message};
+use crate::ui::app::AstraioApp;
+use crate::ui::message::Message;
 use crate::ui::views::collection_runner::{self, CollectionRunnerState, RequestRunResult};
 use iced::Task;
 
@@ -12,7 +13,10 @@ pub fn handle_message(app: &mut AstraioApp, msg: collection_runner::Message) -> 
                 Some(CollectionRunnerState::new(col_id, col_name, requests));
             app.show_collection_runner = true;
 
-            let runner = app.collection_runner_state.clone().unwrap();
+            let runner = match app.collection_runner_state.clone() {
+                Some(r) => r,
+                None => return Task::none(),
+            };
             let env = app.active_environment.clone();
             let collection_vars = runner
                 .requests

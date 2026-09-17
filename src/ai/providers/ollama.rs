@@ -41,6 +41,7 @@ struct ChatMessage {
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct ChatResponse {
     message: ChatMessageResponse,
     #[serde(default)]
@@ -50,11 +51,13 @@ struct ChatResponse {
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct ChatMessageResponse {
     content: String,
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct StreamResponse {
     message: Option<StreamDelta>,
     done: bool,

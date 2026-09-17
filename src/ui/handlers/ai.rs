@@ -1,5 +1,6 @@
 use crate::ai::types::{AiChatMessage, AiChatRequest, AiProviderConfig, AiRole};
-use crate::ui::app::{AstraioApp, Message};
+use crate::ui::app::AstraioApp;
+use crate::ui::message::Message;
 use crate::ui::views::ai_chat_view;
 use iced::Task;
 
@@ -76,7 +77,7 @@ pub fn handle_message(app: &mut AstraioApp, message: ai_chat_view::Message) -> T
             if app.ai_view.active_provider_index == Some(idx) {
                 app.ai_view.active_provider_index =
                     app.ai_view.providers.iter().position(|p| p.is_default);
-            } else if app.ai_view.active_provider_index.map_or(false, |i| i > idx) {
+            } else if app.ai_view.active_provider_index.is_some_and(|i| i > idx) {
                 app.ai_view.active_provider_index =
                     app.ai_view.active_provider_index.map(|i| i - 1);
             }
@@ -90,7 +91,7 @@ pub fn handle_message(app: &mut AstraioApp, message: ai_chat_view::Message) -> T
         }
         ai_chat_view::Message::CopyMessage(idx) => {
             if let Some(msg) = app.ai_view.messages.get(idx) {
-                if let Some(mut clipboard) = arboard::Clipboard::new().ok() {
+                if let Ok(mut clipboard) = arboard::Clipboard::new() {
                     let _ = clipboard.set_text(&msg.content);
                 }
             }
@@ -244,14 +245,14 @@ fn handle_apply_to_request(app: &mut AstraioApp, content: &str) -> Task<Message>
     Task::none()
 }
 
-fn parse_http_request_from_ai(
-    content: &str,
-) -> Option<(
+type ParsedRequest = (
     String,
     String,
     Option<Vec<(String, String)>>,
     Option<String>,
-)> {
+);
+
+fn parse_http_request_from_ai(content: &str) -> Option<ParsedRequest> {
     let lines: Vec<&str> = content.lines().collect();
     let mut method = String::new();
     let mut url = String::new();

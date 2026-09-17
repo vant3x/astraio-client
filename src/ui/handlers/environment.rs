@@ -1,4 +1,5 @@
-use crate::ui::app::{AstraioApp, Message};
+use crate::ui::app::AstraioApp;
+use crate::ui::message::Message;
 use crate::ui::views::environment_manager;
 use iced::Task;
 use std::fmt::Write;
@@ -111,7 +112,7 @@ pub fn handle_message(app: &mut AstraioApp, msg: environment_manager::Message) -
             return Task::none();
         }
         environment_manager::Message::Close => {
-            app.current_view = crate::ui::app::View::Main;
+            app.current_view = crate::ui::message::View::Main;
         }
         _ => (),
     }

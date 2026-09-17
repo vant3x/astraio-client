@@ -1,4 +1,5 @@
-use crate::ui::app::{AstraioApp, Message};
+use crate::ui::app::AstraioApp;
+use crate::ui::message::Message;
 use crate::ui::views::history_view;
 use iced::Task;
 
@@ -44,7 +45,13 @@ pub fn handle_message(app: &mut AstraioApp, msg: history_view::Message) -> Task<
         }
         history_view::Message::SearchChanged(_) => {
             app.history_view.update(msg);
-            refresh_history_entries(app);
+            // Debounce: cancel previous search by returning a delayed task
+            return Task::perform(
+                async {
+                    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+                },
+                |_| Message::HistorySearchDebounced,
+            );
         }
         history_view::Message::FilterMethod(_) => {
             app.history_view.update(msg);
@@ -103,7 +110,7 @@ pub fn handle_message(app: &mut AstraioApp, msg: history_view::Message) -> Task<
     Task::none()
 }
 
-fn refresh_history_entries(app: &mut AstraioApp) {
+pub(crate) fn refresh_history_entries(app: &mut AstraioApp) {
     let query = app.history_view.search_query.clone();
     let method = app.history_view.filter_method.clone();
     app.history_view.entries =

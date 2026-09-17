@@ -8,6 +8,8 @@ use iced::{
 use iced_fonts::lucide;
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
+#[allow(clippy::enum_variant_names)]
 pub enum Message {
     InputChanged(String),
     SendMessage,
@@ -52,6 +54,7 @@ impl std::fmt::Display for AiTab {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum QuickAction {
     GenerateRequest,
     ExplainResponse,
@@ -99,6 +102,7 @@ impl QuickAction {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct ChatBubble {
     pub role: AiRole,
     pub content: String,
@@ -638,7 +642,7 @@ impl AiChatView {
                 .size(13)
                 .padding(8),
             button(row![lucide::plus().size(14), text("Add Provider")].spacing(4))
-                .style(accent_button_style())
+                .style(iced::widget::button::primary)
                 .on_press(Message::SaveProviderConfig),
         ]
         .spacing(6)
@@ -679,7 +683,7 @@ impl AiChatView {
         let format_picker = iced::widget::pick_list(
             MockFormat::all().to_vec(),
             Some(self.mock_data.format),
-            |f| Message::TabChanged(AiTab::MockData), // placeholder
+            |_f| Message::TabChanged(AiTab::MockData), // placeholder
         );
 
         let generate_btn = if self.mock_data.is_generating || self.mock_data.description.is_empty()

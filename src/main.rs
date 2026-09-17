@@ -1,4 +1,5 @@
 mod ai;
+mod cli;
 mod cookie;
 mod data;
 mod error;
@@ -12,7 +13,18 @@ mod services;
 mod ui;
 mod utils;
 
-fn main() -> iced::Result {
+use clap::Parser;
+
+fn main() {
     env_logger::init();
-    ui::app::main()
+
+    if std::env::args().len() > 1 {
+        let cli = cli::Cli::parse();
+        if let Err(e) = cli::run(cli) {
+            eprintln!("Error: {}", e);
+            std::process::exit(1);
+        }
+    } else {
+        let _ = ui::app::main();
+    }
 }

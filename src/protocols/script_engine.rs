@@ -3,10 +3,14 @@ use crate::http_client::request::HttpRequest;
 use crate::http_client::response::HttpResponse;
 use rquickjs::{Context, Function, Object, Runtime, Value};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Instant;
 
 const DEFAULT_SCRIPT_TIMEOUT_MS: u64 = 5_000;
+
+fn lock_state<T>(s: &Mutex<T>) -> MutexGuard<'_, T> {
+    s.lock().unwrap_or_else(|e| e.into_inner())
+}
 
 #[derive(Debug, Clone)]
 pub struct ScriptOutput {
@@ -274,8 +278,7 @@ fn setup_pm_api(
 
         let s = state.clone();
         let get_fn = Function::new(ctx.clone(), move |name: String| -> String {
-            s.lock()
-                .unwrap()
+            lock_state(&s)
                 .variables
                 .get(&name)
                 .cloned()
@@ -285,7 +288,7 @@ fn setup_pm_api(
 
         let s = state.clone();
         let set_fn = Function::new(ctx.clone(), move |name: String, value: String| {
-            s.lock().unwrap().variables.insert(name, value);
+            lock_state(&s).variables.insert(name, value);
         })
         .map_err(|e| AppError::Http(format!("env.set: {e}")))?;
 
@@ -304,25 +307,25 @@ fn setup_pm_api(
 
         let s = state.clone();
         let set_url = Function::new(ctx.clone(), move |url: String| {
-            s.lock().unwrap().request_url = url;
+            lock_state(&s).request_url = url;
         })
         .map_err(|e| AppError::Http(format!("set_url: {e}")))?;
 
         let s = state.clone();
         let set_method = Function::new(ctx.clone(), move |method: String| {
-            s.lock().unwrap().request_method = method;
+            lock_state(&s).request_method = method;
         })
         .map_err(|e| AppError::Http(format!("set_method: {e}")))?;
 
         let s = state.clone();
         let set_body = Function::new(ctx.clone(), move |body: String| {
-            s.lock().unwrap().request_body = Some(body);
+            lock_state(&s).request_body = Some(body);
         })
         .map_err(|e| AppError::Http(format!("set_body: {e}")))?;
 
         let s = state.clone();
         let set_header = Function::new(ctx.clone(), move |key: String, value: String| {
-            let mut st = s.lock().unwrap();
+            let mut st = lock_state(&s);
             st.request_headers
                 .retain(|(k, _)| !k.eq_ignore_ascii_case(&key));
             st.request_headers.push((key, value));
@@ -331,7 +334,7 @@ fn setup_pm_api(
 
         let s = state.clone();
         let get_header = Function::new(ctx.clone(), move |key: String| -> String {
-            let st = s.lock().unwrap();
+            let st = lock_state(&s);
             st.request_headers
                 .iter()
                 .find(|(k, _)| k.eq_ignore_ascii_case(&key))
@@ -342,8 +345,7 @@ fn setup_pm_api(
 
         let s = state.clone();
         let remove_header = Function::new(ctx.clone(), move |key: String| {
-            s.lock()
-                .unwrap()
+            lock_state(&s)
                 .request_headers
                 .retain(|(k, _)| !k.eq_ignore_ascii_case(&key));
         })
@@ -351,19 +353,19 @@ fn setup_pm_api(
 
         let s = state.clone();
         let get_url = Function::new(ctx.clone(), move || -> String {
-            s.lock().unwrap().request_url.clone()
+            lock_state(&s).request_url.clone()
         })
         .map_err(|e| AppError::Http(format!("get_url: {e}")))?;
 
         let s = state.clone();
         let get_method = Function::new(ctx.clone(), move || -> String {
-            s.lock().unwrap().request_method.clone()
+            lock_state(&s).request_method.clone()
         })
         .map_err(|e| AppError::Http(format!("get_method: {e}")))?;
 
         let s = state.clone();
         let get_body = Function::new(ctx.clone(), move || -> String {
-            s.lock().unwrap().request_body.clone().unwrap_or_default()
+            lock_state(&s).request_body.clone().unwrap_or_default()
         })
         .map_err(|e| AppError::Http(format!("get_body: {e}")))?;
 
@@ -443,7 +445,7 @@ fn setup_pm_api(
                             .unwrap_or_default()
                     })
                     .collect();
-                s.lock().unwrap().logs.push(parts.join(" "));
+                lock_state(&s).logs.push(parts.join(" "));
             },
         )
         .map_err(|e| AppError::Http(format!("pm.log: {e}")))?;
@@ -466,7 +468,7 @@ fn setup_pm_api(
                     Ok(()) => result.passed = true,
                     Err(e) => result.message = Some(format!("{e}")),
                 }
-                s.lock().unwrap().test_results.push(result);
+                lock_state(&s).test_results.push(result);
             },
         )
         .map_err(|e| AppError::Http(format!("pm.test: {e}")))?;
@@ -478,7 +480,7 @@ fn setup_pm_api(
     {
         let s2 = state.clone();
         let collect_error = Function::new(ctx.clone(), move |msg: String| {
-            s2.lock().unwrap().errors.push(msg);
+            lock_state(&s2).errors.push(msg);
         })
         .map_err(|e| AppError::Http(format!("collect_error: {e}")))?;
         pm.set("__collectError", collect_error)

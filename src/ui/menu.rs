@@ -215,8 +215,8 @@ pub fn attach_windows(hwnd: isize) {
     });
 }
 
-pub fn handle_menu_event(event: &MenuEvent) -> Option<super::app::Message> {
-    use super::app::Message;
+pub fn handle_menu_event(event: &MenuEvent) -> Option<super::message::Message> {
+    use super::message::Message;
 
     let i = ids();
 

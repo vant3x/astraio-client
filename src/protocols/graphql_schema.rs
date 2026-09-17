@@ -268,32 +268,26 @@ impl std::fmt::Display for TypeKind {
 #[derive(Debug, Clone)]
 pub struct SchemaField {
     pub name: String,
-    #[allow(dead_code)]
     pub description: Option<String>,
     pub args: Vec<SchemaArg>,
     pub return_type: String,
     pub is_deprecated: bool,
-    #[allow(dead_code)]
     pub deprecation_reason: Option<String>,
 }
 
 #[derive(Debug, Clone)]
 pub struct SchemaArg {
     pub name: String,
-    #[allow(dead_code)]
     pub description: Option<String>,
     pub arg_type: String,
-    #[allow(dead_code)]
     pub default_value: Option<String>,
 }
 
 #[derive(Debug, Clone)]
 pub struct SchemaInputField {
     pub name: String,
-    #[allow(dead_code)]
     pub description: Option<String>,
     pub field_type: String,
-    #[allow(dead_code)]
     pub default_value: Option<String>,
 }
 
@@ -302,6 +296,7 @@ pub struct SchemaEnumValue {
     pub name: String,
     pub description: Option<String>,
     pub is_deprecated: bool,
+    pub deprecation_reason: Option<String>,
 }
 
 pub fn parse_introspection_response(
@@ -397,6 +392,7 @@ pub fn parse_introspection_response(
                         name: e.name.clone(),
                         description: e.description.clone(),
                         is_deprecated: e.is_deprecated,
+                        deprecation_reason: e.deprecation_reason.clone(),
                     })
                     .collect()
             })
