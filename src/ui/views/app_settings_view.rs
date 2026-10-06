@@ -30,6 +30,9 @@ pub enum Message {
     MaxBodySizeChanged(String),
     // Security
     ClearKeychainSecrets,
+    // AI
+    ToggleShowAiButton(bool),
+    OpenAiSettings,
     // Actions
     SaveSettings,
     ResetToDefaults,
@@ -55,6 +58,7 @@ pub struct AppSettingsView {
     pub client_key_path: String,
     pub user_agent: String,
     pub max_body_size: String,
+    pub show_ai_button: bool,
     pub saved: bool,
 }
 
@@ -78,6 +82,7 @@ impl AppSettingsView {
             client_key_path: String::new(),
             user_agent: "Astraio/0.6.0".to_string(),
             max_body_size: "10".to_string(),
+            show_ai_button: true,
             saved: false,
         }
     }
@@ -251,6 +256,33 @@ impl AppSettingsView {
         ]
         .spacing(12);
 
+        // ── AI Configuration ─────────────────────────────────────
+        let show_ai_toggle = button(if self.show_ai_button {
+            "Show AI Button: ON"
+        } else {
+            "Show AI Button: OFF"
+        })
+        .on_press(Message::ToggleShowAiButton(!self.show_ai_button));
+
+        let ai_settings_btn = button(
+            row![
+                lucide::sparkles().size(14),
+                text(" Configure AI Providers")
+            ]
+            .spacing(4),
+        )
+        .on_press(Message::OpenAiSettings);
+
+        let ai_section = column![
+            text("AI Configuration").size(18),
+            row![show_ai_toggle].spacing(10),
+            row![text("Manage AI providers, API keys, and models:")]
+                .spacing(10)
+                .align_y(Alignment::Center),
+            row![ai_settings_btn].spacing(10),
+        ]
+        .spacing(12);
+
         // ── Network Defaults ────────────────────────────────────
         let timeout_input = text_input("Timeout (secs)", &self.timeout)
             .on_input(Message::TimeoutChanged)
@@ -418,6 +450,8 @@ impl AppSettingsView {
             .align_y(Alignment::Center),
             rule::horizontal(1),
             appearance_section,
+            rule::horizontal(10),
+            ai_section,
             rule::horizontal(10),
             network_section,
             rule::horizontal(10),

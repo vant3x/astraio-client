@@ -1,6 +1,6 @@
 use crate::cookie::CookieJar;
 use crate::persistence::database::{self, Environment};
-use crate::ui::state::{HttpStreamState, MockState, WsState};
+use crate::ui::state::{AiStreamState, HttpStreamState, MockState, WsState};
 use crate::ui::toast::ToastManager;
 use crate::ui::views::collection_view::CollectionView;
 use crate::ui::views::environment_manager::EnvironmentManagerView;
@@ -54,7 +54,9 @@ pub(crate) struct AstraioApp {
         Option<crate::ui::views::collection_runner::CollectionRunnerState>,
     pub(crate) ai_view: crate::ui::views::ai_chat_view::AiChatView,
     pub(crate) ai_service: std::sync::Arc<tokio::sync::Mutex<crate::ai::service::AiService>>,
+    pub(crate) ai_stream: AiStreamState,
     pub(crate) app_settings_view: crate::ui::views::app_settings_view::AppSettingsView,
+    pub(crate) show_ai_button: bool,
     pub(crate) cookie_cleanup_counter: u32,
 }
 
@@ -161,6 +163,10 @@ impl AstraioApp {
         let mut app_settings_view = crate::ui::views::app_settings_view::AppSettingsView::new();
         app_settings_view.sync_from_config(&global_config, dark_mode);
 
+        let show_ai_button = crate::persistence::database::get_app_setting(&db_conn, "show_ai_button")
+            .is_none_or(|v| v != "false");
+        app_settings_view.show_ai_button = show_ai_button;
+
         let app = Self {
             request_tabs: vec![default_tab],
             active_request_tab_index: 0,
@@ -211,7 +217,9 @@ impl AstraioApp {
             collection_runner_state: None,
             ai_view: ai_view_init,
             ai_service: ai_service_init,
+            ai_stream: AiStreamState::new(),
             app_settings_view,
+            show_ai_button,
             cookie_cleanup_counter: 0,
         };
         (app, iced::Task::none())

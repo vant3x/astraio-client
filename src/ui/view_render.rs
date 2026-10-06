@@ -77,18 +77,24 @@ impl AstraioApp {
             );
         }
 
-        let toolbar = row![
+        let mut toolbar_row = row![
             add_tab_button,
             close_tab_button,
             text("").width(Length::Fixed(4.0)),
             history_button,
             collections_button,
-            ai_button,
-            env_controls
         ]
-        .spacing(10)
-        .padding(10)
-        .align_y(Alignment::Center);
+        .spacing(10);
+
+        if self.show_ai_button {
+            toolbar_row = toolbar_row.push(ai_button);
+        }
+
+        let toolbar = toolbar_row
+            .push(env_controls)
+            .spacing(10)
+            .padding(10)
+            .align_y(Alignment::Center);
 
         let env_help_section: Element<Message> = if let Some(active_env) = &self.active_environment
         {

@@ -5,6 +5,8 @@ pub enum AiProvider {
     #[default]
     OpenAi,
     Anthropic,
+    Gemini,
+    OpenRouter,
     Ollama,
     Custom,
 }
@@ -14,6 +16,8 @@ impl std::fmt::Display for AiProvider {
         match self {
             AiProvider::OpenAi => write!(f, "OpenAI"),
             AiProvider::Anthropic => write!(f, "Anthropic"),
+            AiProvider::Gemini => write!(f, "Google Gemini"),
+            AiProvider::OpenRouter => write!(f, "OpenRouter"),
             AiProvider::Ollama => write!(f, "Ollama"),
             AiProvider::Custom => write!(f, "Custom"),
         }
@@ -25,6 +29,8 @@ impl AiProvider {
         &[
             AiProvider::OpenAi,
             AiProvider::Anthropic,
+            AiProvider::Gemini,
+            AiProvider::OpenRouter,
             AiProvider::Ollama,
             AiProvider::Custom,
         ]
@@ -34,6 +40,8 @@ impl AiProvider {
         match self {
             AiProvider::OpenAi => "https://api.openai.com/v1",
             AiProvider::Anthropic => "https://api.anthropic.com/v1",
+            AiProvider::Gemini => "https://generativelanguage.googleapis.com/v1beta",
+            AiProvider::OpenRouter => "https://openrouter.ai/api/v1",
             AiProvider::Ollama => "http://localhost:11434",
             AiProvider::Custom => "",
         }
@@ -43,8 +51,61 @@ impl AiProvider {
         match self {
             AiProvider::OpenAi => "gpt-4o",
             AiProvider::Anthropic => "claude-sonnet-4-20250514",
+            AiProvider::Gemini => "gemini-2.0-flash",
+            AiProvider::OpenRouter => "openai/gpt-4o",
             AiProvider::Ollama => "llama3.1",
             AiProvider::Custom => "",
+        }
+    }
+
+    pub fn known_models(&self) -> &'static [&'static str] {
+        match self {
+            AiProvider::OpenAi => &[
+                "gpt-4o",
+                "gpt-4o-mini",
+                "gpt-4-turbo",
+                "gpt-4",
+                "gpt-3.5-turbo",
+                "o1",
+                "o1-mini",
+                "o1-pro",
+            ],
+            AiProvider::Anthropic => &[
+                "claude-sonnet-4-20250514",
+                "claude-3-5-sonnet-20241022",
+                "claude-3-5-haiku-20241022",
+                "claude-3-opus-20240229",
+                "claude-3-haiku-20240307",
+            ],
+            AiProvider::Gemini => &[
+                "gemini-2.0-flash",
+                "gemini-2.0-flash-lite",
+                "gemini-1.5-pro",
+                "gemini-1.5-flash",
+                "gemini-1.5-flash-8b",
+            ],
+            AiProvider::OpenRouter => &[
+                "openai/gpt-4o",
+                "openai/gpt-4o-mini",
+                "anthropic/claude-sonnet-4-20250514",
+                "anthropic/claude-3.5-sonnet",
+                "google/gemini-2.0-flash-001",
+                "meta-llama/llama-3.1-405b-instruct",
+                "mistralai/mixtral-8x7b-instruct",
+                "deepseek/deepseek-chat",
+            ],
+            AiProvider::Ollama => &[
+                "llama3.1",
+                "llama3.1:8b",
+                "llama3.1:70b",
+                "codellama",
+                "mistral",
+                "mixtral",
+                "phi3",
+                "gemma2",
+                "qwen2.5",
+            ],
+            AiProvider::Custom => &[],
         }
     }
 }

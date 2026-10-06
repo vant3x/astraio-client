@@ -34,6 +34,11 @@ pub fn handle_message(app: &mut AstraioApp, message: ai_chat_view::Message) -> T
             app.ai_view.selected_provider_type = provider.clone();
             app.ai_view.editing_base_url = provider.default_base_url().to_string();
             app.ai_view.editing_model = provider.default_model().to_string();
+            app.ai_view.available_models = provider
+                .known_models()
+                .iter()
+                .map(|s| s.to_string())
+                .collect();
             Task::none()
         }
         ai_chat_view::Message::ModelChanged(model) => {
@@ -151,37 +156,28 @@ fn handle_send(app: &mut AstraioApp) -> Task<Message> {
     };
 
     let provider_config = config.clone();
+    let ai_service = app.ai_service.clone();
+
     app.ai_view.start_streaming();
 
     Task::perform(
-        perform_chat_stream(app.ai_service.clone(), provider_config, request),
+        async move {
+            let service = ai_service.lock().await;
+            let rx = service
+                .chat_stream(&provider_config, request)
+                .await
+                .map_err(|e| e.to_string());
+            drop(service);
+            rx
+        },
         |result| match result {
-            Ok(()) => Message::AiMsg(ai_chat_view::Message::ReceiveStreamEnd),
+            Ok(rx) => {
+                let wrapped = std::sync::Arc::new(tokio::sync::Mutex::new(Some(rx)));
+                Message::AiStreamReady(wrapped)
+            }
             Err(e) => Message::AiMsg(ai_chat_view::Message::ReceiveError(e)),
         },
     )
-}
-
-async fn perform_chat_stream(
-    ai_service: std::sync::Arc<tokio::sync::Mutex<crate::ai::service::AiService>>,
-    config: AiProviderConfig,
-    request: AiChatRequest,
-) -> Result<(), String> {
-    let service = ai_service.lock().await;
-    let mut rx = service
-        .chat_stream(&config, request)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    drop(service);
-
-    while let Some(chunk) = rx.recv().await {
-        // We need to send chunks via a channel or similar mechanism
-        // For now, we collect and handle via polling
-        log::debug!("AI chunk: {chunk}");
-    }
-
-    Ok(())
 }
 
 fn handle_quick_action(app: &mut AstraioApp, action: ai_chat_view::QuickAction) -> Task<Message> {

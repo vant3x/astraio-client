@@ -144,6 +144,7 @@ pub enum Message {
 
     // AI messages
     AiMsg(ai_chat_view::Message),
+    AiStreamReady(std::sync::Arc<tokio::sync::Mutex<Option<tokio::sync::mpsc::Receiver<String>>>>),
 
     // Cookie messages
     CookieManagerMsg(cookie_manager::Message),

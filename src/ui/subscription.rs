@@ -1,6 +1,6 @@
 use crate::ui::app::AstraioApp;
 use crate::ui::message::Message;
-use crate::ui::recipes::{DevicePollRecipe, HttpStreamRecipe, MenuEventRecipe, WsRecipe};
+use crate::ui::recipes::{AiStreamRecipe, DevicePollRecipe, HttpStreamRecipe, MenuEventRecipe, WsRecipe};
 use iced::Subscription;
 use iced_futures::subscription::from_recipe;
 
@@ -107,12 +107,22 @@ impl AstraioApp {
             })
             .collect();
 
+        let ai_stream_subscription = if let Some(receiver_arc) = &self.ai_stream.receiver {
+            from_recipe(AiStreamRecipe {
+                receiver: receiver_arc.clone(),
+                stream_id: self.ai_stream.stream_id,
+            })
+        } else {
+            Subscription::none()
+        };
+
         let mut subs = vec![
             ws_subscription,
             keyboard_subscription,
             device_poll_subscription,
             menu_subscription,
             window_opened,
+            ai_stream_subscription,
         ];
         subs.extend(http_stream_subscriptions);
         Subscription::batch(subs)

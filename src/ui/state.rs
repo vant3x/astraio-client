@@ -98,3 +98,31 @@ impl MockState {
         }
     }
 }
+
+pub struct AiStreamState {
+    pub receiver: Option<Arc<tokio::sync::Mutex<Option<tokio::sync::mpsc::Receiver<String>>>>>,
+    pub stream_id: u64,
+}
+
+impl AiStreamState {
+    pub fn new() -> Self {
+        Self {
+            receiver: None,
+            stream_id: 0,
+        }
+    }
+
+    pub fn set_receiver(
+        &mut self,
+        rx: Arc<tokio::sync::Mutex<Option<tokio::sync::mpsc::Receiver<String>>>>,
+    ) {
+        self.stream_id += 1;
+        self.receiver = Some(rx);
+    }
+}
+
+impl Default for AiStreamState {
+    fn default() -> Self {
+        Self::new()
+    }
+}

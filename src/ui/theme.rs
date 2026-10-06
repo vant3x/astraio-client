@@ -23,12 +23,12 @@ impl ThemeColors {
     // Borders
     pub const BORDER: Color = Color::from_rgb(0.22, 0.22, 0.28);
     pub const BORDER_LIGHT: Color = Color::from_rgb(0.28, 0.28, 0.34);
-    pub const BORDER_FOCUS: Color = Color::from_rgb(0.30, 0.55, 0.90);
+    pub const BORDER_FOCUS: Color = Color::from_rgb(0.55, 0.36, 0.85);
 
-    // Accent
-    pub const ACCENT: Color = Color::from_rgb(0.30, 0.55, 0.90);
-    pub const ACCENT_HOVER: Color = Color::from_rgb(0.35, 0.60, 0.95);
-    pub const ACCENT_DIM: Color = Color::from_rgb(0.20, 0.40, 0.70);
+    // Accent (purple to match app branding)
+    pub const ACCENT: Color = Color::from_rgb(0.55, 0.36, 0.85);
+    pub const ACCENT_HOVER: Color = Color::from_rgb(0.63, 0.44, 0.90);
+    pub const ACCENT_DIM: Color = Color::from_rgb(0.38, 0.25, 0.60);
 
     // Semantic
     pub const SUCCESS: Color = Color::from_rgb(0.20, 0.72, 0.40);
@@ -39,6 +39,10 @@ impl ThemeColors {
     pub const ERROR_DIM: Color = Color::from_rgb(0.65, 0.20, 0.20);
     pub const INFO: Color = Color::from_rgb(0.30, 0.60, 0.95);
     pub const INFO_DIM: Color = Color::from_rgb(0.20, 0.40, 0.70);
+
+    // AI Chat
+    pub const AI_BUBBLE_USER: Color = Color::from_rgb(0.22, 0.20, 0.38);
+    pub const AI_BUBBLE_USER_HOVER: Color = Color::from_rgb(0.28, 0.25, 0.44);
 
     // Special
     pub const PURPLE: Color = Color::from_rgb(0.60, 0.40, 0.85);

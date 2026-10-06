@@ -284,6 +284,34 @@ impl SaveRequestParams {
 
 // ── Schema & Init ───────────────────────────────────────────────────────────
 
+fn column_exists(conn: &Connection, table: &str, column: &str) -> bool {
+    let pragma = format!("PRAGMA table_info({table})");
+    if let Ok(mut stmt) = conn.prepare(&pragma) {
+        let cols: Vec<String> = stmt
+            .query_map([], |row| row.get::<_, String>(1))
+            .map(|rows| rows.filter_map(|r| r.ok()).collect())
+            .unwrap_or_default();
+        cols.contains(&column.to_string())
+    } else {
+        false
+    }
+}
+
+fn add_column_if_missing(
+    conn: &Connection,
+    table: &str,
+    column: &str,
+    definition: &str,
+) -> std::result::Result<(), AppError> {
+    if !column_exists(conn, table, column) {
+        conn.execute(
+            &format!("ALTER TABLE {table} ADD COLUMN {column} {definition}"),
+            [],
+        )?;
+    }
+    Ok(())
+}
+
 fn get_db_path() -> std::result::Result<PathBuf, AppError> {
     let proj_dirs = ProjectDirs::from("com", "astraio", "client")
         .ok_or_else(|| AppError::Database("Failed to determine project directories".to_string()))?;
@@ -302,16 +330,8 @@ pub fn init_schema(conn: &Connection) -> std::result::Result<(), AppError> {
         )",
         [],
     )?;
-    conn.execute(
-        "ALTER TABLE environments ADD COLUMN default_endpoint TEXT",
-        [],
-    )
-    .ok();
-    conn.execute(
-        "ALTER TABLE environments ADD COLUMN secret_keys TEXT NOT NULL DEFAULT '[]'",
-        [],
-    )
-    .ok();
+    add_column_if_missing(conn, "environments", "default_endpoint", "TEXT")?;
+    add_column_if_missing(conn, "environments", "secret_keys", "TEXT NOT NULL DEFAULT '[]'")?;
     conn.execute(
         "CREATE TABLE IF NOT EXISTS request_history (
             id INTEGER PRIMARY KEY,
@@ -325,16 +345,8 @@ pub fn init_schema(conn: &Connection) -> std::result::Result<(), AppError> {
         )",
         [],
     )?;
-    conn.execute(
-        "ALTER TABLE request_history ADD COLUMN request_data TEXT",
-        [],
-    )
-    .ok();
-    conn.execute(
-        "ALTER TABLE request_history ADD COLUMN response_data TEXT",
-        [],
-    )
-    .ok();
+    add_column_if_missing(conn, "request_history", "request_data", "TEXT")?;
+    add_column_if_missing(conn, "request_history", "response_data", "TEXT")?;
     conn.execute(
         "CREATE TABLE IF NOT EXISTS collections (
             id INTEGER PRIMARY KEY,
@@ -345,16 +357,8 @@ pub fn init_schema(conn: &Connection) -> std::result::Result<(), AppError> {
         )",
         [],
     )?;
-    conn.execute(
-        "ALTER TABLE collections ADD COLUMN variables TEXT NOT NULL DEFAULT '[]'",
-        [],
-    )
-    .ok();
-    conn.execute(
-        "ALTER TABLE collections ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0",
-        [],
-    )
-    .ok();
+    add_column_if_missing(conn, "collections", "variables", "TEXT NOT NULL DEFAULT '[]'")?;
+    add_column_if_missing(conn, "collections", "sort_order", "INTEGER NOT NULL DEFAULT 0")?;
     conn.execute(
         "CREATE TABLE IF NOT EXISTS collection_folders (
             id INTEGER PRIMARY KEY,
@@ -366,11 +370,7 @@ pub fn init_schema(conn: &Connection) -> std::result::Result<(), AppError> {
         )",
         [],
     )?;
-    conn.execute(
-        "ALTER TABLE collection_folders ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0",
-        [],
-    )
-    .ok();
+    add_column_if_missing(conn, "collection_folders", "sort_order", "INTEGER NOT NULL DEFAULT 0")?;
     conn.execute(
         "CREATE TABLE IF NOT EXISTS collection_requests (
             id INTEGER PRIMARY KEY,
@@ -393,11 +393,7 @@ pub fn init_schema(conn: &Connection) -> std::result::Result<(), AppError> {
         )",
         [],
     )?;
-    conn.execute(
-        "ALTER TABLE collection_requests ADD COLUMN scripts TEXT",
-        [],
-    )
-    .ok();
+    add_column_if_missing(conn, "collection_requests", "scripts", "TEXT")?;
     conn.execute(
         "CREATE TABLE IF NOT EXISTS app_settings (
             key TEXT PRIMARY KEY,

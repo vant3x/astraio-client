@@ -171,6 +171,7 @@ pub struct AiChatView {
     pub editing_model: String,
     pub editing_provider_name: String,
     pub selected_provider_type: AiProvider,
+    pub available_models: Vec<String>,
     pub mock_data: MockDataConfig,
     pub streaming_buffer: String,
     pub error_message: Option<String>,
@@ -182,6 +183,11 @@ impl AiChatView {
             system_prompt: "You are an expert API development assistant. Help generate requests, \
              explain responses, create scripts, and generate mock data for testing."
                 .to_string(),
+            available_models: AiProvider::default()
+                .known_models()
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
             ..Default::default()
         }
     }
@@ -469,9 +475,9 @@ impl AiChatView {
         }
 
         let bubble_bg = if is_user {
-            Color::from_rgb(0.15, 0.25, 0.45)
+            ThemeColors::AI_BUBBLE_USER
         } else {
-            Color::from_rgb(0.16, 0.16, 0.20)
+            ThemeColors::BG_LIGHT
         };
 
         container(
@@ -637,12 +643,26 @@ impl AiChatView {
                 .size(13)
                 .padding(8),
             text("Model").size(12).color(ThemeColors::TEXT_SECONDARY),
-            text_input("gpt-4o", &self.editing_model)
-                .on_input(Message::ModelChanged)
-                .size(13)
-                .padding(8),
+            {
+                let model_input: Element<'_, Message, Theme, Renderer> =
+                    if self.available_models.is_empty() {
+                        text_input("gpt-4o", &self.editing_model)
+                            .on_input(Message::ModelChanged)
+                            .size(13)
+                            .padding(8)
+                            .into()
+                    } else {
+                        iced::widget::pick_list(
+                            self.available_models.clone(),
+                            Some(self.editing_model.clone()),
+                            Message::ModelChanged,
+                        )
+                        .into()
+                    };
+                model_input
+            },
             button(row![lucide::plus().size(14), text("Add Provider")].spacing(4))
-                .style(iced::widget::button::primary)
+                .style(accent_button_style())
                 .on_press(Message::SaveProviderConfig),
         ]
         .spacing(6)

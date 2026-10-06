@@ -269,6 +269,23 @@ pub fn handle_message(app: &mut AstraioApp, msg: mock_server_view::Message) -> T
         mock_server_view::Message::ClearLogs => {
             app.mock.view.logs.clear();
         }
+        mock_server_view::Message::AiMockDescriptionChanged(desc) => {
+            app.mock.view.ai_mock_description = desc;
+        }
+        mock_server_view::Message::AiMockGenerate(description) => {
+            return handle_ai_mock_generate(app, &description);
+        }
+        mock_server_view::Message::AiMockResult(body) => {
+            app.mock.view.ai_mock_generating = false;
+            if let Some(ref mut edit) = app.mock.view.endpoint_edit {
+                edit.body = iced::widget::text_editor::Content::with_text(&body);
+                app.toast_manager.success("Mock data generated");
+            }
+        }
+        mock_server_view::Message::AiMockError(err) => {
+            app.mock.view.ai_mock_generating = false;
+            app.toast_manager.error(format!("AI error: {err}"));
+        }
     }
 
     Task::none()
@@ -281,4 +298,73 @@ fn find_free_port() -> u16 {
         .local_addr()
         .expect("listener must have local address")
         .port()
+}
+
+fn handle_ai_mock_generate(app: &mut AstraioApp, description: &str) -> Task<Message> {
+    let config = match app
+        .ai_view
+        .active_provider_index
+        .and_then(|idx| app.ai_view.providers.get(idx))
+    {
+        Some(c) => c.clone(),
+        None => {
+            app.toast_manager
+                .error("No AI provider configured. Open AI Settings first.");
+            return Task::none();
+        }
+    };
+
+    if app
+        .secret_store
+        .get_secret("ai", &format!("{}_{}", config.provider, config.name), "api_key")
+        .ok()
+        .flatten()
+        .is_none()
+        && config.provider != crate::ai::types::AiProvider::Ollama
+    {
+        app.toast_manager
+            .error("No API key configured for this AI provider.");
+        return Task::none();
+    }
+
+    app.mock.view.ai_mock_generating = true;
+
+    let prompt = format!(
+        "Generate a realistic JSON mock response for an API endpoint. \
+         Description: {description}\n\n\
+         Return ONLY valid JSON, no explanation, no markdown code fences. \
+         The JSON should be a realistic example response matching the description."
+    );
+
+    let ai_service = app.ai_service.clone();
+
+    Task::perform(
+        async move {
+            let service = ai_service.lock().await;
+            let request = crate::ai::types::AiChatRequest {
+                model: config.model.clone(),
+                messages: vec![crate::ai::types::AiChatMessage {
+                    role: crate::ai::types::AiRole::User,
+                    content: prompt,
+                }],
+                max_tokens: Some(2048),
+                temperature: Some(0.7),
+                stream: false,
+            };
+            let result = service.chat(&config, request).await;
+            drop(service);
+            result
+        },
+        |result| match result {
+            Ok(response) => {
+                let body = response.content.trim().to_string();
+                Message::MockServerMsg(crate::ui::views::mock_server_view::Message::AiMockResult(
+                    body,
+                ))
+            }
+            Err(e) => Message::MockServerMsg(
+                crate::ui::views::mock_server_view::Message::AiMockError(e.to_string()),
+            ),
+        },
+    )
 }

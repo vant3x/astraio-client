@@ -5,6 +5,73 @@ use iced_futures::subscription::{EventStream, Recipe};
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 
+pub(crate) struct AiStreamRecipe {
+    pub receiver: Arc<tokio::sync::Mutex<Option<mpsc::Receiver<String>>>>,
+    pub stream_id: u64,
+}
+
+impl Recipe for AiStreamRecipe {
+    type Output = Message;
+
+    fn hash(&self, state: &mut iced_futures::subscription::Hasher) {
+        use std::hash::Hash;
+        std::any::TypeId::of::<AiStreamRecipe>().hash(state);
+        self.stream_id.hash(state);
+    }
+
+    fn stream(self: Box<Self>, _input: EventStream) -> BoxStream<'static, Message> {
+        use futures::stream::StreamExt;
+
+        let receiver_arc = self.receiver;
+
+        async fn poll_next(
+            arc: &Arc<tokio::sync::Mutex<Option<mpsc::Receiver<String>>>>,
+        ) -> Option<Message> {
+            let mut guard = arc.lock().await;
+            let mut receiver = guard.take()?;
+            drop(guard);
+
+            let result = tokio::time::timeout(
+                std::time::Duration::from_secs(300),
+                receiver.recv(),
+            )
+            .await;
+
+            {
+                let mut guard = arc.lock().await;
+                match result {
+                    Ok(Some(text)) => {
+                        *guard = Some(receiver);
+                        Some(Message::AiMsg(
+                            crate::ui::views::ai_chat_view::Message::ReceiveStreamChunk(text),
+                        ))
+                    }
+                    Ok(None) => {
+                        // Stream finished normally
+                        Some(Message::AiMsg(
+                            crate::ui::views::ai_chat_view::Message::ReceiveStreamEnd,
+                        ))
+                    }
+                    Err(_) => {
+                        // Timeout - receiver took too long, force end
+                        log::warn!("AI stream timed out after 5 minutes");
+                        Some(Message::AiMsg(
+                            crate::ui::views::ai_chat_view::Message::ReceiveError(
+                                "Stream timed out".to_string(),
+                            ),
+                        ))
+                    }
+                }
+            }
+        }
+
+        futures::stream::unfold(receiver_arc, |arc| async move {
+            poll_next(&arc).await.map(|msg| (msg, arc))
+        })
+        .boxed()
+    }
+}
+
 pub(crate) struct WsRecipe {
     pub receiver: Arc<Mutex<Option<mpsc::UnboundedReceiver<crate::protocols::websocket::WsEvent>>>>,
     pub connection_id: u64,

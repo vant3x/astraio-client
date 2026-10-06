@@ -257,6 +257,23 @@ impl ScriptEngineV2 {
 }
 
 fn execute_user_code(ctx: &rquickjs::Ctx<'_>, js_code: &str) -> Result<(), AppError> {
+    let globals = ctx.globals();
+
+    // Sandbox: remove require (prevents loading std/os modules for file I/O, process spawn)
+    globals
+        .remove("require")
+        .ok();
+
+    // Sandbox: remove print (console output not needed in collection scripts)
+    globals
+        .remove("print")
+        .ok();
+
+    // Sandbox: remove alert/prompt/confirm (no UI in headless scripts)
+    globals.remove("alert").ok();
+    globals.remove("prompt").ok();
+    globals.remove("confirm").ok();
+
     ctx.eval::<(), _>(js_code)
         .map_err(|e| AppError::Validation(format!("Script error: {e}")))
 }

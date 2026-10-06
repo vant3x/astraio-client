@@ -33,6 +33,11 @@ pub enum Message {
     DeleteEndpoint(i32, i32),
     EndpointSearchChanged(String),
     ClearLogs,
+    // AI mock generation
+    AiMockDescriptionChanged(String),
+    AiMockGenerate(String),
+    AiMockResult(String),
+    AiMockError(String),
 }
 
 #[derive(Debug, Clone)]
@@ -57,6 +62,9 @@ pub struct MockServerView {
     pub endpoint_edit: Option<EndpointEditState>,
     pub endpoint_search: String,
     pub show_add_server: bool,
+    // AI mock generation
+    pub ai_mock_description: String,
+    pub ai_mock_generating: bool,
 }
 
 impl MockServerView {
@@ -424,6 +432,50 @@ impl MockServerView {
                                 .size(12)
                                 .color(Color::from_rgb(0.5, 0.5, 0.5)),
                             body_editor,
+                        ]
+                        .spacing(4),
+                        column![
+                            row![
+                                lucide::sparkles().size(12).color(Color::from_rgb(0.55, 0.36, 0.85)),
+                                text("AI Mock Data")
+                                    .size(12)
+                                    .color(Color::from_rgb(0.55, 0.36, 0.85)),
+                            ]
+                            .spacing(4)
+                            .align_y(Alignment::Center),
+                            row![
+                                text_input(
+                                    "Describe the response... (e.g. 'user list with id, name, email')",
+                                    &self.ai_mock_description,
+                                )
+                                .on_input(Message::AiMockDescriptionChanged)
+                                .size(12)
+                                .padding(8)
+                                .width(Length::Fill),
+                                if self.ai_mock_generating || self.ai_mock_description.trim().is_empty() {
+                                    button(
+                                        row![lucide::loader().size(12), text("Generate with AI").size(11)]
+                                            .spacing(4)
+                                            .align_y(Alignment::Center),
+                                    )
+                                    .padding(iced::Padding::from([6, 12]))
+                                } else {
+                                    button(
+                                        row![lucide::sparkles().size(12), text("Generate with AI").size(11)]
+                                            .spacing(4)
+                                            .align_y(Alignment::Center),
+                                    )
+                                    .on_press(Message::AiMockGenerate(self.ai_mock_description.clone()))
+                                    .padding(iced::Padding::from([6, 12]))
+                                },
+                                if self.ai_mock_generating {
+                                    text("Generating...").size(11).color(Color::from_rgb(0.8, 0.7, 0.1))
+                                } else {
+                                    text("").size(11)
+                                },
+                            ]
+                            .spacing(8)
+                            .align_y(Alignment::Center),
                         ]
                         .spacing(4),
                         column![

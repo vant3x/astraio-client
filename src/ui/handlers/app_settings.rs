@@ -85,6 +85,23 @@ pub fn handle_message(app: &mut AstraioApp, msg: app_settings_view::Message) -> 
             app.app_settings_view.max_body_size = v;
             Task::none()
         }
+        app_settings_view::Message::ToggleShowAiButton(v) => {
+            app.app_settings_view.show_ai_button = v;
+            app.show_ai_button = v;
+            let _ = crate::persistence::database::set_app_setting(
+                &app.db_conn,
+                "show_ai_button",
+                if v { "true" } else { "false" },
+            );
+            Task::none()
+        }
+        app_settings_view::Message::OpenAiSettings => {
+            app.app_settings_view.show_ai_button = app.show_ai_button;
+            app.ai_view.show_settings = true;
+            app.active_protocol = crate::ui::message::Protocol::Ai;
+            app.current_view = crate::ui::message::View::Main;
+            Task::none()
+        }
         app_settings_view::Message::ClearKeychainSecrets => {
             // Re-use existing logic from app.rs
             let store = app.secret_store.clone();
@@ -139,6 +156,16 @@ pub fn handle_message(app: &mut AstraioApp, msg: app_settings_view::Message) -> 
                 app.toast_manager
                     .error(format!("Failed to save settings: {e}"));
             } else {
+                // Persist AI button visibility
+                let _ = crate::persistence::database::set_app_setting(
+                    &app.db_conn,
+                    "show_ai_button",
+                    if app.app_settings_view.show_ai_button {
+                        "true"
+                    } else {
+                        "false"
+                    },
+                );
                 app.toast_manager.success("Settings saved");
                 app.app_settings_view.saved = true;
             }
@@ -148,6 +175,15 @@ pub fn handle_message(app: &mut AstraioApp, msg: app_settings_view::Message) -> 
             let default_config = crate::http_client::config::GlobalConfig::default();
             app.app_settings_view
                 .sync_from_config(&default_config, app.dark_mode);
+
+            // Reset AI button visibility to default
+            app.app_settings_view.show_ai_button = true;
+            app.show_ai_button = true;
+            let _ = crate::persistence::database::set_app_setting(
+                &app.db_conn,
+                "show_ai_button",
+                "true",
+            );
 
             // Apply to app
             app.global_config = default_config.clone();

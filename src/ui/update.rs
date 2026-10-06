@@ -175,6 +175,10 @@ impl AstraioApp {
             Message::GraphQLMsg(msg) => super::handlers::graphql::handle_message(self, msg),
             Message::MockServerMsg(msg) => super::handlers::mock_server::handle_message(self, msg),
             Message::AiMsg(msg) => super::handlers::ai::handle_message(self, msg),
+            Message::AiStreamReady(rx) => {
+                self.ai_stream.set_receiver(rx);
+                Task::none()
+            }
             Message::AppSettingsMsg(msg) => {
                 super::handlers::app_settings::handle_message(self, msg)
             }
